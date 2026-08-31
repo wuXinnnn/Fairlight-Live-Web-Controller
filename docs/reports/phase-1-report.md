@@ -138,6 +138,7 @@ pnpm build       # shared / test-utils / web / server 通过
 `git log --oneline`：
 
 ```
+eba7ee0 docs: add Phase 1 execution report
 2ce91a3 docs: fill Phase 1 getting started commands
 d0673f2 ci: add GitHub Actions lint-typecheck-test-build workflow
 b947c2e feat(web): add Vite React placeholder page
@@ -147,5 +148,3 @@ faf53ea feat(server): add health endpoint and static hosting
 2592c9b chore: add pnpm workspace, TypeScript, ESLint, and Prettier
 ee8d26e chore: initialize repository with project documentation
 ```
-
-本报告将作为下一条 `docs: add Phase 1 execution report` 提交。
