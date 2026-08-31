@@ -20,21 +20,22 @@ level metering and loudness readouts, backed by an extensible Web API.
 
 ## Tech Stack
 
-| Layer | Technology |
-| --- | --- |
-| Backend | Node.js, TypeScript, Fastify, socket.io |
-| Ember+ | [sofie-emberplus-connection](https://github.com/Sofie-Automation/sofie-emberplus-connection) |
-| Frontend | React, TypeScript, Vite, zustand, socket.io-client |
-| Testing | Vitest, React Testing Library |
-| Tooling | pnpm workspaces, ESLint, Prettier |
+| Layer    | Technology                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------- |
+| Backend  | Node.js, TypeScript, Fastify, socket.io                                                      |
+| Ember+   | [sofie-emberplus-connection](https://github.com/Sofie-Automation/sofie-emberplus-connection) |
+| Frontend | React, TypeScript, Vite, zustand, socket.io-client                                           |
+| Testing  | Vitest, React Testing Library                                                                |
+| Tooling  | pnpm workspaces, ESLint, Prettier                                                            |
 
 ## Repository Layout
 
 ```
-apps/server      Fastify backend: REST API, socket.io gateway, Ember+ client
-apps/web         React frontend: mixer page, settings page
-packages/shared  Shared types and message contracts (zod schemas)
-docs/            Project documentation (in Simplified Chinese)
+apps/server          Fastify backend: REST API, socket.io gateway, Ember+ client
+apps/web             React frontend: mixer page, settings page
+packages/shared      Shared types and message contracts (zod schemas)
+packages/test-utils  Test fixtures (Mock Ember+ Provider)
+docs/                Project documentation (in Simplified Chinese)
 ```
 
 ## Getting Started
