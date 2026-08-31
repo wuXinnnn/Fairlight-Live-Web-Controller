@@ -39,17 +39,18 @@ docs/            Project documentation (in Simplified Chinese)
 
 ## Getting Started
 
-> Placeholder — filled in once the project scaffold lands (Phase 1).
+Requirements: Node.js 22 and [pnpm](https://pnpm.io/) 11. Ember+ / Fairlight Live
+is not required for the current scaffold.
 
 ```bash
 pnpm install
-pnpm dev        # start backend + frontend in development mode
-pnpm test       # run all tests with coverage
+pnpm dev        # API on :3000, Vite on :5173 (proxies /api)
+pnpm lint
+pnpm typecheck
+pnpm test       # all packages, with coverage thresholds
 pnpm build      # production build; server serves the built frontend
+node apps/server/dist/main.js   # after build: http://127.0.0.1:3000
 ```
-
-Requirements: a running Fairlight Live instance with Ember+ enabled
-(Fairlight Live > Show settings > Ember+ > Enable).
 
 ## Deployment
 
