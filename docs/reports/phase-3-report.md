@@ -113,6 +113,7 @@ Lines        : 93.57% ( 655/700 )
 分支：`cursor/phase-3-backend-491d`
 
 ```
+a8ca66c docs: add Phase 3 execution report
 7dd3a36 test(server): cover mixer lifecycle and control round-trips
 58d9a78 feat(server): add EmberService, TreeMapper, and mixer backend
 366d1df feat(shared): add mixer, control, and config contracts
