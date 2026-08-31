@@ -4,3 +4,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+
+# emberplus-connection@0.3.1 depends on git-hosted asn1 (evs-broadcast/node-asn1).
+# pnpm 11 blocks exotic transitive deps by default; keep the official Sofie client.
+blockExoticSubdeps: false

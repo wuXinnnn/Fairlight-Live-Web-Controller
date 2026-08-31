@@ -7,11 +7,14 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "dump-tree": "tsx src/tools/dump-tree.ts",
+    "verify-ember": "tsx src/tools/verify-ember.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.2.0",
     "@flwc/shared": "workspace:*",
+    "emberplus-connection": "0.3.1",
     "fastify": "^5.12.1"
   },
   "devDependencies": {
