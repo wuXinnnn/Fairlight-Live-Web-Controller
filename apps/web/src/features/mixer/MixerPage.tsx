@@ -32,7 +32,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
   const renderedChannels = useChannelPresence(channels);
 
   return (
-    <main className="mixer-shell">
+    <main className="mixer-shell" data-theme="dark">
       <header className="console-header">
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
