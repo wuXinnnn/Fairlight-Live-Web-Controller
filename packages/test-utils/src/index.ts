@@ -1,3 +1,4 @@
+export { createRequiredDump } from './fixtures.js';
 export { dumpNodeToEmber, dumpToEmberTree, fromDumpValue } from './dump-to-ember-tree.js';
 export type {
   DumpElementType,

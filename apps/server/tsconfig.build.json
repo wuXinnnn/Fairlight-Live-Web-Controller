@@ -6,5 +6,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/ember/tree-helpers.ts", "src/ember/fake-ember-client.ts"]
 }
