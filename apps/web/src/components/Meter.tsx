@@ -35,20 +35,28 @@ export function Meter({ id, label, active }: MeterProps) {
   const rawValue = useStore(meterStore, (state) => state.meters[id] ?? DEFAULT_METER_DB);
   const value = clampMeterDb(rawValue);
   const currentRef = useRef(value);
+  const peakRef = useRef(value);
   const timerRef = useRef<number | undefined>(undefined);
   const [peak, setPeak] = useState(value);
-  currentRef.current = value;
 
   useEffect(() => {
-    if (value <= peak) {
+    currentRef.current = value;
+    if (value <= peakRef.current) {
       return;
     }
-    setPeak(value);
     window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      setPeak(currentRef.current);
-    }, PEAK_HOLD_MS);
-  }, [peak, value]);
+    const riseTimer = window.setTimeout(() => {
+      peakRef.current = value;
+      setPeak(value);
+      timerRef.current = window.setTimeout(() => {
+        peakRef.current = currentRef.current;
+        setPeak(currentRef.current);
+      }, PEAK_HOLD_MS);
+    }, 0);
+    return () => {
+      window.clearTimeout(riseTimer);
+    };
+  }, [value]);
 
   useEffect(
     () => () => {

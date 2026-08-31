@@ -13,25 +13,28 @@ export function useChannelPresence(channels: ChannelState[]): PresenceChannel[] 
     channels.map((channel) => ({ channel, exiting: false })),
   );
   const latestIdsRef = useRef(new Set(channels.map((channel) => channel.id)));
-  latestIdsRef.current = new Set(channels.map((channel) => channel.id));
 
   useEffect(() => {
     const incomingIds = new Set(channels.map((channel) => channel.id));
-    setRendered((current) => {
-      const next = channels.map((channel) => ({ channel, exiting: false }));
-      const removed = current
-        .filter((item) => !incomingIds.has(item.channel.id))
-        .map((item) => ({ ...item, exiting: true }));
-      return [...next, ...removed];
-    });
+    latestIdsRef.current = incomingIds;
+    const updateTimer = window.setTimeout(() => {
+      setRendered((current) => {
+        const next = channels.map((channel) => ({ channel, exiting: false }));
+        const removed = current
+          .filter((item) => !incomingIds.has(item.channel.id))
+          .map((item) => ({ ...item, exiting: true }));
+        return [...next, ...removed];
+      });
+    }, 0);
 
-    const timeout = window.setTimeout(() => {
+    const exitTimer = window.setTimeout(() => {
       setRendered((current) =>
         current.filter((item) => !item.exiting || latestIdsRef.current.has(item.channel.id)),
       );
     }, CHANNEL_EXIT_MS);
     return () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(updateTimer);
+      window.clearTimeout(exitTimer);
     };
   }, [channels]);
 

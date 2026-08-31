@@ -31,7 +31,6 @@ export function Fader({
   const trackRef = useRef<HTMLDivElement>(null);
   const latestValueRef = useRef(value);
   const [dragging, setDragging] = useState(false);
-  latestValueRef.current = value;
 
   const valueFromPointer = (clientY: number): number => {
     const bounds = trackRef.current?.getBoundingClientRect();

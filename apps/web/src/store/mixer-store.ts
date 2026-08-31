@@ -40,6 +40,10 @@ const INITIAL_STATE: MixerStoreState = {
   notice: null,
 };
 
+function withoutKey<T>(record: Record<string, T>, omittedKey: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== omittedKey));
+}
+
 export const mixerStore = createStore<MixerStoreState>()(() => INITIAL_STATE);
 
 export function resetMixerStore(): void {
@@ -68,10 +72,10 @@ export function replaceMixerSnapshot(snapshot: MixerSnapshot): void {
 
 export function applyMixerPatch(patch: MixerPatch): void {
   mixerStore.setState((state) => {
-    const channels = { ...state.channels };
+    let channels = { ...state.channels };
     const channelOrder = [...state.channelOrder];
-    const pendingLevels = { ...state.pendingLevels };
-    const pendingOns = { ...state.pendingOns };
+    let pendingLevels = { ...state.pendingLevels };
+    let pendingOns = { ...state.pendingOns };
 
     for (const channel of patch.upserts ?? []) {
       const current = channels[channel.id];
@@ -102,9 +106,9 @@ export function applyMixerPatch(patch: MixerPatch): void {
     }
 
     for (const id of patch.removedIds ?? []) {
-      delete channels[id];
-      delete pendingLevels[id];
-      delete pendingOns[id];
+      channels = withoutKey(channels, id);
+      pendingLevels = withoutKey(pendingLevels, id);
+      pendingOns = withoutKey(pendingOns, id);
       const index = channelOrder.indexOf(id);
       if (index >= 0) {
         channelOrder.splice(index, 1);
@@ -158,8 +162,7 @@ export function finishLevelInteraction(id: string, ack: ControlAck): void {
     if (pending === undefined || channel === undefined) {
       return state;
     }
-    const pendingLevels = { ...state.pendingLevels };
-    delete pendingLevels[id];
+    const pendingLevels = withoutKey(state.pendingLevels, id);
     const levelDb = pending.remoteValue ?? (ack.ok ? channel.levelDb : pending.baseline);
     return {
       channels: {
@@ -198,8 +201,7 @@ export function finishOnInteraction(id: string, ack: ControlAck): void {
     if (pending === undefined || channel === undefined) {
       return state;
     }
-    const pendingOns = { ...state.pendingOns };
-    delete pendingOns[id];
+    const pendingOns = withoutKey(state.pendingOns, id);
     const muted = pending.remoteMuted ?? (ack.ok ? channel.muted : pending.baselineMuted);
     return {
       channels: {
