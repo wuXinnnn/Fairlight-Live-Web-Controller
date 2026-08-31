@@ -8,7 +8,7 @@ alwaysApply: true
 - 技术栈:Fastify + socket.io + emberplus-connection(后端),React + Vite + zustand(前端),pnpm workspaces,Vitest。详见 `AGENTS.md` 与 `docs/`。
 - **本地测试安全**:开发机连接真实 Fairlight Live,只允许改 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道的推子;禁止删改通道或动其它参数。自动化测试一律用 Mock Ember+ Provider。
 - **Ember+ 树**:以运行时从 Provider 收到的实际树为准;官方手册附录路径表面向 OSC,与 Ember+ 不一致,勿据此编码(见 `docs/fairlight-ember.md`)。后端不硬编码 Ember 路径,统一走 TreeMapper 树发现层。
-- **语言**:代码、注释、提交信息用英文;Agent 文档与对话用简体中文。
+- **语言**:代码、注释、提交信息、PR 标题与正文用英文;Agent 文档与对话用简体中文。
 - **许可**:新增依赖必须 MIT 或 MIT 兼容(项目将 MIT 开源)。
 - **测试**:新功能须附单元/集成测试并覆盖边界场景,覆盖率门槛见 `docs/conventions.md`。
 - **文档**:只描述当前状态,不留历史决策变更;踩坑记录写入 `docs/fairlight-ember.md`。

@@ -25,10 +25,10 @@
 
 验收标准:
 
-- [ ] 全部脚本在 Windows 本机可运行
-- [ ] `pnpm build` 产出 server 与 web 构建产物,server 可托管 web 产物启动
-- [ ] `pnpm test` 通过(允许仅有冒烟用例),覆盖率统计正常输出
-- [ ] CI 在 GitHub 上全绿,覆盖率门槛生效(可用一个故意不达标的临时分支验证会红)
+- [x] 全部脚本在 Windows 本机可运行
+- [x] `pnpm build` 产出 server 与 web 构建产物,server 可托管 web 产物启动
+- [x] `pnpm test` 通过(允许仅有冒烟用例),覆盖率统计正常输出
+- [x] CI 在 GitHub 上全绿,覆盖率门槛生效(可用一个故意不达标的临时分支验证会红)
 
 ## Phase 2 — Ember+ 树发现
 
@@ -43,10 +43,10 @@
 
 验收标准:
 
-- [ ] dump 覆盖全部所需节点:通道/各类总线的 level、mute、name、meter,`system/loudness` 的 integrated、true-peak、reset
-- [ ] 每个所用节点的类型、范围、单位已确认并写入 `docs/fairlight-ember.md`
-- [ ] Mock Provider 能被 emberplus-connection 客户端正常连接、订阅、写入
-- [ ] 实测未改动任何不允许的通道,未删改任何通道
+- [x] dump 覆盖全部所需节点:通道/各类总线的 level、mute、name、meter,`system/loudness` 的 integrated、true-peak、reset(当前 show 无 `sub`/`mixm`/`mtx` 根节点,其余全部覆盖,见 `docs/fairlight-ember.md`)
+- [x] 每个所用节点的类型、范围、单位已确认并写入 `docs/fairlight-ember.md`
+- [x] Mock Provider 能被 emberplus-connection 客户端正常连接、订阅、写入
+- [x] 实测未改动任何不允许的通道,未删改任何通道
 
 ## Phase 3 — 后端核心
 
@@ -62,9 +62,9 @@
 
 验收标准:
 
-- [ ] 用 Mock Provider 的集成测试覆盖:连接生命周期、断线重连、树变化、控制命令往返、非法命令拒绝(越界 level、未知通道)、配置文件损坏/缺失时的恢复
-- [ ] 对本地真实 Fairlight 手动验收:读到全部通道与响度,允许通道的推子可控且数值一致
-- [ ] 覆盖率达标
+- [x] 用 Mock Provider 的集成测试覆盖:连接生命周期、断线重连、树变化、控制命令往返、非法命令拒绝(越界 level、未知通道)、配置文件损坏/缺失时的恢复
+- [x] 对本地真实 Fairlight 手动验收:读到全部通道与响度,允许通道的推子可控且数值一致
+- [x] 覆盖率达标
 
 ## Phase 4 — 前端混音页 MVP
 

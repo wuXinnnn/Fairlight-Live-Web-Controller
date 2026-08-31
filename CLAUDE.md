@@ -6,4 +6,4 @@
 
 1. 开发机连接真实 Fairlight Live:只允许动 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道的推子,禁止删改任何通道;自动化测试只用 Mock Provider。
 2. Ember+ 树以运行时实际结构为准,官方手册路径表面向 OSC,勿作为编码依据(见 `docs/fairlight-ember.md`)。
-3. 代码、注释、提交信息用英文;Agent 文档与对话用简体中文。
+3. 代码、注释、提交信息、PR 标题与正文用英文;Agent 文档与对话用简体中文。

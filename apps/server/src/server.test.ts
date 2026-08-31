@@ -3,6 +3,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+import { FakeEmberClient } from './ember/fake-ember-client.js';
+import { silentLogger } from './logger.js';
+import { MixerRuntime } from './runtime.js';
 import { resolveBindAddress, start } from './server.js';
 
 describe('resolveBindAddress', () => {
@@ -40,10 +43,25 @@ describe('start', () => {
     }
   });
 
-  it('listens and serves health when the web dist is missing', async () => {
-    app = await start({
+  async function startWithFake(options: { staticRoot?: string } = {}): Promise<FastifyInstance> {
+    const dir = await mkdtemp(path.join(tmpdir(), 'flwc-start-'));
+    const runtime = new MixerRuntime({
+      configPath: path.join(dir, 'config.json'),
+      logger: silentLogger(),
+      createClient: () => new FakeEmberClient(),
+    });
+    const started = await start({
       host: '127.0.0.1',
       port: 0,
+      silent: true,
+      runtime,
+      ...options,
+    });
+    return started.app;
+  }
+
+  it('listens and serves health when the web dist is missing', async () => {
+    app = await startWithFake({
       staticRoot: path.join(tmpdir(), 'flwc-missing-web-dist'),
     });
     const address = app.server.address();
@@ -59,7 +77,7 @@ describe('start', () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'flwc-web-dist-'));
     await writeFile(path.join(dir, 'index.html'), '<html>built</html>');
     try {
-      app = await start({ host: '127.0.0.1', port: 0, staticRoot: dir });
+      app = await startWithFake({ staticRoot: dir });
       const address = app.server.address();
       if (address === null || typeof address === 'string') {
         throw new Error('expected a TCP address');

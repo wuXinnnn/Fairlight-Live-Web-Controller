@@ -24,7 +24,7 @@ data/            运行时配置持久化(不入库)
 
 1. **本地测试安全**:开发机连接的是真实 Fairlight Live。只允许改动 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道的推子;**禁止删改任何通道、禁止动其它通道的任何参数**。自动化测试一律使用 Mock Ember+ Provider,禁止连真实设备。云端 Agent 无法访问真实 Fairlight,只能依赖 Mock Provider 与 `docs/tree-dumps/` 的树 dump;真机验收由本地执行(见 `docs/development-plan.md` 云端开发边界)。
 2. **Ember+ 树以运行时实际结构为准**:Ember+ 是自描述协议,无官方路径文档。官方手册附录的路径表面向 OSC,与 Ember+ 树不一致,勿作为编码依据。参见 `docs/fairlight-ember.md`。
-3. **语言**:代码、注释、提交信息用英文;Agent 文档与对话用简体中文。
+3. **语言**:代码、注释、提交信息、PR 标题与正文用英文;Agent 文档与对话用简体中文。
 4. **许可**:项目将以 MIT 开源,新增依赖必须是 MIT 或兼容许可。
 5. **文档维护**:文档只描述项目当前状态,不留历史决策变更;踩坑记录例外,写入 `docs/fairlight-ember.md` 的踩坑章节。
 

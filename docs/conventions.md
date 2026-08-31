@@ -28,7 +28,7 @@ data/                运行时配置(JSON,不入库)
 
 ## 语言与许可
 
-- 代码、注释、提交信息、日志文案:**英文**
+- 代码、注释、提交信息、PR 标题与正文、日志文案:**英文**
 - Agent 文档(AGENTS.md、CLAUDE.md、docs/)与 Agent 对话:**简体中文**
 - 新增依赖必须 MIT 或 MIT 兼容许可(项目将 MIT 开源);引入前确认 license 字段
 
@@ -65,6 +65,7 @@ data/                运行时配置(JSON,不入库)
 ## Git
 
 - 提交信息:Conventional Commits(`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`),英文
+- PR 标题与正文:英文
 - 不提交 `data/`、构建产物、覆盖率报告
 
 ## 文档维护
