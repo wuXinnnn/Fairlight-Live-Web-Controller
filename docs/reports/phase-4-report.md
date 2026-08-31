@@ -14,7 +14,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | 覆盖率达标 | 通过 | `apps/web`:语句 96.12%(372/387)、分支 91.09%(174/191)、函数 98.51%(133/135)、行 95.82%(344/359),四项均高于 80%。未改 `packages/shared`。 |
 | 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 35、server 85,合计 163 项通过。 |
 | Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 监听安全端口 `127.0.0.1:9101`,80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。推子、ON、reset ack 往返正常;切到未监听 9102 后显示 `EMBER RECONNECTING`、控件禁用与表冻结,恢复 9101 后新快照和动态帧自动恢复。 |
-| 远端 CI | 待最终提交确认 | 功能与测试提交均已推送;最终报告提交后等待 GitHub Actions `CI / ci` 全绿。 |
+| 远端 CI | 通过 | GitHub Actions 在报告提交 `3684d2a` 上全部 2 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
@@ -93,6 +93,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+3684d2a docs: add Phase 4 execution report
 bf6254c fix(web): polish local visual assets
 d93d8a6 test(web): cover mixer controls and realtime recovery
 6f4a750 fix(web): align realtime UI with React lint rules
