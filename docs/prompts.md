@@ -6,7 +6,7 @@
 
 ```
 请先阅读 AGENTS.md、docs/conventions.md、docs/architecture.md 与 docs/fairlight-ember.md。
-严格遵守:代码/注释/提交信息用英文;本地真实 Fairlight 只允许动 MIC-REVERB、BASS、
+严格遵守:代码/注释/提交信息/PR 标题与正文用英文;本地真实 Fairlight 只允许动 MIC-REVERB、BASS、
 Anagram-Wet、Anagram-Dry 四个输入通道的推子,禁止删改通道;自动化测试只用 Mock Provider;
 新增依赖必须 MIT 兼容。
 ```
