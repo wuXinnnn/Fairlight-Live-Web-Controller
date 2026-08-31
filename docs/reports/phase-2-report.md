@@ -105,6 +105,7 @@ pnpm build       # shared / test-utils / web / server 通过
 ## 9. 提交记录
 
 ```
+cf201a2 docs: add Phase 2 execution report
 4b55fc3 test(test-utils): cover Mock Provider connect, subscribe, write, and invoke
 eda59c4 feat(test-utils): add Mock Ember+ Provider from dump JSON
 7e9aa19 docs: record confirmed Ember+ node paths from the live dump
@@ -112,5 +113,3 @@ eda59c4 feat(test-utils): add Mock Ember+ Provider from dump JSON
 887dc62 feat(server): add Ember+ tree dump and live verify tools
 e9709fe chore: add emberplus-connection for Ember+ client and server
 ```
-
-本报告将作为下一条 `docs:` 提交入库。
