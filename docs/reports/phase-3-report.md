@@ -11,7 +11,7 @@ Phase 3 已在云端完成：`EmberService`、`TreeMapper`、`MixerStateStore`�
 | 验收标准 | 结果 | 实际执行与输出摘要 |
 | --- | --- | --- |
 | Mock Provider 集成测试覆盖连接生命周期、断线重连、树变化、控制往返、非法命令、配置损坏/缺失 | 通过 | `apps/server/tests/mixer.integration.test.ts` + 同目录单元测试。`pnpm --filter @flwc/server test`：21 files / 85 tests passed。覆盖连接、PUT 到不可达端口后的 `reconnecting`、第二份 Mock 树触发通道增补、set-level/set-on/reset 往返、越界/未知 id 拒绝、并发写入、缺失/损坏配置回退（`ConfigStore` 单测）。 |
-| 对本地真实 Fairlight 手动验收 | **移交用户** | 见第 4 节操作清单。云端无法访问真机。 |
+| 对本地真实 Fairlight 手动验收 | 通过 | 2026-09-01(UTC+8)本地执行,连接 `127.0.0.1:9000`:snapshot 读到 20 个通道(channel 1–9、main 1、aux 1–10)与响度(-25.2 LUFS / -0.3 dBTP);`meters:frame` 3 秒 59 帧(约 19.7 帧/s);越界 level 拒以 `VALIDATION`、未知 id 拒以 `NOT_FOUND`;Anagram-Dry(`channel/5`)推子 -100 → -99(ack ok、读回一致)→ 复原 -100(读回确认)。全程未触碰其它通道或参数。 |
 | 覆盖率达标 | 通过 | `apps/server` 语句 93.5%、分支 83.84%、函数 96.7%、行 93.57%（门槛 80%）。`packages/shared` 语句/行/分支/函数 100%（门槛 90%）。 |
 | 全量质量门与远端 CI | 通过 | 云端 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 串行通过。远端 GitHub Actions `CI / ci` 在 `24dff4a` 全绿。未改 `.github/workflows/ci.yml`。首次 CI 因 `@flwc/test-utils` 无 `prepare`、干净安装没有 `dist` 类型而 typecheck 失败，已补 `prepare` 脚本。 |
 
