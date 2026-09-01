@@ -3,7 +3,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
@@ -197,11 +196,7 @@ export function Fader({
       >
         <div className="fader__unity" aria-hidden="true" />
         <div className="fader__slot" aria-hidden="true" />
-        <div
-          className="fader__cap"
-          style={{ '--fader-position': `${ratio * 100}%` } as CSSProperties}
-          aria-hidden="true"
-        >
+        <div className="fader__cap" style={{ bottom: `${ratio * 100}%` }} aria-hidden="true">
           <span />
         </div>
       </div>
@@ -209,7 +204,6 @@ export function Fader({
         className={`fader__readout ${inputInvalid ? 'is-invalid' : ''}`}
         aria-label={`${label} level value`}
       >
-        <span className="readout__label">LVL</span>
         {editing ? (
           <input
             type="number"

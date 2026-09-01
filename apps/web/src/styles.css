@@ -569,7 +569,8 @@ button {
   position: relative;
   grid-column: 2;
   grid-row: 1;
-  height: 100%;
+  height: calc(100% - 1.85rem);
+  margin: 0.925rem 0;
   pointer-events: none;
 }
 
@@ -597,7 +598,8 @@ button {
   position: relative;
   grid-column: 1;
   grid-row: 1;
-  height: 100%;
+  height: calc(100% - 1.85rem);
+  margin: 0.925rem 0;
   cursor: ns-resize;
   touch-action: none;
 }
@@ -634,7 +636,7 @@ button {
 .fader__cap {
   position: absolute;
   z-index: 2;
-  bottom: clamp(0.925rem, var(--fader-position, 0%), calc(100% - 0.925rem));
+  bottom: 0;
   left: 50%;
   width: 2.05rem;
   height: 1.85rem;
@@ -772,6 +774,35 @@ button {
   line-height: 1;
 }
 
+.fader__readout {
+  display: flex;
+  overflow: visible;
+  grid-column: 1;
+  grid-template: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.fader__readout button,
+.fader__readout input {
+  width: auto;
+  min-width: 2.7rem;
+  grid-column: auto;
+  grid-row: auto;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.fader__readout small {
+  grid-column: auto;
+  grid-row: auto;
+  margin-left: 0.18rem;
+  font-size: 0.46rem;
+}
+
 .meter {
   display: grid;
   grid-template-rows: 21rem 2.6rem;
@@ -800,14 +831,21 @@ button {
 .meter__zones {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    0deg,
-    transparent 0 69.8%,
-    rgb(255 255 255 / 13%) 69.8% 70.2%,
-    transparent 70.2% 89.8%,
-    rgb(255 255 255 / 18%) 89.8% 90.2%,
-    transparent 90.2%
-  );
+  background:
+    linear-gradient(
+      0deg,
+      transparent 0 69.8%,
+      rgb(255 255 255 / 13%) 69.8% 70.2%,
+      transparent 70.2% 89.8%,
+      rgb(255 255 255 / 18%) 89.8% 90.2%,
+      transparent 90.2%
+    ),
+    linear-gradient(
+      0deg,
+      rgb(102 201 135 / 12%) 0 70%,
+      rgb(239 169 40 / 13%) 70% 90%,
+      rgb(255 93 85 / 14%) 90% 100%
+    );
 }
 
 .meter__fill {

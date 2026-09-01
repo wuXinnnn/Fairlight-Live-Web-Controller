@@ -68,7 +68,7 @@ describe('Fader', () => {
     expect(screen.getByRole('button', { name: 'Edit BASS level' })).toBeDisabled();
   });
 
-  it('keeps the fader cap inside the track at the lower limit', () => {
+  it('uses the full shortened track without clamping the fader value', () => {
     const { container } = render(
       <Fader
         label="BASS"
@@ -78,12 +78,9 @@ describe('Fader', () => {
         onCommit={vi.fn()}
       />,
     );
-    expect(
-      container
-        .querySelector<HTMLElement>('.fader__cap')
-        ?.style.getPropertyValue('--fader-position'),
-    ).toBe('0%');
+    expect(container.querySelector<HTMLElement>('.fader__cap')?.style.bottom).toBe('0%');
     expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-∞');
+    expect(screen.queryByText('LVL')).not.toBeInTheDocument();
   });
 
   it('edits and commits a precise level value', () => {

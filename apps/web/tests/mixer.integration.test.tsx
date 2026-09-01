@@ -175,14 +175,15 @@ describe('mixer socket integration', () => {
     expect(window.localStorage.getItem(TYPE_ROWS_STORAGE_KEY)).toBe('true');
   });
 
-  it('aligns framed readouts and applies channel type colors', async () => {
+  it('aligns meter and level readouts and applies channel type colors', async () => {
     const socket = new FakeSocket();
     const { container } = render(<App socket={socket} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('heading', { name: 'BASS' });
 
     expect(screen.getByLabelText('BASS meter value')).toHaveTextContent(/MTR\s*-30.0\s*dB/);
-    expect(screen.getByLabelText('BASS level value')).toHaveTextContent(/LVL\s*-12.0\s*dB/);
+    expect(screen.getByLabelText('BASS level value')).toHaveTextContent(/-12.0\s*dB/);
+    expect(screen.queryByText('LVL')).not.toBeInTheDocument();
     expect(
       container
         .querySelector<HTMLElement>('[data-channel-kind="channel"]')
