@@ -93,12 +93,13 @@
 - View 数据模型(`packages/shared`):view 含名称与通道引用列表(Ember 路径 + 最后已知名称)
 - REST API:views CRUD,持久化到 `data/`
 - 配置页:创建/重命名/删除 view,从当前树的通道清单中勾选通道,可排序
+- View 内每个通道可从前端统一 palette 选择颜色;未配置时使用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple 的类型默认色
 - 主页面 view 切换;无 view 时默认显示全部通道
 - 失配处理:树变化后 view 中缺失的通道渲染为占位(显示最后已知名称与缺失提示),配置页提供一键清理失效引用
 
 验收标准:
 
-- [ ] 集成测试覆盖:views CRUD、view 引用已删除通道、树变化后的失配标记与清理、空 view/空配置
+- [ ] 集成测试覆盖:views CRUD、通道颜色配置与默认回退、view 引用已删除通道、树变化后的失配标记与清理、空 view/空配置
 - [ ] 本地手动验收:view 切换流畅,失配占位展示正确
 - [ ] 覆盖率达标
 
