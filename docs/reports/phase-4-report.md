@@ -2,29 +2,29 @@
 
 ## 1. 结果总览
 
-Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。ON 位于窄推子上方;电平表使用固定渐变裁剪并在连续两帧 0dB 后整条红色警告;通道默认跨类型流式换行,可通过持久化的 `TYPE ROWS` 开关强制分类换行。类型采用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple accent;MTR/LVL 使用对齐的带框读数 dock,LVL 可输入精确值;`CONTROL LOCK` 提供持久化的 UNLOCKED/FADERS/ALL 三档。所有页面固定使用深色主题且不提供主题切换,固定 UI 文本使用英文,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
+Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。ON 以全通道宽度位于控制区顶部,下方为 meter/fader 双列;推子轨道上下缩短半个推子帽高度,在 -∞/+10 时自然与 meter 下/上端对齐。电平表使用固定渐变裁剪并在连续两帧 0dB 后整条红色警告,空槽保留淡色三色背景。通道默认跨类型流式换行,可通过持久化的 `TYPE ROWS` 开关强制分类换行。类型采用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple accent;MTR 保留带框 dock,level 为无框大号数值且 dB 单位与推子标尺列左对齐,数值可点击输入精确值;`CONTROL LOCK` 提供持久化的 UNLOCKED/FADERS/ALL 三档。所有页面固定使用深色主题且不提供主题切换,固定 UI 文本使用英文,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
 
 ## 2. 验收标准逐条核对
 
 | 验收标准 | 结果 | 实际执行与输出摘要 |
 | --- | --- | --- |
-| 组件与集成测试覆盖 Phase 4 边界场景 | 通过 | `pnpm --filter @flwc/web test`:15 files / 53 tests passed。覆盖推子映射、越界、键盘/指针、精确输入提交/取消/非法值/ack 回滚、三档控制锁与持久化、六类默认色、pending 冲突、ON/mute 反转与失败回滚、meter 固定渐变裁剪/峰值保持/连续 0dB 削波、patch 改名/增删、frame 合并、断线禁用与重连快照恢复、reset 二次确认、混合/分类布局与 localStorage、固定深色基线及 presence 清理。 |
+| 组件与集成测试覆盖 Phase 4 边界场景 | 通过 | `pnpm --filter @flwc/web test`:15 files / 54 tests passed。覆盖推子映射、端点行程、越界、键盘/指针、精确输入提交/取消/非法值/ack 回滚、通道全宽 ON 与 meter/fader 双列结构、三档控制锁与持久化、六类默认色、pending 冲突、ON/mute 反转与失败回滚、meter 固定渐变裁剪/峰值保持/连续 0dB 削波、patch 改名/增删、frame 合并、断线禁用与重连快照恢复、reset 二次确认、混合/分类布局与 localStorage、固定深色基线及 presence 清理。 |
 | 固定深色主题与合理组件动效 | 通过 | 浏览器冒烟确认页面始终使用深色 token,无主题切换入口;ON、推子、按钮、状态提示、条带增删均有 140–200ms 短动效,峰值保持 1500ms,`prefers-reduced-motion` 将非必要动画缩短。 |
 | 对本地真实 Fairlight 手动验收 | 移交用户 | 云端未连接真实设备。可直接执行的安全验收清单见第 4 节。 |
 | 覆盖率达标 | 通过 | `apps/web`:语句 95.26%(463/486)、分支 90.94%(211/232)、函数 98.13%(158/161)、行 94.96%(434/457),四项均高于 80%。未改 `packages/shared`。 |
-| 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 53、server 85,合计 181 项通过。 |
-| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、ON/meter/fader 对齐、带框 MTR/LVL 长读数、BASS 精确输入 -12.3dB 后恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化;此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
+| 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 54、server 85,合计 182 项通过。 |
+| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、全宽 ON + meter/fader 双列、MTR 带框与 level 无框读数、meter 淡色三段空槽、BASS 精确输入 -100/+10 时推子帽自然对齐两端且不碰读数并恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化;此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
 | 远端 CI | 通过 | GitHub Actions 在通道控制优化报告提交 `b7ce374` 上全部 3 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
 - **socket 与状态层**:`lib/socket.ts` 使用同源 Socket.IO,Vite 将 `/socket.io` 代理至后端。所有事件名、schema、payload 与 ack 使用 `@flwc/shared`;非法下行数据拒绝入库并显示非阻断提示。`mixerStore` 负责快照整体替换、patch upsert/remove 合成及 socket/Ember 双连接态;`meterStore` 以快照播种并增量合并可丢帧的 meter frame。
 - **重连恢复**:socket 断开或 Ember 非 `connected` 时统一禁用控制并冻结表值。重连后的 `mixer:snapshot` 替换全部通道并清理 pending,避免旧乐观状态残留。
-- **推子与精确输入**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;推子帽由 2.7rem 收窄到 2.05rem,条带宽度为 9.25rem。支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。LVL 读数点击后变为 0.1dB step 输入,Enter/合法失焦提交、Escape 取消,空值/非数字/越界不发送。拖动与精确输入均沿用本地乐观值、ack 收敛和失败回滚。
-- **ON 开关**:位于每个通道推子正上方。展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
-- **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;前景使用全高固定渐变和 `clip-path` 揭示,因此只有达到 -18/-6dB 阈值时才露出黄/红区,不会把三色压缩到任意当前高度。连续两次 frame entry 均为 0dB(含钳制为 0 的正越界值)后整条显示红色削波警告,下一次低于 0dB 时解除。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 meter/clipping selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
+- **推子与精确输入**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;推子帽由 2.7rem 收窄到 2.05rem,条带宽度为 9.25rem。轨道上下各缩短半个推子帽高度,推子仍使用完整 0–100% 行程,不做 clamp 限位;因此 -∞/+10 时帽边自然与 meter 下/上端对齐。支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。无标题 level 数值点击后变为 0.1dB step 输入,Enter/合法失焦提交、Escape 取消,空值/非数字/越界不发送。拖动与精确输入均沿用本地乐观值、ack 收敛和失败回滚。
+- **ON 开关**:以通道内容区全宽位于每个条带顶部,其下才是 meter/fader 左右双列。展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
+- **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;空槽始终显示淡色绿/黄/红三段背景,前景使用全高固定渐变和 `clip-path` 揭示,因此只有达到 -18/-6dB 阈值时才露出实色黄/红区,不会把三色压缩到任意当前高度。连续两次 frame entry 均为 0dB(含钳制为 0 的正越界值)后整条显示红色削波警告,下一次低于 0dB 时解除。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 meter/clipping selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
 - **响度区**:显示 integrated LUFS(-100…18)与 true-peak dBTP(-60…0)。reset 首次点击进入 3 秒 `CONFIRM RESET`,第二次才发送命令,ack 结果使用非阻断提示。
-- **读数与对齐**:meter 从 ON 顶部开始,推子轨道取消内部上下 margin,其底部与 meter 底部对齐。MTR/LVL 使用同高、带边框、tabular number 的双行 dock,标签/数值/单位各占固定网格位置,`-12.3 dB` 等长值不再裁剪。
+- **读数与对齐**:ON 下方的 meter 与 fader 顶部对齐。MTR 保留带框、tabular number 的双行 dock;level 取消标题与外框,数值以 0.86rem 字号居中在轨道列,dB 单位左边缘与右侧标尺列对齐,`-12.3 dB` 等长值不裁剪。
 - **通道分区与布局**:按 `channel/main/sub/aux/mixm/mtx` 固定顺序渲染,空分区不出现。默认使用跨类型 flex 流并以 0.9rem 行距自然折行,第二类起标题列增加 0.85rem 左侧间隔;标题列与该类首通道组成不可拆分 lead,避免标题孤立在上一行。某类型不足一行时后续类型进入剩余空间。`TYPE ROWS` 开启后每类以全宽标题强制从新行开始,设置保存于 `localStorage` 键 `flwc.layout.typeRows`。通道删除保留 180ms exit presence 后卸载,新增使用短淡入/位移,不整页闪烁。
 - **类型颜色**:统一 palette 映射为 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple,应用于标题、条带顶边、名称短线和轻背景 tint,meter 信号色保持独立。每个 section 通过 `--channel-accent` 注入颜色,为 Phase 5 的 view 单通道 palette 覆盖保留入口。
 - **控制锁**:`CONTROL LOCK` 可直接选择 UNLOCKED/FADERS/ALL,保存于 `flwc.controls.lockMode.v1`。FADERS 禁用拖动、键盘和 LVL 输入但保留 ON;ALL 同时禁用 ON;meter、响度与 reset 不受影响。断线与 exiting 禁用优先于锁档。
@@ -100,6 +100,13 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+4498b47 fix(web): align fader unit with scale
+b9f8952 fix(web): simplify exact level readout
+311c70c fix(web): align fader travel with meter bounds
+5dadc71 fix(web): expose clamped fader position via CSS variable
+079a47f test(web): cover fader bounds and channel reflow
+838af8e fix(web): reflow channel controls and fader travel
+a6716f7 docs: record channel refinement CI result
 b7ce374 docs: report channel control refinements
 154ecac test(web): keep type headers attached to channels
 28dab07 fix(web): keep type headers with first channels
