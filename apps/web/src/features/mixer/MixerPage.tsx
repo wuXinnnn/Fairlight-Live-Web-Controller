@@ -62,7 +62,8 @@ export function MixerPage({ controlClient }: MixerPageProps) {
         <div className={`mixer-bays ${typeRows ? 'is-type-rows' : ''}`}>
           {CHANNEL_KINDS.map((kind) => {
             const group = renderedChannels.filter(({ channel }) => channel.kind === kind);
-            if (group.length === 0) {
+            const firstItem = group[0];
+            if (firstItem === undefined) {
               return null;
             }
             return (
@@ -77,23 +78,31 @@ export function MixerPage({ controlClient }: MixerPageProps) {
                   } as CSSProperties
                 }
               >
-                <header className="mixer-section__header">
-                  <h2 id={`section-${kind}`}>{SECTION_LABELS[kind]}</h2>
-                  <span>
-                    {group
-                      .filter((item) => !item.exiting)
-                      .length.toString()
-                      .padStart(2, '0')}
-                  </span>
-                </header>
+                <div className="channel-group-lead">
+                  <header className="mixer-section__header">
+                    <h2 id={`section-${kind}`}>{SECTION_LABELS[kind]}</h2>
+                    <span>
+                      {group
+                        .filter((item) => !item.exiting)
+                        .length.toString()
+                        .padStart(2, '0')}
+                    </span>
+                  </header>
+                  <ChannelStrip
+                    item={firstItem}
+                    controlClient={controlClient}
+                    lockMode={lockMode}
+                    style={{ '--strip-index': 0 } as CSSProperties}
+                  />
+                </div>
                 <div className="channel-bay">
-                  {group.map((item, index) => (
+                  {group.slice(1).map((item, index) => (
                     <ChannelStrip
                       key={item.channel.id}
                       item={item}
                       controlClient={controlClient}
                       lockMode={lockMode}
-                      style={{ '--strip-index': index } as CSSProperties}
+                      style={{ '--strip-index': index + 1 } as CSSProperties}
                     />
                   ))}
                 </div>

@@ -384,6 +384,13 @@ button {
   display: contents;
 }
 
+.channel-group-lead {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  gap: 1px;
+}
+
 .mixer-section__header {
   display: flex;
   width: 3.2rem;
@@ -445,6 +452,10 @@ button {
   justify-content: flex-start;
   margin-left: 0;
   padding: 0.55rem 0.8rem;
+}
+
+.mixer-bays.is-type-rows .channel-group-lead {
+  display: contents;
 }
 
 .mixer-bays.is-type-rows .mixer-section__header::after {
