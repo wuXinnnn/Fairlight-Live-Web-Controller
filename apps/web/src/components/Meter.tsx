@@ -1,0 +1,94 @@
+import { DEFAULT_METER_DB } from '@flwc/shared';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useStore } from 'zustand';
+import { meterStore } from '../store/meter-store.js';
+
+export const METER_DB_MIN = -60;
+export const METER_DB_MAX = 0;
+export const PEAK_HOLD_MS = 1500;
+
+export function clampMeterDb(value: number): number {
+  return Math.min(METER_DB_MAX, Math.max(METER_DB_MIN, value));
+}
+
+export function meterLevelClass(value: number): 'safe' | 'warning' | 'clip' {
+  if (value > -6) {
+    return 'clip';
+  }
+  if (value > -18) {
+    return 'warning';
+  }
+  return 'safe';
+}
+
+function meterRatio(value: number): number {
+  return (clampMeterDb(value) - METER_DB_MIN) / (METER_DB_MAX - METER_DB_MIN);
+}
+
+interface MeterProps {
+  id: string;
+  label: string;
+  active: boolean;
+}
+
+export function Meter({ id, label, active }: MeterProps) {
+  const rawValue = useStore(meterStore, (state) => state.meters[id] ?? DEFAULT_METER_DB);
+  const clipping = useStore(meterStore, (state) => state.clipping[id] ?? false);
+  const value = clampMeterDb(rawValue);
+  const currentRef = useRef(value);
+  const peakRef = useRef(value);
+  const timerRef = useRef<number | undefined>(undefined);
+  const [peak, setPeak] = useState(value);
+
+  useEffect(() => {
+    currentRef.current = value;
+    if (value <= peakRef.current) {
+      return;
+    }
+    window.clearTimeout(timerRef.current);
+    const riseTimer = window.setTimeout(() => {
+      peakRef.current = value;
+      setPeak(value);
+      timerRef.current = window.setTimeout(() => {
+        peakRef.current = currentRef.current;
+        setPeak(currentRef.current);
+      }, PEAK_HOLD_MS);
+    }, 0);
+    return () => {
+      window.clearTimeout(riseTimer);
+    };
+  }, [value]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  return (
+    <div
+      className={`meter meter--${meterLevelClass(value)} ${clipping ? 'is-clipping' : ''} ${active ? '' : 'is-frozen'}`}
+      aria-label={`${label} meter`}
+      data-clipping={clipping}
+    >
+      <div className="meter__well" aria-hidden="true">
+        <div className="meter__zones" />
+        <div
+          className="meter__fill"
+          style={
+            {
+              '--meter-reveal': `${(1 - meterRatio(value)) * 100}%`,
+            } as CSSProperties
+          }
+        />
+        <div className="meter__peak" style={{ bottom: `${meterRatio(peak) * 100}%` }} />
+      </div>
+      <output className="meter__readout" aria-label={`${label} meter value`}>
+        <span className="readout__label">MTR</span>
+        <span className="readout__value">{value.toFixed(1)}</span>
+        <small>dB</small>
+      </output>
+    </div>
+  );
+}
