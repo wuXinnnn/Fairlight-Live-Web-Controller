@@ -25,9 +25,10 @@ const SECTION_LABELS: Record<ChannelKind, string> = {
 
 interface MixerPageProps {
   controlClient: ControlClient;
+  onOpenSettings(): void;
 }
 
-export function MixerPage({ controlClient }: MixerPageProps) {
+export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
   const channels = useStore(
     mixerStore,
     useShallow((state) =>
@@ -44,6 +45,9 @@ export function MixerPage({ controlClient }: MixerPageProps) {
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
           <h1>CONTROL DESK</h1>
+          <button type="button" className="console-brand__action" onClick={onOpenSettings}>
+            CONFIGURE VIEWS
+          </button>
         </div>
         <ConnectionStatus />
         <div className="console-preferences">
