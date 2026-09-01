@@ -14,7 +14,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | 覆盖率达标 | 通过 | `apps/web`:语句 95.26%(463/486)、分支 90.94%(211/232)、函数 98.13%(158/161)、行 94.96%(434/457),四项均高于 80%。未改 `packages/shared`。 |
 | 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 54、server 85,合计 182 项通过。 |
 | Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、全宽 ON + meter/fader 双列、MTR 带框与 level 无框读数、meter 淡色三段空槽、BASS 精确输入 -100/+10 时推子帽自然对齐两端且不碰读数并恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化;此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
-| 远端 CI | 通过 | GitHub Actions 在通道控制优化报告提交 `b7ce374` 上全部 3 项检查通过,无失败。 |
+| 远端 CI | 通过 | GitHub Actions 在最终 level 间距报告提交 `5e466e2` 上全部 3 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
@@ -100,6 +100,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+5e466e2 docs: record final level unit spacing
 8d58e7c fix(web): fine-tune level unit spacing
 293d7cd docs: record final fader readout layout
 a790b59 fix(web): separate level value and unit
