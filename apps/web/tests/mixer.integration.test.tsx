@@ -189,6 +189,13 @@ describe('mixer socket integration', () => {
         .querySelector<HTMLElement>('[data-channel-kind="main"]')
         ?.style.getPropertyValue('--channel-accent'),
     ).toBe(CHANNEL_PALETTE.red);
+    const inputLead = container.querySelector<HTMLElement>(
+      '[data-channel-kind="channel"] .channel-group-lead',
+    );
+    expect(inputLead).toContainElement(screen.getByRole('heading', { name: 'INPUTS' }));
+    expect(inputLead).toContainElement(
+      screen.getByRole('heading', { name: 'BASS' }).closest('article'),
+    );
   });
 
   it('submits exact levels and rolls rejected values back', async () => {
