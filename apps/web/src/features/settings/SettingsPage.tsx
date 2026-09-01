@@ -143,50 +143,56 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   };
 
   const toggleChannel = (channelId: string) => {
-    if (draft === null) {
-      return;
-    }
-    const exists = draft.channels.some((channel) => channel.channelId === channelId);
-    const channel = channels[channelId];
-    setDraft({
-      ...draft,
-      channels: exists
-        ? draft.channels.filter((candidate) => candidate.channelId !== channelId)
-        : [
-            ...draft.channels,
-            {
-              channelId,
-              lastKnownName: channel?.name ?? channelId,
-            },
-          ],
+    setDraft((current) => {
+      if (current === null) {
+        return current;
+      }
+      const exists = current.channels.some((channel) => channel.channelId === channelId);
+      const channel = channels[channelId];
+      return {
+        ...current,
+        channels: exists
+          ? current.channels.filter((candidate) => candidate.channelId !== channelId)
+          : [
+              ...current.channels,
+              {
+                channelId,
+                lastKnownName: channel?.name ?? channelId,
+              },
+            ],
+      };
     });
   };
 
   const moveChannel = (index: number, direction: -1 | 1) => {
-    if (draft === null) {
-      return;
-    }
-    const target = index + direction;
-    if (target < 0 || target >= draft.channels.length) {
-      return;
-    }
-    const next = [...draft.channels];
-    [next[index], next[target]] = [next[target] as ViewChannelRef, next[index] as ViewChannelRef];
-    setDraft({ ...draft, channels: next });
+    setDraft((current) => {
+      if (current === null) {
+        return current;
+      }
+      const target = index + direction;
+      if (target < 0 || target >= current.channels.length) {
+        return current;
+      }
+      const next = [...current.channels];
+      [next[index], next[target]] = [next[target] as ViewChannelRef, next[index] as ViewChannelRef];
+      return { ...current, channels: next };
+    });
   };
 
   const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
-    if (draft === null) {
-      return;
-    }
-    const next = draft.channels.map((channel, candidateIndex) => {
-      if (candidateIndex !== index) {
-        return channel;
+    setDraft((current) => {
+      if (current === null) {
+        return current;
       }
-      const { color: _currentColor, ...rest } = channel;
-      return color === undefined ? rest : { ...rest, color };
+      const next = current.channels.map((channel, candidateIndex) => {
+        if (candidateIndex !== index) {
+          return channel;
+        }
+        const { color: _currentColor, ...rest } = channel;
+        return color === undefined ? rest : { ...rest, color };
+      });
+      return { ...current, channels: next };
     });
-    setDraft({ ...draft, channels: next });
   };
 
   const handleCleanup = async () => {

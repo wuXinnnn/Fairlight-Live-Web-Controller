@@ -179,7 +179,7 @@ describe('views integration', () => {
     render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('option', { name: 'Empty' });
-    expect(screen.getByRole('heading', { name: 'BASS' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'BASS' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
       target: { value: 'empty' },
