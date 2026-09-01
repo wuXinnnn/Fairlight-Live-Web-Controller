@@ -196,7 +196,13 @@ export function Fader({
       >
         <div className="fader__unity" aria-hidden="true" />
         <div className="fader__slot" aria-hidden="true" />
-        <div className="fader__cap" style={{ bottom: `${ratio * 100}%` }} aria-hidden="true">
+        <div
+          className="fader__cap"
+          style={{
+            bottom: `clamp(0.925rem, ${ratio * 100}%, calc(100% - 0.925rem))`,
+          }}
+          aria-hidden="true"
+        >
           <span />
         </div>
       </div>

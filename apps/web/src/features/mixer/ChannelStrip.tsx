@@ -94,28 +94,26 @@ export function ChannelStrip({ item, controlClient, lockMode, style }: ChannelSt
         <span className="channel-strip__signal" aria-hidden="true" />
         <h3 title={liveChannel.name}>{liveChannel.name}</h3>
       </header>
+      <OnButton
+        label={liveChannel.name}
+        on={!liveChannel.muted}
+        disabled={onDisabled}
+        pending={onPending}
+        onToggle={handleOnToggle}
+      />
       <div className="channel-strip__controls">
         <Meter id={channel.id} label={liveChannel.name} active={controlsEnabled} />
-        <div className="channel-strip__fader-bank">
-          <OnButton
-            label={liveChannel.name}
-            on={!liveChannel.muted}
-            disabled={onDisabled}
-            pending={onPending}
-            onToggle={handleOnToggle}
-          />
-          <Fader
-            label={liveChannel.name}
-            value={liveChannel.levelDb}
-            disabled={faderDisabled}
-            pending={levelPending}
-            onInteractionStart={() => {
-              beginLevelInteraction(channel.id);
-            }}
-            onValueChange={handleLevelChange}
-            onCommit={handleLevelCommit}
-          />
-        </div>
+        <Fader
+          label={liveChannel.name}
+          value={liveChannel.levelDb}
+          disabled={faderDisabled}
+          pending={levelPending}
+          onInteractionStart={() => {
+            beginLevelInteraction(channel.id);
+          }}
+          onValueChange={handleLevelChange}
+          onCommit={handleLevelCommit}
+        />
       </div>
     </article>
   );
