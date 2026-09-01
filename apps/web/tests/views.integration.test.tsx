@@ -104,9 +104,11 @@ describe('views integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
     expect(await screen.findByDisplayValue('Broadcast')).toBeInTheDocument();
 
-    const checkboxes = screen.getAllByRole('checkbox');
-    fireEvent.click(checkboxes[0] as HTMLElement);
-    fireEvent.click(checkboxes[1] as HTMLElement);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'BASS INPUT' }));
+    expect(screen.getByRole('checkbox', { name: 'BASS INPUT' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'MAIN MAIN' }));
+    expect(screen.getByRole('checkbox', { name: 'BASS INPUT' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'MAIN MAIN' })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Move MAIN up' }));
     fireEvent.click(screen.getByRole('button', { name: 'MAIN color Main Red' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), {
