@@ -33,6 +33,21 @@ describe('Meter', () => {
     expect(screen.getByLabelText('BASS meter')).toHaveClass('meter--clip');
   });
 
+  it('reveals a fixed meter gradient by clipping and warns after repeated 0 dB frames', () => {
+    applyMetersFrame({ meters: [['channel/1', -30]] });
+    const { container } = render(<Meter id="channel/1" label="BASS" active />);
+    const fill = container.querySelector<HTMLElement>('.meter__fill');
+    expect(fill?.style.getPropertyValue('--meter-reveal')).toBe('50%');
+    expect(screen.getByLabelText('BASS meter')).toHaveAttribute('data-clipping', 'false');
+
+    act(() => {
+      applyMetersFrame({ meters: [['channel/1', 0]] });
+      applyMetersFrame({ meters: [['channel/1', 0]] });
+    });
+    expect(screen.getByLabelText('BASS meter')).toHaveClass('is-clipping');
+    expect(screen.getByLabelText('BASS meter')).toHaveAttribute('data-clipping', 'true');
+  });
+
   it('holds a peak before returning to the current reading', () => {
     const { container } = render(<Meter id="channel/1" label="BASS" active />);
     act(() => {

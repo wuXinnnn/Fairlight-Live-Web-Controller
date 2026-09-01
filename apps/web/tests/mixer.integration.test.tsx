@@ -2,6 +2,7 @@ import { SOCKET_EVENTS, type MixerSnapshot } from '@flwc/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
+import { TYPE_ROWS_STORAGE_KEY } from '../src/features/mixer/use-type-row-preference.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
 import { FakeSocket } from './fake-socket.js';
@@ -34,6 +35,7 @@ describe('mixer socket integration', () => {
   beforeEach(() => {
     resetMixerStore();
     resetMeterStore();
+    window.localStorage.clear();
   });
 
   it('recovers from a disconnected empty state with a fresh snapshot', async () => {
@@ -143,5 +145,27 @@ describe('mixer socket integration', () => {
       'Received invalid data from the server.',
     );
     expect(screen.getByText('WAITING FOR MIXER SNAPSHOT')).toBeInTheDocument();
+  });
+
+  it('places ON above the fader and persists the optional type-row layout', async () => {
+    const socket = new FakeSocket();
+    const { container } = render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    const bassHeading = await screen.findByRole('heading', { name: 'BASS' });
+    const strip = bassHeading.closest('article');
+    const onButton = strip?.querySelector('.on-button');
+    const fader = strip?.querySelector('[role="slider"]');
+    expect(onButton).not.toBeNull();
+    expect(fader).not.toBeNull();
+    if (onButton === null || fader === null) {
+      throw new Error('Channel controls were not rendered.');
+    }
+    expect(onButton.compareDocumentPosition(fader)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const layout = container.querySelector('.mixer-bays');
+    expect(layout).not.toHaveClass('is-type-rows');
+    fireEvent.click(screen.getByRole('switch', { name: 'Start each channel type on a new row' }));
+    expect(layout).toHaveClass('is-type-rows');
+    expect(window.localStorage.getItem(TYPE_ROWS_STORAGE_KEY)).toBe('true');
   });
 });

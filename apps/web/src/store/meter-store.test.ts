@@ -46,4 +46,15 @@ describe('meter store', () => {
     expect(meterStore.getState().loudness.truePeakDbtp).toBe(-2);
     expect(getMeterValue('missing')).toBe(-60);
   });
+
+  it('raises clipping only after two consecutive 0 dB frames', () => {
+    applyMetersFrame({ meters: [['channel/1', 0]] });
+    expect(meterStore.getState().clipping['channel/1']).toBe(false);
+    applyMetersFrame({ meters: [['channel/1', 0]] });
+    expect(meterStore.getState().clipping['channel/1']).toBe(true);
+
+    applyMetersFrame({ meters: [['channel/1', -0.1]] });
+    expect(meterStore.getState().clipping['channel/1']).toBe(false);
+    expect(meterStore.getState().zeroDbStreaks['channel/1']).toBe(0);
+  });
 });
