@@ -58,11 +58,75 @@ describe('Fader', () => {
     expect(props.onCommit).toHaveBeenLastCalledWith(-100);
   });
 
+  it('grabs the cap without jumping until the pointer actually moves', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 40,
+      bottom: 100,
+      width: 40,
+      height: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 48 });
+    expect(props.onInteractionStart).not.toHaveBeenCalled();
+    expect(props.onValueChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 49 });
+    expect(props.onValueChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 52 });
+    expect(props.onInteractionStart).toHaveBeenCalledOnce();
+    expect(props.onValueChange).toHaveBeenCalled();
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 52 });
+    expect(props.onCommit).toHaveBeenCalled();
+  });
+
+  it('does not commit when the cap is clicked without dragging', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 48 });
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 48 });
+    expect(props.onValueChange).not.toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
+  });
+
+  it('returns to unity on a track double-click', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    fireEvent.pointerDown(slider, { pointerId: 1, clientY: 20, detail: 2 });
+    expect(props.onCommit).toHaveBeenCalledWith(0);
+    fireEvent.doubleClick(slider);
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns to unity from a double-click fallback', () => {
+    const props = renderFader();
+    fireEvent.doubleClick(screen.getByRole('slider', { name: 'BASS level' }));
+    expect(props.onCommit).toHaveBeenCalledWith(0);
+  });
+
   it('disables pointer and keyboard interaction while unavailable', () => {
     const props = renderFader({ disabled: true });
     const slider = screen.getByRole('slider', { name: 'BASS level' });
     fireEvent.keyDown(slider, { key: 'ArrowUp' });
     fireEvent.pointerDown(slider, { pointerId: 1, clientY: 10 });
+    fireEvent.doubleClick(slider);
+    const cap = slider.querySelector('.fader__cap');
+    if (cap !== null) {
+      fireEvent.pointerDown(cap, { pointerId: 2, clientY: 10 });
+      fireEvent.pointerMove(slider, { pointerId: 2, clientY: 40 });
+    }
     expect(props.onValueChange).not.toHaveBeenCalled();
     expect(slider).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', { name: 'Edit BASS level' })).toBeDisabled();

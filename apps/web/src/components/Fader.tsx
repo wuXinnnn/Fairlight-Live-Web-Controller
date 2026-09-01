@@ -5,6 +5,7 @@ import {
   type ChangeEvent,
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
 } from 'react';
 import {
@@ -27,6 +28,13 @@ interface FaderProps {
   onCommit(value: number): void;
 }
 
+const CAP_DRAG_THRESHOLD_PX = 3;
+const UNITY_LEVEL_DB = 0;
+
+function isCapTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('.fader__cap') !== null;
+}
+
 export function Fader({
   label,
   value,
@@ -38,6 +46,8 @@ export function Fader({
 }: FaderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const latestValueRef = useRef(value);
+  const capGrabRef = useRef<{ startY: number; armed: boolean } | undefined>(undefined);
+  const unityFromPointerRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState('');
@@ -52,12 +62,30 @@ export function Fader({
     return Math.round(ratioToLevelDb(ratio) * 10) / 10;
   };
 
+  const applyExactValue = (nextValue: number) => {
+    onInteractionStart();
+    onValueChange(nextValue);
+    onCommit(nextValue);
+  };
+
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (disabled) {
       return;
     }
     event.preventDefault();
+    if (event.detail >= 2 && !isCapTarget(event.target)) {
+      unityFromPointerRef.current = true;
+      applyExactValue(UNITY_LEVEL_DB);
+      return;
+    }
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (isCapTarget(event.target)) {
+      capGrabRef.current = { startY: event.clientY, armed: true };
+      latestValueRef.current = value;
+      setDragging(true);
+      return;
+    }
+    capGrabRef.current = undefined;
     setDragging(true);
     onInteractionStart();
     const nextValue = valueFromPointer(event.clientY);
@@ -69,6 +97,14 @@ export function Fader({
     if (!dragging || disabled) {
       return;
     }
+    const capGrab = capGrabRef.current;
+    if (capGrab?.armed === true) {
+      if (Math.abs(event.clientY - capGrab.startY) < CAP_DRAG_THRESHOLD_PX) {
+        return;
+      }
+      capGrab.armed = false;
+      onInteractionStart();
+    }
     const nextValue = valueFromPointer(event.clientY);
     latestValueRef.current = nextValue;
     onValueChange(nextValue);
@@ -79,8 +115,24 @@ export function Fader({
       return;
     }
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const skippedCapCommit = capGrabRef.current?.armed === true;
+    capGrabRef.current = undefined;
     setDragging(false);
-    onCommit(latestValueRef.current);
+    if (!skippedCapCommit) {
+      onCommit(latestValueRef.current);
+    }
+  };
+
+  const handleDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (disabled || isCapTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    if (unityFromPointerRef.current) {
+      unityFromPointerRef.current = false;
+      return;
+    }
+    applyExactValue(UNITY_LEVEL_DB);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -105,12 +157,6 @@ export function Fader({
       return;
     }
     event.preventDefault();
-    onInteractionStart();
-    onValueChange(nextValue);
-    onCommit(nextValue);
-  };
-
-  const applyExactValue = (nextValue: number) => {
     onInteractionStart();
     onValueChange(nextValue);
     onCommit(nextValue);
@@ -193,6 +239,7 @@ export function Fader({
         onPointerMove={handlePointerMove}
         onPointerUp={finishPointer}
         onPointerCancel={finishPointer}
+        onDoubleClick={handleDoubleClick}
       >
         <div className="fader__unity" aria-hidden="true" />
         <div className="fader__slot" aria-hidden="true" />

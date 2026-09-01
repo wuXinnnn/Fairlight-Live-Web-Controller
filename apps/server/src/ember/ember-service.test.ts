@@ -192,6 +192,27 @@ describe('EmberService', () => {
     expect(service.tree).toBe(client.tree);
   });
 
+  it('resolves invoke after send when the provider never returns a result', async () => {
+    const client = new FakeEmberClient();
+    client.hangInvokeResponse = true;
+    const service = createService(client);
+    await service.start();
+    await expect(
+      service.invoke({ contents: { identifier: 'reset' } } as EmberFunctionNode),
+    ).resolves.toBeUndefined();
+    expect(client.invokeCalls).toBe(1);
+  });
+
+  it('rejects invoke when the command is not sent', async () => {
+    const client = new FakeEmberClient();
+    client.failInvokeSend = true;
+    const service = createService(client);
+    await service.start();
+    await expect(
+      service.invoke({ contents: { identifier: 'reset' } } as EmberFunctionNode),
+    ).rejects.toBeInstanceOf(EmberProtocolError);
+  });
+
   it('does not start twice and logs expand errors without failing', async () => {
     const client = new FakeEmberClient();
     client.getDirectory = async () => {

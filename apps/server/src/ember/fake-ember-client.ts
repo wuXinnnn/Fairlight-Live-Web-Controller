@@ -22,6 +22,8 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   concurrentSetValue = 0;
   maxConcurrentSetValue = 0;
   invokeCalls = 0;
+  hangInvokeResponse = false;
+  failInvokeSend = false;
   subscribeCalls = 0;
   readonly host: string | undefined;
   readonly port: number | undefined;
@@ -87,7 +89,13 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
 
   async invoke(): Promise<EmberDirectoryRequest> {
     this.invokeCalls += 1;
-    return { response: Promise.resolve({ success: true }) };
+    if (this.failInvokeSend) {
+      return { sentOk: false };
+    }
+    if (this.hangInvokeResponse) {
+      return { sentOk: true, response: new Promise(() => undefined) };
+    }
+    return { sentOk: true, response: Promise.resolve({ success: true }) };
   }
 }
 

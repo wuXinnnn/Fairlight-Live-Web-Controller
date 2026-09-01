@@ -73,3 +73,4 @@
 4. **部分 `sends/aux` 的 getDirectory 会挂起**。本机 dump 时 `main/main1/sends/aux` 与若干 `aux/auxN/sends/aux` 在 15s 内无响应。这些是总线发送子树,不是混音页所需节点。后续展开可跳过 identifier 为 `sends` 的节点;dump 脚本已对失败节点记错并继续。
 5. **disconnect 可能挂起**。dump 完成后 `EmberClient.disconnect()` 曾因未完成的 getDirectory 请求或 `ECONNRESET` 不返回。工具脚本对 disconnect 做 2s 超时后 `discard()`。
 6. **本 show 没有 sub / mixm / mtx**。不得把「当前 dump 没有」写成「Fairlight 永远没有」;TreeMapper 必须按运行时树发现。
+7. **`system/loudness/reset` 会执行但不回 InvocationResult**。2026-09-02 直连 `127.0.0.1:9000` 实测:`client.invoke` 立即 `sentOk: true`,28ms 内 `integrated` 变为 `-100` 且后续响度继续更新,但 `request.response` 至少 8s 无 `InvocationResult`。库同时报 `decode root elements: Unexpected BER context tag '96'`。接线与节点路径正确,不要把缺回包当成未发送。`EmberService.invoke` 以发送成功为准并忽略悬挂的 InvocationResult,避免 5s 超时导致前端 toast `The mixer did not respond.`。

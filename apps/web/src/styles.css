@@ -640,6 +640,7 @@ button {
   left: 50%;
   width: 2.05rem;
   height: 1.85rem;
+  pointer-events: auto;
   border: 1px solid #555b67;
   background: linear-gradient(180deg, #484d57 0 15%, #252931 17% 82%, #15181d 84%), #252931;
   box-shadow:

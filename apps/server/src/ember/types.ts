@@ -8,6 +8,7 @@ export type EmberCollection = { readonly [index: number]: EmberTreeNode };
 export type EmberValue = string | number | boolean;
 
 export interface EmberDirectoryRequest {
+  sentOk?: boolean;
   response?: Promise<unknown>;
 }
 

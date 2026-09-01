@@ -134,8 +134,17 @@ export class EmberService extends EventEmitter {
     await this.enqueueWrite(async () => {
       const client = this.requireClient();
       const request = await withTimeout(client.invoke(node), this.timeoutMs, 'invoke');
+      if (request.sentOk === false) {
+        throw new EmberProtocolError('Ember+ invoke was not sent');
+      }
+      // Fairlight executes reset without an InvocationResult; waiting hangs until timeout.
       if (request.response !== undefined) {
-        await withTimeout(request.response, this.timeoutMs, 'invoke response');
+        void request.response.catch((error: unknown) => {
+          this.logger.debug(
+            { err: errorMessage(error), layer: 'protocol' },
+            'invoke result ignored',
+          );
+        });
       }
     });
   }
