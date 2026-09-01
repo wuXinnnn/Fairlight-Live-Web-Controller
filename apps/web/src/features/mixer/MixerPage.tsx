@@ -1,5 +1,5 @@
 import { CHANNEL_KINDS, type ChannelKind } from '@flwc/shared';
-import { useMemo, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -43,16 +43,13 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     useShallow((state) => ({ views: state.views, activeViewId: state.activeViewId })),
   );
   const activeView = views.find((view) => view.id === activeViewId) ?? null;
-  const viewChannels = useMemo(
-    () =>
-      activeView?.channels
-        .map((reference) => mixerStore.getState().channels[reference.channelId])
-        .filter((channel) => channel !== undefined) ?? [],
-    [activeView, channels],
-  );
+  const liveById = new Map(channels.map((channel) => [channel.id, channel]));
+  const viewChannels =
+    activeView?.channels
+      .map((reference) => liveById.get(reference.channelId))
+      .filter((channel) => channel !== undefined) ?? [];
   const renderedChannels = useChannelPresence(activeView === null ? channels : viewChannels);
   const renderedById = new Map(renderedChannels.map((item) => [item.channel.id, item]));
-  const liveById = new Map(channels.map((channel) => [channel.id, channel]));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const emptyMessage =

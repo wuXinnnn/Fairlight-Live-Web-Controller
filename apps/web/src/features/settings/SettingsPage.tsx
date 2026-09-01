@@ -5,7 +5,7 @@ import {
   type View,
   type ViewChannelRef,
 } from '@flwc/shared';
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -71,34 +71,24 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     [channelOrder, channels],
   );
   const [selectedId, setSelectedId] = useState<string | null>(views[0]?.id ?? null);
-  const selected = views.find((view) => view.id === selectedId) ?? null;
-  const [draft, setDraft] = useState<View | null>(() =>
-    selected === null ? null : copyView(selected),
-  );
+  const selected = views.find((view) => view.id === selectedId) ?? views[0] ?? null;
+  const [draft, setDraft] = useState<View | null>(null);
+  const activeDraft = draft?.id === selected?.id ? draft : selected;
   const [newName, setNewName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
 
-  useEffect(() => {
-    const current = views.find((view) => view.id === selectedId);
-    if (current !== undefined) {
-      setDraft((existing) => (existing?.id === current.id ? existing : copyView(current)));
-      return;
-    }
-    const fallback = views[0] ?? null;
-    setSelectedId(fallback?.id ?? null);
-    setDraft(fallback === null ? null : copyView(fallback));
-  }, [selectedId, views]);
-
-  useEffect(() => {
+  const selectView = (view: View) => {
+    setSelectedId(view.id);
+    setDraft(copyView(view));
     setConfirmDelete(false);
     setConfirmCleanup(false);
     setLocalError(null);
-  }, [selectedId]);
+  };
 
   const missingChannels =
-    draft?.channels.filter((channel) => channels[channel.channelId] === undefined) ?? [];
+    activeDraft?.channels.filter((channel) => channels[channel.channelId] === undefined) ?? [];
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -111,52 +101,60 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     const created = await createView(viewsClient, { name, channels: [] });
     if (created !== null) {
       setNewName('');
-      setSelectedId(created.id);
-      setDraft(copyView(created));
+      selectView(created);
     }
   };
 
   const handleSave = async () => {
-    if (draft === null) {
+    if (activeDraft === null) {
       return;
     }
-    const name = draft.name.trim();
+    const name = activeDraft.name.trim();
     if (name.length === 0) {
       setLocalError('View name cannot be empty.');
       return;
     }
     setLocalError(null);
-    await updateView(viewsClient, draft.id, { name, channels: draft.channels });
+    const updated = await updateView(viewsClient, activeDraft.id, {
+      name,
+      channels: activeDraft.channels,
+    });
+    if (updated !== null) {
+      setDraft(copyView(updated));
+    }
   };
 
   const handleDelete = async () => {
-    if (draft === null) {
+    if (activeDraft === null) {
       return;
     }
     if (!confirmDelete) {
       setConfirmDelete(true);
       return;
     }
-    const deleted = await deleteView(viewsClient, draft.id);
+    const deleted = await deleteView(viewsClient, activeDraft.id);
     if (deleted) {
       setSelectedId(null);
+      setDraft(null);
       setConfirmDelete(false);
+      setConfirmCleanup(false);
     }
   };
 
   const toggleChannel = (channelId: string) => {
     setDraft((current) => {
-      if (current === null) {
+      const source = current?.id === activeDraft?.id ? current : activeDraft;
+      if (source === null) {
         return current;
       }
-      const exists = current.channels.some((channel) => channel.channelId === channelId);
+      const exists = source.channels.some((channel) => channel.channelId === channelId);
       const channel = channels[channelId];
       return {
-        ...current,
+        ...source,
         channels: exists
-          ? current.channels.filter((candidate) => candidate.channelId !== channelId)
+          ? source.channels.filter((candidate) => candidate.channelId !== channelId)
           : [
-              ...current.channels,
+              ...source.channels,
               {
                 channelId,
                 lastKnownName: channel?.name ?? channelId,
@@ -168,48 +166,55 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
 
   const moveChannel = (index: number, direction: -1 | 1) => {
     setDraft((current) => {
-      if (current === null) {
+      const source = current?.id === activeDraft?.id ? current : activeDraft;
+      if (source === null) {
         return current;
       }
       const target = index + direction;
-      if (target < 0 || target >= current.channels.length) {
-        return current;
+      if (target < 0 || target >= source.channels.length) {
+        return source;
       }
-      const next = [...current.channels];
+      const next = [...source.channels];
       [next[index], next[target]] = [next[target] as ViewChannelRef, next[index] as ViewChannelRef];
-      return { ...current, channels: next };
+      return { ...source, channels: next };
     });
   };
 
   const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
     setDraft((current) => {
-      if (current === null) {
+      const source = current?.id === activeDraft?.id ? current : activeDraft;
+      if (source === null) {
         return current;
       }
-      const next = current.channels.map((channel, candidateIndex) => {
+      const next = source.channels.map((channel, candidateIndex) => {
         if (candidateIndex !== index) {
           return channel;
         }
-        const { color: _currentColor, ...rest } = channel;
-        return color === undefined ? rest : { ...rest, color };
+        if (color === undefined) {
+          return {
+            channelId: channel.channelId,
+            lastKnownName: channel.lastKnownName,
+          };
+        }
+        return { ...channel, color };
       });
-      return { ...current, channels: next };
+      return { ...source, channels: next };
     });
   };
 
   const handleCleanup = async () => {
-    if (draft === null || missingChannels.length === 0) {
+    if (activeDraft === null || missingChannels.length === 0) {
       return;
     }
     if (!confirmCleanup) {
       setConfirmCleanup(true);
       return;
     }
-    const validChannels = draft.channels.filter(
+    const validChannels = activeDraft.channels.filter(
       (channel) => channels[channel.channelId] !== undefined,
     );
-    const updated = await updateView(viewsClient, draft.id, {
-      name: draft.name,
+    const updated = await updateView(viewsClient, activeDraft.id, {
+      name: activeDraft.name,
       channels: validChannels,
     });
     if (updated !== null) {
@@ -273,12 +278,9 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
               views.map((view, index) => (
                 <button
                   type="button"
-                  className={view.id === selectedId ? 'is-selected' : ''}
+                  className={view.id === selected?.id ? 'is-selected' : ''}
                   key={view.id}
-                  onClick={() => {
-                    setSelectedId(view.id);
-                    setDraft(copyView(view));
-                  }}
+                  onClick={() => selectView(view)}
                 >
                   <span>{(index + 1).toString().padStart(2, '0')}</span>
                   <strong>{view.name}</strong>
@@ -290,7 +292,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
         </aside>
 
         <section className="view-editor" aria-label="View editor">
-          {draft === null ? (
+          {activeDraft === null ? (
             <div className="settings-empty">
               <span>CONFIGURATION BAY</span>
               <h2>CREATE A VIEW TO BEGIN</h2>
@@ -300,11 +302,11 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
             <>
               <header className="view-editor__header">
                 <div>
-                  <span>ACTIVE VIEW / {draft.id.slice(0, 8).toUpperCase()}</span>
+                  <span>ACTIVE VIEW / {activeDraft.id.slice(0, 8).toUpperCase()}</span>
                   <input
                     aria-label="View name"
-                    value={draft.name}
-                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                    value={activeDraft.name}
+                    onChange={(event) => setDraft({ ...activeDraft, name: event.target.value })}
                     disabled={saving}
                   />
                 </div>
@@ -339,7 +341,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                   ) : (
                     <div className="channel-checklist">
                       {availableChannels.map((channel) => {
-                        const checked = draft.channels.some(
+                        const checked = activeDraft.channels.some(
                           (candidate) => candidate.channelId === channel.id,
                         );
                         return (
@@ -363,7 +365,9 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                   <div className="workbench-label channel-order__label">
                     <span>03</span>
                     <h2 id="channel-order-heading">CHANNEL ORDER &amp; COLOR</h2>
-                    <small>{draft.channels.length.toString().padStart(2, '0')} ASSIGNED</small>
+                    <small>
+                      {activeDraft.channels.length.toString().padStart(2, '0')} ASSIGNED
+                    </small>
                   </div>
                   {missingChannels.length > 0 && (
                     <div className="missing-warning" role="status">
@@ -376,11 +380,11 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                       </button>
                     </div>
                   )}
-                  {draft.channels.length === 0 ? (
+                  {activeDraft.channels.length === 0 ? (
                     <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
                   ) : (
                     <ol className="view-channel-list">
-                      {draft.channels.map((reference, index) => {
+                      {activeDraft.channels.map((reference, index) => {
                         const channel = channels[reference.channelId];
                         const missing = channel === undefined;
                         return (
@@ -408,7 +412,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                                 type="button"
                                 aria-label={`Move ${reference.lastKnownName} down`}
                                 onClick={() => moveChannel(index, 1)}
-                                disabled={index === draft.channels.length - 1}
+                                disabled={index === activeDraft.channels.length - 1}
                               >
                                 DN
                               </button>
