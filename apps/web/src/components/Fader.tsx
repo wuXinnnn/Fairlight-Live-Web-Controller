@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
@@ -198,9 +199,7 @@ export function Fader({
         <div className="fader__slot" aria-hidden="true" />
         <div
           className="fader__cap"
-          style={{
-            bottom: `clamp(0.925rem, ${ratio * 100}%, calc(100% - 0.925rem))`,
-          }}
+          style={{ '--fader-position': `${ratio * 100}%` } as CSSProperties}
           aria-hidden="true"
         >
           <span />

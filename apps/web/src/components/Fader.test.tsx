@@ -78,9 +78,11 @@ describe('Fader', () => {
         onCommit={vi.fn()}
       />,
     );
-    expect(container.querySelector<HTMLElement>('.fader__cap')?.style.bottom).toBe(
-      'clamp(0.925rem, 0%, calc(100% - 0.925rem))',
-    );
+    expect(
+      container
+        .querySelector<HTMLElement>('.fader__cap')
+        ?.style.getPropertyValue('--fader-position'),
+    ).toBe('0%');
     expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-∞');
   });
 

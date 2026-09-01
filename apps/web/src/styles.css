@@ -634,7 +634,7 @@ button {
 .fader__cap {
   position: absolute;
   z-index: 2;
-  bottom: 0;
+  bottom: clamp(0.925rem, var(--fader-position, 0%), calc(100% - 0.925rem));
   left: 50%;
   width: 2.05rem;
   height: 1.85rem;
