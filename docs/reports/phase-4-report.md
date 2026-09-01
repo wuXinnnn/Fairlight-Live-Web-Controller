@@ -2,7 +2,7 @@
 
 ## 1. 结果总览
 
-Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。ON 以全通道宽度位于控制区顶部,下方为 meter/fader 双列;推子轨道上下缩短半个推子帽高度,在 -∞/+10 时自然与 meter 下/上端对齐。电平表使用固定渐变裁剪并在连续两帧 0dB 后整条红色警告,空槽保留淡色三色背景。通道默认跨类型流式换行,可通过持久化的 `TYPE ROWS` 开关强制分类换行。类型采用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple accent;MTR 保留带框 dock,level 为无框大号数值且 dB 单位与推子标尺列左对齐,数值可点击输入精确值;`CONTROL LOCK` 提供持久化的 UNLOCKED/FADERS/ALL 三档。所有页面固定使用深色主题且不提供主题切换,固定 UI 文本使用英文,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
+Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。ON 以全通道宽度位于控制区顶部,下方为 meter/fader 双列;推子轨道上下缩短半个推子帽高度,在 -∞/+10 时自然与 meter 下/上端对齐。电平表使用固定渐变裁剪并在连续两帧 0dB 后整条红色警告,空槽保留淡色三色背景。通道默认跨类型流式换行,可通过持久化的 `TYPE ROWS` 开关强制分类换行。类型采用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple accent;MTR 保留带框 dock,level 为无框大号数值且 dB 单位靠右置于推子标尺列,数值可点击输入精确值;`CONTROL LOCK` 提供持久化的 UNLOCKED/FADERS/ALL 三档。所有页面固定使用深色主题且不提供主题切换,固定 UI 文本使用英文,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
 
 ## 2. 验收标准逐条核对
 
@@ -24,7 +24,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 - **ON 开关**:以通道内容区全宽位于每个条带顶部,其下才是 meter/fader 左右双列。展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
 - **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;空槽始终显示淡色绿/黄/红三段背景,前景使用全高固定渐变和 `clip-path` 揭示,因此只有达到 -18/-6dB 阈值时才露出实色黄/红区,不会把三色压缩到任意当前高度。连续两次 frame entry 均为 0dB(含钳制为 0 的正越界值)后整条显示红色削波警告,下一次低于 0dB 时解除。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 meter/clipping selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
 - **响度区**:显示 integrated LUFS(-100…18)与 true-peak dBTP(-60…0)。reset 首次点击进入 3 秒 `CONFIRM RESET`,第二次才发送命令,ack 结果使用非阻断提示。
-- **读数与对齐**:ON 下方的 meter 与 fader 顶部对齐。MTR 保留带框、tabular number 的双行 dock;level 取消标题与外框,数值以 0.86rem 字号居中在轨道列,dB 单位左边缘与右侧标尺列对齐,`-12.3 dB` 等长值不裁剪。
+- **读数与对齐**:ON 下方的 meter 与 fader 顶部对齐。MTR 保留带框、tabular number 的双行 dock;level 取消标题与外框,数值以 0.86rem 字号居中在轨道列,dB 单位靠右置于右侧标尺列,与 `-18.9` 等长负数保持间距且不裁剪。
 - **通道分区与布局**:按 `channel/main/sub/aux/mixm/mtx` 固定顺序渲染,空分区不出现。默认使用跨类型 flex 流并以 0.9rem 行距自然折行,第二类起标题列增加 0.85rem 左侧间隔;标题列与该类首通道组成不可拆分 lead,避免标题孤立在上一行。某类型不足一行时后续类型进入剩余空间。`TYPE ROWS` 开启后每类以全宽标题强制从新行开始,设置保存于 `localStorage` 键 `flwc.layout.typeRows`。通道删除保留 180ms exit presence 后卸载,新增使用短淡入/位移,不整页闪烁。
 - **类型颜色**:统一 palette 映射为 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple,应用于标题、条带顶边、名称短线和轻背景 tint,meter 信号色保持独立。每个 section 通过 `--channel-accent` 注入颜色,为 Phase 5 的 view 单通道 palette 覆盖保留入口。
 - **控制锁**:`CONTROL LOCK` 可直接选择 UNLOCKED/FADERS/ALL,保存于 `flwc.controls.lockMode.v1`。FADERS 禁用拖动、键盘和 LVL 输入但保留 ON;ALL 同时禁用 ON;meter、响度与 reset 不受影响。断线与 exiting 禁用优先于锁档。
@@ -100,6 +100,8 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+a790b59 fix(web): separate level value and unit
+d4f4f7d docs: report final channel reflow
 4498b47 fix(web): align fader unit with scale
 b9f8952 fix(web): simplify exact level readout
 311c70c fix(web): align fader travel with meter bounds
