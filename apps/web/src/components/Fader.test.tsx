@@ -65,5 +65,48 @@ describe('Fader', () => {
     fireEvent.pointerDown(slider, { pointerId: 1, clientY: 10 });
     expect(props.onValueChange).not.toHaveBeenCalled();
     expect(slider).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Edit BASS level' })).toBeDisabled();
+  });
+
+  it('edits and commits a precise level value', () => {
+    const props = renderFader();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    const input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    expect(input).toHaveValue(-20);
+    fireEvent.change(input, { target: { value: '-12.3' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(props.onInteractionStart).toHaveBeenCalledOnce();
+    expect(props.onValueChange).toHaveBeenCalledWith(-12.3);
+    expect(props.onCommit).toHaveBeenCalledWith(-12.3);
+    expect(screen.getByRole('button', { name: 'Edit BASS level' })).toBeInTheDocument();
+  });
+
+  it('keeps invalid input open until Escape cancels it', () => {
+    const props = renderFader();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    const input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '11' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(props.onCommit).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+  });
+
+  it('commits valid input and cancels invalid input on blur', () => {
+    const props = renderFader();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    let input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '-8.5' } });
+    fireEvent.blur(input);
+    expect(props.onCommit).toHaveBeenCalledWith(-8.5);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(props.onCommit).toHaveBeenCalledOnce();
   });
 });

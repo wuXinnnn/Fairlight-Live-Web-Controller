@@ -2,6 +2,8 @@ import { SOCKET_EVENTS, type MixerSnapshot } from '@flwc/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
+import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
+import { CONTROL_LOCK_STORAGE_KEY } from '../src/features/mixer/use-control-lock-preference.js';
 import { TYPE_ROWS_STORAGE_KEY } from '../src/features/mixer/use-type-row-preference.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
@@ -167,5 +169,82 @@ describe('mixer socket integration', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Start each channel type on a new row' }));
     expect(layout).toHaveClass('is-type-rows');
     expect(window.localStorage.getItem(TYPE_ROWS_STORAGE_KEY)).toBe('true');
+  });
+
+  it('aligns framed readouts and applies channel type colors', async () => {
+    const socket = new FakeSocket();
+    const { container } = render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    expect(screen.getByLabelText('BASS meter value')).toHaveTextContent(/MTR\s*-30.0\s*dB/);
+    expect(screen.getByLabelText('BASS level value')).toHaveTextContent(/LVL\s*-12.0\s*dB/);
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-channel-kind="channel"]')
+        ?.style.getPropertyValue('--channel-accent'),
+    ).toBe(CHANNEL_PALETTE.green);
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-channel-kind="main"]')
+        ?.style.getPropertyValue('--channel-accent'),
+    ).toBe(CHANNEL_PALETTE.red);
+  });
+
+  it('submits exact levels and rolls rejected values back', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    let input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '-12.3' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(
+        socket.emitted.some(
+          ({ event, args }) =>
+            event === SOCKET_EVENTS.CONTROL_SET_LEVEL &&
+            (args[0] as { levelDb: number }).levelDb === -12.3,
+        ),
+      ).toBe(true);
+    });
+
+    socket.acknowledgements.set(SOCKET_EVENTS.CONTROL_SET_LEVEL, {
+      ok: false,
+      error: { code: 'PROTOCOL', message: 'Exact write failed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '-5.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Exact write failed');
+    expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-12.3');
+  });
+
+  it('locks faders independently before locking every channel control', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const levelButton = screen.getByRole('button', { name: 'Edit BASS level' });
+    const onButton = screen.getByRole('button', { name: 'BASS on' });
+    expect(slider).toHaveAttribute('aria-disabled', 'false');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'FADERS' }));
+    expect(slider).toHaveAttribute('aria-disabled', 'true');
+    expect(levelButton).toBeDisabled();
+    expect(onButton).toBeEnabled();
+    expect(window.localStorage.getItem(CONTROL_LOCK_STORAGE_KEY)).toBe('faders');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'ALL' }));
+    expect(onButton).toBeDisabled();
+    expect(window.localStorage.getItem(CONTROL_LOCK_STORAGE_KEY)).toBe('all');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'UNLOCKED' }));
+    expect(slider).toHaveAttribute('aria-disabled', 'false');
+    expect(onButton).toBeEnabled();
   });
 });

@@ -3,6 +3,7 @@ import {
   clampLevelDb,
   formatLevelDb,
   levelDbToRatio,
+  parseLevelInput,
   ratioToLevelDb,
   stepLevelDb,
 } from './fader-scale.js';
@@ -35,5 +36,14 @@ describe('fader scale', () => {
     expect(formatLevelDb(-100)).toBe('-∞');
     expect(formatLevelDb(0)).toBe('0.0');
     expect(formatLevelDb(3.25)).toBe('+3.3');
+  });
+
+  it('accepts precise values and rejects invalid level input', () => {
+    expect(parseLevelInput('-12.3')).toBe(-12.3);
+    expect(parseLevelInput(' 10 ')).toBe(10);
+    expect(parseLevelInput('')).toBeNull();
+    expect(parseLevelInput('not-a-level')).toBeNull();
+    expect(parseLevelInput('-100.1')).toBeNull();
+    expect(parseLevelInput('10.1')).toBeNull();
   });
 });
