@@ -25,7 +25,7 @@
 ## 硬性约束
 
 - 自动化测试(vitest + React Testing Library)一律基于 Mock(mock socket 或 Mock Provider),**禁止任何连接真实设备的逻辑与硬编码真机地址**。
-- 代码、注释、提交信息、日志与 UI 文案用**英文**;文档与报告用**简体中文**。
+- 代码、注释、提交信息、日志与固定 UI 文案用**英文**;仅设备或应用带入的动态文本(如通道名称)可保留原文;文档与报告用**简体中文**。
 - 新增依赖必须 MIT 或 MIT 兼容许可,引入前确认 `license` 字段,记入报告。本阶段原则上不需要新增运行时依赖(socket.io-client、zustand 如未安装则按架构文档引入);禁止引入 UI 组件库,推子/电平表/开关全部自绘。
 - 提交遵循 Conventional Commits,按逻辑单元分多次提交;不得破坏已有的 lint / typecheck / test / build 全绿与覆盖率门槛(不许为凑覆盖率调低门槛)。
 - 消息契约**只使用 `packages/shared` 的既有导出**(事件名、负载 schema、ack 类型),前端不得重新定义或绕过;若发现契约缺口或 bug,可做最小修正并在报告「关键决策与偏离」中说明。改动 `packages/shared` 后需重跑 `pnpm --filter @flwc/shared build` 其它包才能拿到新类型。
