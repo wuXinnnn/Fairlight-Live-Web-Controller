@@ -163,6 +163,10 @@ describe('mixer socket integration', () => {
       throw new Error('Channel controls were not rendered.');
     }
     expect(onButton.compareDocumentPosition(fader)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(strip?.children[1]).toBe(onButton);
+    expect(strip?.children[2]).toHaveClass('channel-strip__controls');
+    expect(strip?.children[2]?.children[0]).toHaveClass('meter');
+    expect(strip?.children[2]?.children[1]).toHaveClass('fader');
 
     const layout = container.querySelector('.mixer-bays');
     expect(layout).not.toHaveClass('is-type-rows');
