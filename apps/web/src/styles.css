@@ -796,13 +796,6 @@ button {
   text-align: center;
 }
 
-.fader__readout small {
-  grid-column: auto;
-  grid-row: auto;
-  margin-left: 0.18rem;
-  font-size: 0.46rem;
-}
-
 .meter {
   display: grid;
   grid-template-rows: 21rem 2.6rem;
