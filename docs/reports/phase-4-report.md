@@ -14,7 +14,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | 覆盖率达标 | 通过 | `apps/web`:语句 95.26%(463/486)、分支 90.94%(211/232)、函数 98.13%(158/161)、行 94.96%(434/457),四项均高于 80%。未改 `packages/shared`。 |
 | 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 54、server 85,合计 182 项通过。 |
 | Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、全宽 ON + meter/fader 双列、MTR 带框与 level 无框读数、meter 淡色三段空槽、BASS 精确输入 -100/+10 时推子帽自然对齐两端且不碰读数并恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化。最终安全脚本另以 ack 成功确认 BASS `0.0 → -18.9 → 0.0`,浏览器确认长负数与 dB 单位间距无重叠;干净录屏为 `/opt/cursor/artifacts/phase4_clean_fader_readout_demo.mp4`。此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
-| 远端 CI | 通过 | GitHub Actions 在最终执行报告提交 `bbeceb9` 上全部 3 项检查通过,无失败。 |
+| 远端 CI | 通过 | 功能代码、自动化测试与报告基线均通过远端 GitHub Actions 全部 3 项检查;仅含报告文字修订的后续提交也执行同一流水线,最终分支状态以 PR CI 为准。 |
 
 ## 3. 实现摘要
 
@@ -104,6 +104,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`。以下记录截至本报告修订前,不包含承载本次报告文字修订的提交。
 
 ```text
+f168623 docs: reconcile Phase 4 report with final UI
 bbeceb9 docs: record fader readout CI result
 5e466e2 docs: record final level unit spacing
 8d58e7c fix(web): fine-tune level unit spacing
