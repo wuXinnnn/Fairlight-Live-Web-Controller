@@ -2,30 +2,31 @@
 
 ## 1. 结果总览
 
-Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。所有页面固定使用深色主题且不提供主题切换,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
+Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实现快照/增量/电平帧状态管理、分区混音页、推子、ON、电平表、响度复位、断线降级与重连恢复。ON 位于窄推子上方;电平表使用固定渐变裁剪并在连续两帧 0dB 后整条红色警告;通道默认跨类型流式换行,可通过持久化的 `TYPE ROWS` 开关强制分类换行。所有页面固定使用深色主题且不提供主题切换,固定 UI 文本使用英文,组件具备克制动效与 reduced-motion 降级。自动化测试、覆盖率、全量质量门和 Mock Ember+ Provider 浏览器冒烟均通过;真实 Fairlight 验收按云端边界移交用户。
 
 ## 2. 验收标准逐条核对
 
 | 验收标准 | 结果 | 实际执行与输出摘要 |
 | --- | --- | --- |
-| 组件与集成测试覆盖 Phase 4 边界场景 | 通过 | `pnpm --filter @flwc/web test`:12 files / 35 tests passed。覆盖推子映射、越界、键盘/指针、pending 冲突、ON/mute 反转与失败回滚、meter 钳制/峰值保持、patch 改名/增删、frame 合并、断线禁用与重连快照恢复、reset 二次确认、固定深色基线与 presence 清理。 |
+| 组件与集成测试覆盖 Phase 4 边界场景 | 通过 | `pnpm --filter @flwc/web test`:13 files / 40 tests passed。覆盖推子映射、越界、键盘/指针、pending 冲突、ON/mute 反转与失败回滚、meter 固定渐变裁剪/峰值保持/连续 0dB 削波、patch 改名/增删、frame 合并、断线禁用与重连快照恢复、reset 二次确认、混合/分类布局与 localStorage、固定深色基线及 presence 清理。 |
 | 固定深色主题与合理组件动效 | 通过 | 浏览器冒烟确认页面始终使用深色 token,无主题切换入口;ON、推子、按钮、状态提示、条带增删均有 140–200ms 短动效,峰值保持 1500ms,`prefers-reduced-motion` 将非必要动画缩短。 |
 | 对本地真实 Fairlight 手动验收 | 移交用户 | 云端未连接真实设备。可直接执行的安全验收清单见第 4 节。 |
-| 覆盖率达标 | 通过 | `apps/web`:语句 96.12%(372/387)、分支 91.09%(174/191)、函数 98.51%(133/135)、行 95.82%(344/359),四项均高于 80%。未改 `packages/shared`。 |
-| 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 35、server 85,合计 163 项通过。 |
-| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 监听安全端口 `127.0.0.1:9101`,80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。推子、ON、reset ack 往返正常;切到未监听 9102 后显示 `EMBER RECONNECTING`、控件禁用与表冻结,恢复 9101 后新快照和动态帧自动恢复。 |
+| 覆盖率达标 | 通过 | `apps/web`:语句 95.65%(396/414)、分支 90.73%(186/205)、函数 98.61%(142/144)、行 95.33%(368/386),四项均高于 80%。未改 `packages/shared`。 |
+| 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 40、server 85,合计 168 项通过。 |
+| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 周期性向 BASS 发送连续 0/0.001dB 帧,浏览器确认正常渐变裁剪 → 整条红色削波 → 电平回落恢复的完整周期。默认混合布局、`TYPE ROWS` 分类换行及刷新持久化均通过;此前推子/ON/reset 往返与断线恢复冒烟继续通过。 |
 | 远端 CI | 通过 | GitHub Actions 在报告提交 `3684d2a` 上全部 2 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
 - **socket 与状态层**:`lib/socket.ts` 使用同源 Socket.IO,Vite 将 `/socket.io` 代理至后端。所有事件名、schema、payload 与 ack 使用 `@flwc/shared`;非法下行数据拒绝入库并显示非阻断提示。`mixerStore` 负责快照整体替换、patch upsert/remove 合成及 socket/Ember 双连接态;`meterStore` 以快照播种并增量合并可丢帧的 meter frame。
 - **重连恢复**:socket 断开或 Ember 非 `connected` 时统一禁用控制并冻结表值。重连后的 `mixer:snapshot` 替换全部通道并清理 pending,避免旧乐观状态残留。
-- **推子**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。拖动时本地立即回显,预览写入按 50ms 限频,松手保证终值写入;pending 期间暂存远端 level,ack 后以远端值收敛,失败回滚。
-- **ON 开关**:展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
-- **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;安全区 `≤ -18` 为绿、警告区 `-18…-6` 为黄、`> -6` 为红。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 `meterStore` selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
+- **推子**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;推子帽由 2.7rem 收窄到 2.05rem,条带宽度为 9.25rem。支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。拖动时本地立即回显,预览写入按 50ms 限频,松手保证终值写入;pending 期间暂存远端 level,ack 后以远端值收敛,失败回滚。
+- **ON 开关**:位于每个通道推子正上方。展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
+- **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;前景使用全高固定渐变和 `clip-path` 揭示,因此只有达到 -18/-6dB 阈值时才露出黄/红区,不会把三色压缩到任意当前高度。连续两次 frame entry 均为 0dB(含钳制为 0 的正越界值)后整条显示红色削波警告,下一次低于 0dB 时解除。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 meter/clipping selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
 - **响度区**:显示 integrated LUFS(-100…18)与 true-peak dBTP(-60…0)。reset 首次点击进入 3 秒 `CONFIRM RESET`,第二次才发送命令,ack 结果使用非阻断提示。
-- **通道分区**:按 `channel/main/sub/aux/mixm/mtx` 固定顺序渲染,空分区不出现;通道删除保留 180ms exit presence 后卸载,新增使用短淡入/位移,不整页闪烁。
+- **通道分区与布局**:按 `channel/main/sub/aux/mixm/mtx` 固定顺序渲染,空分区不出现。默认使用跨类型 flex 流,某类型不足一行时后续类型进入剩余空间;`TYPE ROWS` 开启后每类以全宽标题强制从新行开始,设置保存于 `localStorage` 键 `flwc.layout.typeRows`。通道删除保留 180ms exit presence 后卸载,新增使用短淡入/位移,不整页闪烁。
 - **固定深色主题与动效**:全局 `color-scheme: dark`,不读取浅色偏好、不维护主题状态、不提供切换入口。视觉采用暖石墨机架、琥珀状态灯、Barlow Condensed 与 IBM Plex Mono 本地字体。通用动效为 140–200ms,拖动禁用补间以保持跟手,meter 使用 45–60ms 线性反馈;reduced-motion 将非必要动画降至 1ms。
+- **界面语言**:除 Fairlight/应用运行时带入的通道名称等动态文本外,全部固定 UI 文本使用英文;约束已同步至项目规则、规范、架构和阶段提示词。
 
 ## 4. 真机验收操作清单(移交用户)
 
@@ -48,16 +49,16 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | `apps/web/src/lib/socket.ts` | Socket.IO 连接、共享 schema 校验、事件绑定与控制 ack |
 | `apps/web/src/lib/fader-scale.ts` | 推子行程映射、钳制、步进与格式化纯函数 |
 | `apps/web/src/store/mixer-store.ts` | 快照/patch、连接态、pending 与乐观回滚 |
-| `apps/web/src/store/meter-store.ts` | 高频 meter/loudness 独立增量状态 |
+| `apps/web/src/store/meter-store.ts` | 高频 meter/loudness 增量状态与连续 0dB 削波检测 |
 | `apps/web/src/components/Fader.tsx` | 指针、轨道与键盘可访问推子 |
 | `apps/web/src/components/Meter.tsx` | 分段竖表、读数与峰值保持 |
 | `apps/web/src/components/OnButton.tsx` | Yamaha 风格 ON 控件 |
-| `apps/web/src/features/mixer/` | 通道条、分区页面与增删 presence |
+| `apps/web/src/features/mixer/` | 通道条、分区页面、增删 presence 与持久化分类换行开关 |
 | `apps/web/src/features/loudness/LoudnessPanel.tsx` | 响度读数与二次确认 reset |
 | `apps/web/src/styles.css` | 固定深色设计 token、工业调音台布局与动效 |
 | `apps/web/src/**/*.test.*` | 纯函数、store 与组件单元测试 |
 | `apps/web/tests/mixer.integration.test.tsx` | fake socket 端到端前端状态与控制集成测试 |
-| `docs/architecture.md`、`docs/development-plan.md`、`docs/prompts/phase-4.md` | 固定深色与合理动效的项目开发要求 |
+| `AGENTS.md`、`CLAUDE.md`、`.cursor/rules/project.mdc`、`docs/` 规范 | 固定 UI 文本使用英文等项目开发要求 |
 
 ## 6. 依赖清单与许可确认
 
@@ -93,6 +94,11 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+73b51c1 test(web): isolate application entrypoint mount
+87b72f9 test(web): cover meter clipping and layout preference
+6f7f4fc docs: require English frontend interface text
+987b30e feat(web): refine channel layout and meter feedback
+74d28e4 docs: record Phase 4 CI result
 3684d2a docs: add Phase 4 execution report
 bf6254c fix(web): polish local visual assets
 d93d8a6 test(web): cover mixer controls and realtime recovery
