@@ -1,5 +1,5 @@
 import { CHANNEL_KINDS, type ChannelKind } from '@flwc/shared';
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -43,11 +43,17 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     useShallow((state) => ({ views: state.views, activeViewId: state.activeViewId })),
   );
   const activeView = views.find((view) => view.id === activeViewId) ?? null;
-  const liveById = new Map(channels.map((channel) => [channel.id, channel]));
-  const viewChannels =
-    activeView?.channels
-      .map((reference) => liveById.get(reference.channelId))
-      .filter((channel) => channel !== undefined) ?? [];
+  const liveById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  );
+  const viewChannels = useMemo(
+    () =>
+      activeView?.channels
+        .map((reference) => liveById.get(reference.channelId))
+        .filter((channel) => channel !== undefined) ?? [],
+    [activeView, liveById],
+  );
   const renderedChannels = useChannelPresence(activeView === null ? channels : viewChannels);
   const renderedById = new Map(renderedChannels.map((item) => [item.channel.id, item]));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
