@@ -69,3 +69,14 @@ export function formatLevelDb(value: number): string {
   }
   return `${clamped > 0 ? '+' : ''}${clamped.toFixed(1)}`;
 }
+
+export function parseLevelInput(value: string): number | null {
+  if (value.trim() === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < LEVEL_DB_MIN || parsed > LEVEL_DB_MAX) {
+    return null;
+  }
+  return parsed;
+}

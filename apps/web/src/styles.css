@@ -158,13 +158,20 @@ button {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.75rem 1rem;
-  border-right: 1px solid var(--line);
+  padding: 0.45rem 0.8rem;
+  border-bottom: 1px solid var(--line);
   color: var(--text-dim);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.6rem;
   letter-spacing: 0.1em;
   white-space: nowrap;
+}
+
+.console-preferences {
+  display: grid;
+  min-width: 17rem;
+  grid-template-rows: 1fr 1fr;
+  border-right: 1px solid var(--line);
 }
 
 .type-row-toggle {
@@ -203,6 +210,67 @@ button {
   background: var(--amber);
   box-shadow: 0 0 0.45rem rgb(239 169 40 / 55%);
   transform: translateX(1rem);
+}
+
+.control-lock {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0.38rem 0.8rem;
+  border: 0;
+}
+
+.control-lock legend {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.control-lock::before {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  content: 'CONTROL LOCK';
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+}
+
+.control-lock__options {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.control-lock__options button {
+  min-width: 0;
+  padding: 0.3rem 0.42rem;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #747a86;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.48rem;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.control-lock__options button + button {
+  border-left: 0;
+}
+
+.control-lock__options button:hover,
+.control-lock__options button.is-selected {
+  border-color: #9b742d;
+  background: #292318;
+  color: var(--amber-pale);
 }
 
 .notice {
@@ -306,7 +374,8 @@ button {
   min-width: 0;
   align-content: flex-start;
   flex-wrap: wrap;
-  gap: 1px;
+  column-gap: 1px;
+  row-gap: 0.9rem;
   padding: 1.6rem 1.5rem 2.5rem;
 }
 
@@ -326,9 +395,15 @@ button {
   justify-content: flex-start;
   gap: 0.7rem;
   padding: 1rem 0.7rem;
-  border: 1px solid #51401f;
-  background: #171711;
-  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--channel-accent) 48%, #23262d);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--channel-accent) 13%, transparent),
+      transparent 42%
+    ),
+    #15171c;
+  color: var(--channel-accent);
   transition:
     flex-basis var(--motion-medium) ease,
     width var(--motion-medium) ease,
@@ -339,7 +414,7 @@ button {
   width: 1px;
   min-height: 3rem;
   flex: 1;
-  background: linear-gradient(180deg, #795c25, transparent);
+  background: linear-gradient(180deg, var(--channel-accent), transparent);
   content: '';
 }
 
@@ -351,10 +426,14 @@ button {
 }
 
 .mixer-section__header span {
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--channel-accent) 70%, var(--text-dim));
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.64rem;
   writing-mode: vertical-rl;
+}
+
+.mixer-section:not(:first-child) .mixer-section__header {
+  margin-left: 0.85rem;
 }
 
 .mixer-bays.is-type-rows .mixer-section__header {
@@ -364,6 +443,7 @@ button {
   flex-basis: 100%;
   flex-direction: row;
   justify-content: flex-start;
+  margin-left: 0;
   padding: 0.55rem 0.8rem;
 }
 
@@ -371,7 +451,7 @@ button {
   width: auto;
   height: 1px;
   min-height: 0;
-  background: linear-gradient(90deg, #795c25, transparent);
+  background: linear-gradient(90deg, var(--channel-accent), transparent);
 }
 
 .mixer-bays.is-type-rows .mixer-section__header h2,
@@ -393,7 +473,13 @@ button {
   grid-template-rows: auto 1fr;
   padding: 0 0.65rem 0.8rem;
   border: 1px solid var(--line);
+  border-top-color: color-mix(in srgb, var(--channel-accent) 68%, var(--line));
   background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--channel-accent) 7%, transparent),
+      transparent 6rem
+    ),
     linear-gradient(90deg, transparent, rgb(255 255 255 / 1.2%) 52%, transparent), var(--surface-1);
   animation: strip-enter var(--motion-medium) ease both;
   animation-delay: calc(min(var(--strip-index, 0), 8) * 25ms);
@@ -429,8 +515,9 @@ button {
   width: 1.5rem;
   height: 2px;
   margin-bottom: 0.5rem;
-  background: var(--amber);
-  opacity: 0.72;
+  background: var(--channel-accent);
+  box-shadow: 0 0 0.45rem color-mix(in srgb, var(--channel-accent) 38%, transparent);
+  opacity: 0.9;
 }
 
 .channel-strip h3 {
@@ -447,8 +534,8 @@ button {
 
 .channel-strip__controls {
   display: grid;
-  grid-template-columns: 2.25rem 1fr;
-  gap: 0.35rem;
+  grid-template-columns: 3.25rem 1fr;
+  gap: 0.45rem;
   padding: 0.8rem 0 0;
 }
 
@@ -456,7 +543,7 @@ button {
   display: grid;
   min-width: 0;
   grid-template-rows: auto 1fr;
-  gap: 0.7rem;
+  gap: 1rem;
 }
 
 .fader {
@@ -464,7 +551,7 @@ button {
   display: grid;
   min-width: 0;
   grid-template-columns: 1fr 1.55rem;
-  grid-template-rows: 21rem 2.2rem;
+  grid-template-rows: 21rem 2.6rem;
   transition: opacity var(--motion-fast) ease;
 }
 
@@ -472,8 +559,7 @@ button {
   position: relative;
   grid-column: 2;
   grid-row: 1;
-  height: calc(100% - 1.8rem);
-  margin: 0.9rem 0;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -501,8 +587,7 @@ button {
   position: relative;
   grid-column: 1;
   grid-row: 1;
-  height: calc(100% - 1.8rem);
-  margin: 0.9rem 0;
+  height: 100%;
   cursor: ns-resize;
   touch-action: none;
 }
@@ -580,24 +665,96 @@ button {
 .fader__readout {
   grid-column: 1 / 3;
   grid-row: 2;
-  align-self: end;
+  align-self: stretch;
+  transition: color var(--motion-fast) ease;
+}
+
+.fader__readout,
+.meter__readout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 0.65rem 1fr;
+  align-items: center;
+  padding: 0.22rem 0.28rem;
+  border: 1px solid #343945;
+  background: #111318;
   color: #d6d3ca;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.72rem;
-  text-align: center;
-  transition: color var(--motion-fast) ease;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.readout__label {
+  grid-column: 1 / 3;
+  align-self: start;
+  color: color-mix(in srgb, var(--channel-accent) 72%, var(--text-dim));
+  font-size: 0.42rem;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-align: left;
+}
+
+.readout__value,
+.fader__readout button,
+.fader__readout input {
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
+  overflow: visible;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+}
+
+.fader__readout button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: text;
+}
+
+.fader__readout button:disabled {
+  cursor: not-allowed;
+}
+
+.fader__readout input {
+  width: 100%;
+  padding: 0.08rem 0.12rem;
+  border: 1px solid var(--channel-accent);
+  outline: 0;
+  background: #090b0e;
+  appearance: textfield;
+}
+
+.fader__readout input::-webkit-inner-spin-button,
+.fader__readout input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.fader__readout.is-invalid {
+  border-color: var(--red);
+  box-shadow: inset 0 0 0 1px rgb(255 93 85 / 22%);
 }
 
 .fader__readout small,
 .meter__readout small {
-  margin-left: 0.22rem;
+  grid-column: 2;
+  grid-row: 2;
+  margin-left: 0.14rem;
   color: var(--text-dim);
-  font-size: 0.48rem;
+  font-size: 0.43rem;
+  line-height: 1;
 }
 
 .meter {
   display: grid;
-  grid-template-rows: 24.75rem 2.2rem;
+  grid-template-rows: 24.65rem 2.6rem;
   min-width: 0;
   transition: opacity var(--motion-medium) ease;
 }
@@ -609,8 +766,8 @@ button {
 .meter__well {
   position: relative;
   width: 1.05rem;
-  height: calc(100% - 1.8rem);
-  margin: 0.9rem auto;
+  height: 100%;
+  margin: 0 auto;
   overflow: hidden;
   border: 1px solid #090a0d;
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgb(0 0 0 / 70%) 3px 5px), #20242a;
@@ -660,13 +817,8 @@ button {
 }
 
 .meter__readout {
-  align-self: end;
-  overflow: hidden;
-  color: #c9c7c0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.58rem;
-  text-align: center;
-  white-space: nowrap;
+  align-self: stretch;
+  overflow: visible;
 }
 
 .meter--warning .meter__readout {
@@ -814,9 +966,8 @@ button {
     border-right: 0;
   }
 
-  .type-row-control {
+  .console-preferences {
     grid-column: 1 / 3;
-    justify-content: flex-end;
     border-top: 1px solid var(--line);
   }
 

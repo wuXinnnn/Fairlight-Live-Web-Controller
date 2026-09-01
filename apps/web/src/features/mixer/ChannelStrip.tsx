@@ -13,6 +13,7 @@ import {
   mixerStore,
   setLocalLevel,
 } from '../../store/mixer-store.js';
+import type { ControlLockMode } from './use-control-lock-preference.js';
 import type { PresenceChannel } from './use-channel-presence.js';
 
 const LEVEL_SEND_INTERVAL_MS = 50;
@@ -20,10 +21,11 @@ const LEVEL_SEND_INTERVAL_MS = 50;
 interface ChannelStripProps {
   item: PresenceChannel;
   controlClient: ControlClient;
+  lockMode: ControlLockMode;
   style?: CSSProperties;
 }
 
-export function ChannelStrip({ item, controlClient, style }: ChannelStripProps) {
+export function ChannelStrip({ item, controlClient, lockMode, style }: ChannelStripProps) {
   const { channel } = item;
   const liveChannel = useStore(mixerStore, (state) => state.channels[channel.id] ?? channel);
   const controlsEnabled = useStore(mixerStore, controlsAvailable);
@@ -35,6 +37,9 @@ export function ChannelStrip({ item, controlClient, style }: ChannelStripProps) 
   const previewTimerRef = useRef<number | undefined>(undefined);
   const previewValueRef = useRef(liveChannel.levelDb);
   const lastSendRef = useRef(0);
+  const unavailable = !controlsEnabled || item.exiting;
+  const faderDisabled = unavailable || lockMode !== 'unlocked';
+  const onDisabled = unavailable || lockMode === 'all';
 
   useEffect(
     () => () => {
@@ -95,14 +100,14 @@ export function ChannelStrip({ item, controlClient, style }: ChannelStripProps) 
           <OnButton
             label={liveChannel.name}
             on={!liveChannel.muted}
-            disabled={!controlsEnabled || item.exiting}
+            disabled={onDisabled}
             pending={onPending}
             onToggle={handleOnToggle}
           />
           <Fader
             label={liveChannel.name}
             value={liveChannel.levelDb}
-            disabled={!controlsEnabled || item.exiting}
+            disabled={faderDisabled}
             pending={levelPending}
             onInteractionStart={() => {
               beginLevelInteraction(channel.id);

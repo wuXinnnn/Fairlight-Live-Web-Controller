@@ -85,7 +85,8 @@ export function Meter({ id, label, active }: MeterProps) {
         <div className="meter__peak" style={{ bottom: `${meterRatio(peak) * 100}%` }} />
       </div>
       <output className="meter__readout" aria-label={`${label} meter value`}>
-        {value.toFixed(1)}
+        <span className="readout__label">MTR</span>
+        <span className="readout__value">{value.toFixed(1)}</span>
         <small>dB</small>
       </output>
     </div>

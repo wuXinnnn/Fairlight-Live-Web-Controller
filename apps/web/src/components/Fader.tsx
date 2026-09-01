@@ -1,10 +1,18 @@
 import { LEVEL_DB_MAX, LEVEL_DB_MIN } from '@flwc/shared';
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FocusEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import {
   FADER_TICKS,
   clampLevelDb,
   formatLevelDb,
   levelDbToRatio,
+  parseLevelInput,
   ratioToLevelDb,
   stepLevelDb,
 } from '../lib/fader-scale.js';
@@ -31,6 +39,9 @@ export function Fader({
   const trackRef = useRef<HTMLDivElement>(null);
   const latestValueRef = useRef(value);
   const [dragging, setDragging] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftValue, setDraftValue] = useState('');
+  const [inputInvalid, setInputInvalid] = useState(false);
 
   const valueFromPointer = (clientY: number): number => {
     const bounds = trackRef.current?.getBoundingClientRect();
@@ -99,6 +110,57 @@ export function Fader({
     onCommit(nextValue);
   };
 
+  const applyExactValue = (nextValue: number) => {
+    onInteractionStart();
+    onValueChange(nextValue);
+    onCommit(nextValue);
+  };
+
+  const startEditing = () => {
+    if (disabled) {
+      return;
+    }
+    setDraftValue(clampLevelDb(value).toFixed(1));
+    setInputInvalid(false);
+    setEditing(true);
+  };
+
+  const commitInput = (cancelInvalid: boolean) => {
+    const parsed = parseLevelInput(draftValue);
+    if (parsed === null) {
+      if (cancelInvalid) {
+        setEditing(false);
+        setInputInvalid(false);
+      } else {
+        setInputInvalid(true);
+      }
+      return;
+    }
+    applyExactValue(parsed);
+    setEditing(false);
+    setInputInvalid(false);
+  };
+
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitInput(false);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      setEditing(false);
+      setInputInvalid(false);
+    }
+  };
+
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDraftValue(event.target.value);
+    setInputInvalid(false);
+  };
+
+  const handleInputFocus = (event: FocusEvent<HTMLInputElement>) => {
+    event.currentTarget.select();
+  };
+
   const clampedValue = clampLevelDb(value);
   const ratio = levelDbToRatio(clampedValue);
 
@@ -138,8 +200,39 @@ export function Fader({
           <span />
         </div>
       </div>
-      <output className="fader__readout" aria-label={`${label} level value`}>
-        {formatLevelDb(clampedValue)}
+      <output
+        className={`fader__readout ${inputInvalid ? 'is-invalid' : ''}`}
+        aria-label={`${label} level value`}
+      >
+        <span className="readout__label">LVL</span>
+        {editing ? (
+          <input
+            type="number"
+            min={LEVEL_DB_MIN}
+            max={LEVEL_DB_MAX}
+            step="0.1"
+            value={draftValue}
+            disabled={disabled}
+            aria-label={`${label} exact level`}
+            aria-invalid={inputInvalid}
+            autoFocus
+            onFocus={handleInputFocus}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
+            onBlur={() => {
+              commitInput(true);
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            aria-label={`Edit ${label} level`}
+            disabled={disabled}
+            onClick={startEditing}
+          >
+            {formatLevelDb(clampedValue)}
+          </button>
+        )}
         <small>dB</small>
       </output>
     </div>

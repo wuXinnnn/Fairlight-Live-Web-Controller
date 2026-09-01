@@ -6,9 +6,12 @@ import { ConnectionStatus } from '../../components/ConnectionStatus.js';
 import type { ControlClient } from '../../lib/socket.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
+import { channelTypeColor } from './channel-colors.js';
 import { ChannelStrip } from './ChannelStrip.js';
+import { ControlLock } from './ControlLock.js';
 import { TypeRowToggle } from './TypeRowToggle.js';
 import { useChannelPresence } from './use-channel-presence.js';
+import { useControlLockPreference } from './use-control-lock-preference.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
 
 const SECTION_LABELS: Record<ChannelKind, string> = {
@@ -33,6 +36,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
   );
   const renderedChannels = useChannelPresence(channels);
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
+  const [lockMode, setLockMode] = useControlLockPreference();
 
   return (
     <main className="mixer-shell" data-theme="dark">
@@ -42,7 +46,10 @@ export function MixerPage({ controlClient }: MixerPageProps) {
           <h1>CONTROL DESK</h1>
         </div>
         <ConnectionStatus />
-        <TypeRowToggle enabled={typeRows} onToggle={toggleTypeRows} />
+        <div className="console-preferences">
+          <TypeRowToggle enabled={typeRows} onToggle={toggleTypeRows} />
+          <ControlLock mode={lockMode} onChange={setLockMode} />
+        </div>
         <LoudnessPanel controlClient={controlClient} />
       </header>
 
@@ -59,7 +66,17 @@ export function MixerPage({ controlClient }: MixerPageProps) {
               return null;
             }
             return (
-              <section className="mixer-section" key={kind} aria-labelledby={`section-${kind}`}>
+              <section
+                className="mixer-section"
+                key={kind}
+                aria-labelledby={`section-${kind}`}
+                data-channel-kind={kind}
+                style={
+                  {
+                    '--channel-accent': channelTypeColor(kind),
+                  } as CSSProperties
+                }
+              >
                 <header className="mixer-section__header">
                   <h2 id={`section-${kind}`}>{SECTION_LABELS[kind]}</h2>
                   <span>
@@ -75,6 +92,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
                       key={item.channel.id}
                       item={item}
                       controlClient={controlClient}
+                      lockMode={lockMode}
                       style={{ '--strip-index': index } as CSSProperties}
                     />
                   ))}
