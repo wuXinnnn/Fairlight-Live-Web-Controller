@@ -7,7 +7,9 @@ import type { ControlClient } from '../../lib/socket.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
 import { ChannelStrip } from './ChannelStrip.js';
+import { TypeRowToggle } from './TypeRowToggle.js';
 import { useChannelPresence } from './use-channel-presence.js';
+import { useTypeRowsPreference } from './use-type-row-preference.js';
 
 const SECTION_LABELS: Record<ChannelKind, string> = {
   channel: 'INPUTS',
@@ -30,6 +32,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
     ),
   );
   const renderedChannels = useChannelPresence(channels);
+  const [typeRows, toggleTypeRows] = useTypeRowsPreference();
 
   return (
     <main className="mixer-shell" data-theme="dark">
@@ -39,6 +42,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
           <h1>CONTROL DESK</h1>
         </div>
         <ConnectionStatus />
+        <TypeRowToggle enabled={typeRows} onToggle={toggleTypeRows} />
         <LoudnessPanel controlClient={controlClient} />
       </header>
 
@@ -48,7 +52,7 @@ export function MixerPage({ controlClient }: MixerPageProps) {
           <p>WAITING FOR MIXER SNAPSHOT</p>
         </section>
       ) : (
-        <div className="mixer-bays">
+        <div className={`mixer-bays ${typeRows ? 'is-type-rows' : ''}`}>
           {CHANNEL_KINDS.map((kind) => {
             const group = renderedChannels.filter(({ channel }) => channel.kind === kind);
             if (group.length === 0) {

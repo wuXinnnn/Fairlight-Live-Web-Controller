@@ -1,5 +1,5 @@
 import { DEFAULT_METER_DB } from '@flwc/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useStore } from 'zustand';
 import { meterStore } from '../store/meter-store.js';
 
@@ -33,6 +33,7 @@ interface MeterProps {
 
 export function Meter({ id, label, active }: MeterProps) {
   const rawValue = useStore(meterStore, (state) => state.meters[id] ?? DEFAULT_METER_DB);
+  const clipping = useStore(meterStore, (state) => state.clipping[id] ?? false);
   const value = clampMeterDb(rawValue);
   const currentRef = useRef(value);
   const peakRef = useRef(value);
@@ -67,12 +68,20 @@ export function Meter({ id, label, active }: MeterProps) {
 
   return (
     <div
-      className={`meter meter--${meterLevelClass(value)} ${active ? '' : 'is-frozen'}`}
+      className={`meter meter--${meterLevelClass(value)} ${clipping ? 'is-clipping' : ''} ${active ? '' : 'is-frozen'}`}
       aria-label={`${label} meter`}
+      data-clipping={clipping}
     >
       <div className="meter__well" aria-hidden="true">
         <div className="meter__zones" />
-        <div className="meter__fill" style={{ height: `${meterRatio(value) * 100}%` }} />
+        <div
+          className="meter__fill"
+          style={
+            {
+              '--meter-reveal': `${(1 - meterRatio(value)) * 100}%`,
+            } as CSSProperties
+          }
+        />
         <div className="meter__peak" style={{ bottom: `${meterRatio(peak) * 100}%` }} />
       </div>
       <output className="meter__readout" aria-label={`${label} meter value`}>
