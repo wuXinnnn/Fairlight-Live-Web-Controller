@@ -14,7 +14,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | 覆盖率达标 | 通过 | `apps/web`:语句 95.65%(396/414)、分支 90.73%(186/205)、函数 98.61%(142/144)、行 95.33%(368/386),四项均高于 80%。未改 `packages/shared`。 |
 | 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 40、server 85,合计 168 项通过。 |
 | Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 周期性向 BASS 发送连续 0/0.001dB 帧,浏览器确认正常渐变裁剪 → 整条红色削波 → 电平回落恢复的完整周期。默认混合布局、`TYPE ROWS` 分类换行及刷新持久化均通过;此前推子/ON/reset 往返与断线恢复冒烟继续通过。 |
-| 远端 CI | 通过 | GitHub Actions 在报告提交 `3684d2a` 上全部 2 项检查通过,无失败。 |
+| 远端 CI | 通过 | GitHub Actions 在界面优化报告提交 `fbef4f2` 上全部 3 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
@@ -94,6 +94,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 分支:`cursor/phase-4-frontend-192a`
 
 ```text
+fbef4f2 docs: report Phase 4 interface refinements
 73b51c1 test(web): isolate application entrypoint mount
 87b72f9 test(web): cover meter clipping and layout preference
 6f7f4fc docs: require English frontend interface text
