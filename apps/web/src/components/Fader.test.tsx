@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { levelDbToRatio, ratioToLevelDb } from '../lib/fader-scale.js';
 import { Fader } from './Fader.js';
 
 function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
@@ -14,6 +15,25 @@ function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
   };
   render(<Fader {...props} />);
   return props;
+}
+
+function mockTrackBounds(slider: HTMLElement) {
+  vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 40,
+    bottom: 100,
+    width: 40,
+    height: 100,
+    toJSON: () => ({}),
+  });
+}
+
+function relativeLevel(startValue: number, startY: number, clientY: number, trackHeight = 100) {
+  const nextRatio = levelDbToRatio(startValue) + (startY - clientY) / trackHeight;
+  return Math.round(ratioToLevelDb(nextRatio) * 10) / 10;
 }
 
 describe('Fader', () => {
@@ -34,59 +54,40 @@ describe('Fader', () => {
     expect(props.onCommit).toHaveBeenLastCalledWith(10);
   });
 
-  it('supports track jumps and pointer dragging', () => {
+  it('ignores track clicks and track dragging', () => {
     const props = renderFader();
     const slider = screen.getByRole('slider', { name: 'BASS level' });
-    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
-      x: 0,
-      y: 0,
-      top: 0,
-      left: 0,
-      right: 40,
-      bottom: 100,
-      width: 40,
-      height: 100,
-      toJSON: () => ({}),
-    });
+    mockTrackBounds(slider);
 
     fireEvent.pointerDown(slider, { pointerId: 1, clientY: 0 });
-    expect(props.onInteractionStart).toHaveBeenCalled();
-    expect(props.onValueChange).toHaveBeenLastCalledWith(10);
     fireEvent.pointerMove(slider, { pointerId: 1, clientY: 100 });
-    expect(props.onValueChange).toHaveBeenLastCalledWith(-100);
     fireEvent.pointerUp(slider, { pointerId: 1, clientY: 100 });
-    expect(props.onCommit).toHaveBeenLastCalledWith(-100);
+    expect(props.onInteractionStart).not.toHaveBeenCalled();
+    expect(props.onValueChange).not.toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
   });
 
-  it('grabs the cap without jumping until the pointer actually moves', () => {
+  it('drags the cap from the grab offset without jumping to the pointer', () => {
     const props = renderFader();
     const slider = screen.getByRole('slider', { name: 'BASS level' });
     const cap = slider.querySelector('.fader__cap');
     expect(cap).not.toBeNull();
-    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
-      x: 0,
-      y: 0,
-      top: 0,
-      left: 0,
-      right: 40,
-      bottom: 100,
-      width: 40,
-      height: 100,
-      toJSON: () => ({}),
-    });
+    mockTrackBounds(slider);
 
-    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 48 });
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 30 });
     expect(props.onInteractionStart).not.toHaveBeenCalled();
     expect(props.onValueChange).not.toHaveBeenCalled();
 
-    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 49 });
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 32 });
     expect(props.onValueChange).not.toHaveBeenCalled();
 
-    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 52 });
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 34 });
+    const expected = relativeLevel(-20, 30, 34);
+    expect(expected).not.toBe(Math.round(ratioToLevelDb(1 - 34 / 100) * 10) / 10);
     expect(props.onInteractionStart).toHaveBeenCalledOnce();
-    expect(props.onValueChange).toHaveBeenCalled();
-    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 52 });
-    expect(props.onCommit).toHaveBeenCalled();
+    expect(props.onValueChange).toHaveBeenLastCalledWith(expected);
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 34 });
+    expect(props.onCommit).toHaveBeenLastCalledWith(expected);
   });
 
   it('does not commit when the cap is clicked without dragging', () => {
@@ -101,19 +102,46 @@ describe('Fader', () => {
     expect(props.onCommit).not.toHaveBeenCalled();
   });
 
-  it('returns to unity on a track double-click', () => {
+  it('returns to unity on a cap double-click', () => {
     const props = renderFader();
     const slider = screen.getByRole('slider', { name: 'BASS level' });
-    fireEvent.pointerDown(slider, { pointerId: 1, clientY: 20, detail: 2 });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 48, detail: 2 });
     expect(props.onCommit).toHaveBeenCalledWith(0);
-    fireEvent.doubleClick(slider);
+    fireEvent.doubleClick(cap as Element);
     expect(props.onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it('returns to unity from a double-click fallback', () => {
+  it('returns to unity when the cap is clicked twice without a native click count', () => {
     const props = renderFader();
-    fireEvent.doubleClick(screen.getByRole('slider', { name: 'BASS level' }));
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 48, detail: 1 });
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 48 });
+    expect(props.onCommit).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 2, clientY: 48, detail: 1 });
     expect(props.onCommit).toHaveBeenCalledWith(0);
+  });
+
+  it('returns to unity from a cap double-click fallback', () => {
+    const props = renderFader();
+    const cap = screen.getByRole('slider', { name: 'BASS level' }).querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    fireEvent.doubleClick(cap as Element);
+    expect(props.onCommit).toHaveBeenCalledWith(0);
+  });
+
+  it('does not return to unity from a track double-click', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    fireEvent.pointerDown(slider, { pointerId: 1, clientY: 20, detail: 2 });
+    fireEvent.doubleClick(slider);
+    expect(props.onInteractionStart).not.toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
   });
 
   it('disables pointer and keyboard interaction while unavailable', () => {
@@ -126,6 +154,7 @@ describe('Fader', () => {
     if (cap !== null) {
       fireEvent.pointerDown(cap, { pointerId: 2, clientY: 10 });
       fireEvent.pointerMove(slider, { pointerId: 2, clientY: 40 });
+      fireEvent.doubleClick(cap);
     }
     expect(props.onValueChange).not.toHaveBeenCalled();
     expect(slider).toHaveAttribute('aria-disabled', 'true');
@@ -187,5 +216,29 @@ describe('Fader', () => {
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
     expect(props.onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('cancels readout editing when the cap is dragged so the draft cannot overwrite the drag', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    mockTrackBounds(slider);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit BASS level' }));
+    const input = screen.getByRole('spinbutton', { name: 'BASS exact level' });
+    fireEvent.change(input, { target: { value: '-5' } });
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 30 });
+    fireEvent.blur(input);
+    expect(screen.queryByRole('spinbutton', { name: 'BASS exact level' })).not.toBeInTheDocument();
+    expect(props.onCommit).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 40 });
+    const expected = relativeLevel(-20, 30, 40);
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 40 });
+    expect(props.onCommit).toHaveBeenCalledWith(expected);
+    expect(props.onCommit).not.toHaveBeenCalledWith(-5);
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
   });
 });

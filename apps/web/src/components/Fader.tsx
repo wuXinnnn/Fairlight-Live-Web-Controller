@@ -1,5 +1,6 @@
 import { LEVEL_DB_MAX, LEVEL_DB_MIN } from '@flwc/shared';
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -29,10 +30,22 @@ interface FaderProps {
 }
 
 const CAP_DRAG_THRESHOLD_PX = 3;
+const CAP_DOUBLE_CLICK_MS = 500;
+const CAP_DOUBLE_CLICK_Y_PX = 12;
 const UNITY_LEVEL_DB = 0;
 
 function isCapTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('.fader__cap') !== null;
+}
+
+function levelFromRelativePointer(
+  startRatio: number,
+  startY: number,
+  clientY: number,
+  trackHeight: number,
+): number {
+  const nextRatio = startRatio + (startY - clientY) / trackHeight;
+  return Math.round(ratioToLevelDb(nextRatio) * 10) / 10;
 }
 
 export function Fader({
@@ -46,21 +59,26 @@ export function Fader({
 }: FaderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const latestValueRef = useRef(value);
-  const capGrabRef = useRef<{ startY: number; armed: boolean } | undefined>(undefined);
+  const capGrabRef = useRef<{ startY: number; startRatio: number; armed: boolean } | undefined>(
+    undefined,
+  );
   const unityFromPointerRef = useRef(false);
+  const lastCapPointerDownRef = useRef<{ at: number; y: number } | undefined>(undefined);
+  const skipInputCommitRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [inputInvalid, setInputInvalid] = useState(false);
 
-  const valueFromPointer = (clientY: number): number => {
-    const bounds = trackRef.current?.getBoundingClientRect();
-    if (bounds === undefined || bounds.height === 0) {
-      return value;
+  useEffect(() => {
+    if (!dragging) {
+      return;
     }
-    const ratio = 1 - (clientY - bounds.top) / bounds.height;
-    return Math.round(ratioToLevelDb(ratio) * 10) / 10;
-  };
+    document.documentElement.classList.add('fader-cap-dragging');
+    return () => {
+      document.documentElement.classList.remove('fader-cap-dragging');
+    };
+  }, [dragging]);
 
   const applyExactValue = (nextValue: number) => {
     onInteractionStart();
@@ -68,29 +86,52 @@ export function Fader({
     onCommit(nextValue);
   };
 
+  const isCapDoubleClick = (event: PointerEvent<HTMLDivElement>): boolean => {
+    if (event.detail >= 2) {
+      return true;
+    }
+    const lastClick = lastCapPointerDownRef.current;
+    return (
+      lastClick !== undefined &&
+      performance.now() - lastClick.at <= CAP_DOUBLE_CLICK_MS &&
+      Math.abs(event.clientY - lastClick.y) <= CAP_DOUBLE_CLICK_Y_PX
+    );
+  };
+
+  const cancelEditing = () => {
+    if (!editing) {
+      return;
+    }
+    skipInputCommitRef.current = true;
+    setEditing(false);
+    setInputInvalid(false);
+  };
+
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (disabled) {
+    if (disabled || !isCapTarget(event.target)) {
       return;
     }
     event.preventDefault();
-    if (event.detail >= 2 && !isCapTarget(event.target)) {
+    cancelEditing();
+    if (isCapDoubleClick(event)) {
+      lastCapPointerDownRef.current = undefined;
       unityFromPointerRef.current = true;
       applyExactValue(UNITY_LEVEL_DB);
       return;
     }
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    if (isCapTarget(event.target)) {
-      capGrabRef.current = { startY: event.clientY, armed: true };
-      latestValueRef.current = value;
-      setDragging(true);
-      return;
+    lastCapPointerDownRef.current = { at: performance.now(), y: event.clientY };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic or already-released pointers have no capture target.
     }
-    capGrabRef.current = undefined;
+    capGrabRef.current = {
+      startY: event.clientY,
+      startRatio: levelDbToRatio(value),
+      armed: true,
+    };
+    latestValueRef.current = value;
     setDragging(true);
-    onInteractionStart();
-    const nextValue = valueFromPointer(event.clientY);
-    latestValueRef.current = nextValue;
-    onValueChange(nextValue);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -98,14 +139,26 @@ export function Fader({
       return;
     }
     const capGrab = capGrabRef.current;
-    if (capGrab?.armed === true) {
+    if (capGrab === undefined) {
+      return;
+    }
+    if (capGrab.armed === true) {
       if (Math.abs(event.clientY - capGrab.startY) < CAP_DRAG_THRESHOLD_PX) {
         return;
       }
       capGrab.armed = false;
       onInteractionStart();
     }
-    const nextValue = valueFromPointer(event.clientY);
+    const bounds = trackRef.current?.getBoundingClientRect();
+    if (bounds === undefined || bounds.height === 0) {
+      return;
+    }
+    const nextValue = levelFromRelativePointer(
+      capGrab.startRatio,
+      capGrab.startY,
+      event.clientY,
+      bounds.height,
+    );
     latestValueRef.current = nextValue;
     onValueChange(nextValue);
   };
@@ -114,7 +167,11 @@ export function Fader({
     if (!dragging) {
       return;
     }
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Capture may already have been released.
+    }
     const skippedCapCommit = capGrabRef.current?.armed === true;
     capGrabRef.current = undefined;
     setDragging(false);
@@ -124,7 +181,7 @@ export function Fader({
   };
 
   const handleDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (disabled || isCapTarget(event.target)) {
+    if (disabled || !isCapTarget(event.target)) {
       return;
     }
     event.preventDefault();
@@ -132,6 +189,7 @@ export function Fader({
       unityFromPointerRef.current = false;
       return;
     }
+    cancelEditing();
     applyExactValue(UNITY_LEVEL_DB);
   };
 
@@ -166,6 +224,7 @@ export function Fader({
     if (disabled) {
       return;
     }
+    skipInputCommitRef.current = false;
     setDraftValue(clampLevelDb(value).toFixed(1));
     setInputInvalid(false);
     setEditing(true);
@@ -205,6 +264,14 @@ export function Fader({
 
   const handleInputFocus = (event: FocusEvent<HTMLInputElement>) => {
     event.currentTarget.select();
+  };
+
+  const handleInputBlur = () => {
+    if (skipInputCommitRef.current) {
+      skipInputCommitRef.current = false;
+      return;
+    }
+    commitInput(true);
   };
 
   const clampedValue = clampLevelDb(value);
@@ -265,9 +332,7 @@ export function Fader({
             onFocus={handleInputFocus}
             onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
-            onBlur={() => {
-              commitInput(true);
-            }}
+            onBlur={handleInputBlur}
           />
         ) : (
           <button

@@ -600,7 +600,7 @@ button {
   grid-row: 1;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
-  cursor: ns-resize;
+  user-select: none;
   touch-action: none;
 }
 
@@ -633,6 +633,10 @@ button {
   background: rgb(239 169 40 / 55%);
 }
 
+.fader__track[aria-disabled='true'] .fader__cap {
+  cursor: not-allowed;
+}
+
 .fader__cap {
   position: absolute;
   z-index: 2;
@@ -641,6 +645,7 @@ button {
   width: 2.05rem;
   height: 1.85rem;
   pointer-events: auto;
+  cursor: ns-resize;
   border: 1px solid #555b67;
   background: linear-gradient(180deg, #484d57 0 15%, #252931 17% 82%, #15181d 84%), #252931;
   box-shadow:
@@ -663,12 +668,26 @@ button {
   box-shadow: 0 1px #0a0b0e;
 }
 
+.fader__cap:hover,
 .fader.is-dragging .fader__cap {
   border-color: #9b8357;
   box-shadow:
     0 0.55rem 0.8rem rgb(0 0 0 / 62%),
     0 0 0 1px rgb(239 169 40 / 18%);
+}
+
+.fader.is-dragging,
+.fader.is-dragging * {
+  cursor: ns-resize;
+}
+
+.fader.is-dragging .fader__cap {
   transition: none;
+}
+
+html.fader-cap-dragging,
+html.fader-cap-dragging * {
+  cursor: ns-resize !important;
 }
 
 .fader.is-pending .fader__readout {
