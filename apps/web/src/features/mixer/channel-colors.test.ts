@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNEL_PALETTE, CHANNEL_TYPE_COLORS, channelTypeColor } from './channel-colors.js';
+import {
+  CHANNEL_PALETTE,
+  CHANNEL_TYPE_COLORS,
+  channelColor,
+  channelTypeColor,
+} from './channel-colors.js';
 
 describe('channel colors', () => {
   it('maps every channel kind to the Fairlight default palette', () => {
@@ -17,5 +22,7 @@ describe('channel colors', () => {
     expect(channelTypeColor('aux')).toBe(CHANNEL_PALETTE.navy);
     expect(channelTypeColor('mixm')).toBe(CHANNEL_PALETTE.lime);
     expect(channelTypeColor('mtx')).toBe(CHANNEL_PALETTE.purple);
+    expect(channelColor('main')).toBe(CHANNEL_PALETTE.red);
+    expect(channelColor('main', 'teal')).toBe(CHANNEL_PALETTE.teal);
   });
 });
