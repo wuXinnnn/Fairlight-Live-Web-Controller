@@ -182,8 +182,7 @@ describe('mixer socket integration', () => {
     await screen.findByRole('heading', { name: 'BASS' });
 
     expect(screen.getByLabelText('BASS meter value')).toHaveTextContent(/MTR\s*-30.0\s*dB/);
-    expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-12.0');
-    expect(screen.getByLabelText('BASS level value')).not.toHaveTextContent('dB');
+    expect(screen.getByLabelText('BASS level value')).toHaveTextContent(/-12.0\s*dB/);
     expect(screen.queryByText('LVL')).not.toBeInTheDocument();
     expect(
       container

@@ -232,6 +232,7 @@ export function Fader({
             {formatLevelDb(clampedValue)}
           </button>
         )}
+        <small>dB</small>
       </output>
     </div>
   );
