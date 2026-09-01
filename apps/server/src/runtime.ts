@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { ConnectionPutBody, ConnectionStatus, LoudnessState } from '@flwc/shared';
+import type { View, ViewWriteBody } from '@flwc/shared';
 import { ConfigStore } from './config/config-store.js';
 import { EmberService } from './ember/ember-service.js';
 import {
@@ -25,6 +27,13 @@ export interface MixerRuntimeOptions {
   createClient?: EmberClientFactory;
   meterIntervalMs?: number;
   onMeterFrame?: MeterHub['onFrame'];
+}
+
+export class ViewNotFoundError extends Error {
+  constructor(id: string) {
+    super(`View "${id}" was not found`);
+    this.name = 'ViewNotFoundError';
+  }
 }
 
 export class MixerRuntime {
@@ -84,6 +93,46 @@ export class MixerRuntime {
       ember: endpoint,
     }));
     await this.ember.configure(endpoint.host, endpoint.port);
+  }
+
+  listViews(): View[] {
+    return this.config.snapshot.views;
+  }
+
+  async createView(body: ViewWriteBody): Promise<View> {
+    const view: View = { id: randomUUID(), ...body };
+    await this.config.update((current) => ({
+      ...current,
+      views: [...current.views, view],
+    }));
+    return view;
+  }
+
+  async updateView(id: string, body: ViewWriteBody): Promise<View> {
+    const view: View = { id, ...body };
+    await this.config.update((current) => {
+      const index = current.views.findIndex((candidate) => candidate.id === id);
+      if (index < 0) {
+        throw new ViewNotFoundError(id);
+      }
+      const views = [...current.views];
+      views[index] = view;
+      return { ...current, views };
+    });
+    return view;
+  }
+
+  async deleteView(id: string): Promise<void> {
+    await this.config.update((current) => {
+      const index = current.views.findIndex((candidate) => candidate.id === id);
+      if (index < 0) {
+        throw new ViewNotFoundError(id);
+      }
+      return {
+        ...current,
+        views: current.views.filter((candidate) => candidate.id !== id),
+      };
+    });
   }
 
   async setLevel(id: string, levelDb: number): Promise<void> {
