@@ -83,7 +83,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   useEffect(() => {
     const current = views.find((view) => view.id === selectedId);
     if (current !== undefined) {
-      setDraft(copyView(current));
+      setDraft((existing) => (existing?.id === current.id ? existing : copyView(current)));
       return;
     }
     const fallback = views[0] ?? null;
