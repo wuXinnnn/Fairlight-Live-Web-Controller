@@ -13,21 +13,21 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | 对本地真实 Fairlight 手动验收 | 移交用户 | 云端未连接真实设备。可直接执行的安全验收清单见第 4 节。 |
 | 覆盖率达标 | 通过 | `apps/web`:语句 95.26%(463/486)、分支 90.94%(211/232)、函数 98.13%(158/161)、行 94.96%(434/457),四项均高于 80%。未改 `packages/shared`。 |
 | 全量质量门 | 通过 | 串行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。全仓测试:shared 24、test-utils 19、web 54、server 85,合计 182 项通过。 |
-| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、全宽 ON + meter/fader 双列、MTR 带框与 level 无框读数、meter 淡色三段空槽、BASS 精确输入 -100/+10 时推子帽自然对齐两端且不碰读数并恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化;此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
-| 远端 CI | 通过 | GitHub Actions 在最终 level 间距报告提交 `5e466e2` 上全部 3 项检查通过,无失败。 |
+| Mock Provider 端到端冒烟 | 通过 | 全量树 dump Mock 以 80ms 推送 meter/loudness;`pnpm dev` 页面显示 9 INPUTS + 1 MAIN + 10 AUX。安全 Mock `127.0.0.1:9104` 验证类型 accent、自然折行行距与标题间隔、全宽 ON + meter/fader 双列、MTR 带框与 level 无框读数、meter 淡色三段空槽、BASS 精确输入 -100/+10 时推子帽自然对齐两端且不碰读数并恢复原值、FADERS/ALL/UNLOCKED 直接切换和刷新持久化。最终安全脚本另以 ack 成功确认 BASS `0.0 → -18.9 → 0.0`,浏览器确认长负数与 dB 单位间距无重叠;干净录屏为 `/opt/cursor/artifacts/phase4_clean_fader_readout_demo.mp4`。此前正常渐变裁剪 → 整条红色削波 → 电平回落恢复、推子/ON/reset 往返与断线恢复冒烟继续通过。 |
+| 远端 CI | 通过 | GitHub Actions 在最终执行报告提交 `bbeceb9` 上全部 3 项检查通过,无失败。 |
 
 ## 3. 实现摘要
 
 - **socket 与状态层**:`lib/socket.ts` 使用同源 Socket.IO,Vite 将 `/socket.io` 代理至后端。所有事件名、schema、payload 与 ack 使用 `@flwc/shared`;非法下行数据拒绝入库并显示非阻断提示。`mixerStore` 负责快照整体替换、patch upsert/remove 合成及 socket/Ember 双连接态;`meterStore` 以快照播种并增量合并可丢帧的 meter frame。
 - **重连恢复**:socket 断开或 Ember 非 `connected` 时统一禁用控制并冻结表值。重连后的 `mixer:snapshot` 替换全部通道并清理 pending,避免旧乐观状态残留。
-- **推子与精确输入**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;推子帽由 2.7rem 收窄到 2.05rem,条带宽度为 9.25rem。轨道上下各缩短半个推子帽高度,推子仍使用完整 0–100% 行程,不做 clamp 限位;因此 -∞/+10 时帽边自然与 meter 下/上端对齐。支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。无标题 level 数值点击后变为 0.1dB step 输入,Enter/合法失焦提交、Escape 取消,空值/非数字/越界不发送。拖动与精确输入均沿用本地乐观值、ack 收敛和失败回滚。
+- **推子与精确输入**:-100…+10 dB 分段线性行程,+10/0/-10/-20/-40/-60/-∞ 主刻度;推子帽由 2.7rem 收窄到 2.05rem,条带宽度为 9.25rem。轨道上下各缩短半个推子帽高度,推子帽位置使用完整 0–100% 行程且不做额外视觉 clamp 限位;控制值仍按协议范围钳制在 -100…+10dB,因此 -∞/+10 时帽边自然与 meter 下/上端对齐。支持轨道点击、指针拖动、方向键 1dB、PageUp/PageDown 10dB、Home/End。无标题 level 数值点击后变为 0.1dB step 输入,Enter/合法失焦提交、Escape 取消,空值/非数字/越界不发送。拖动与精确输入均沿用本地乐观值、ack 收敛和失败回滚。
 - **ON 开关**:以通道内容区全宽位于每个条带顶部,其下才是 meter/fader 左右双列。展示层严格使用 `on = !muted`,状态源保持 `muted`;乐观更新后发送 `control:set-on`,失败恢复基线并提示错误。
 - **电平表**:显示范围 -60…0dB,越界仅在展示层钳制;空槽始终显示淡色绿/黄/红三段背景,前景使用全高固定渐变和 `clip-path` 揭示,因此只有达到 -18/-6dB 阈值时才露出实色黄/红区,不会把三色压缩到任意当前高度。连续两次 frame entry 均为 0dB(含钳制为 0 的正越界值)后整条显示红色削波警告,下一次低于 0dB 时解除。峰值保持 1500ms 后回到当前读数。每个 meter 叶子只订阅自己的 meter/clipping selector,响度区单独订阅 loudness,高频帧不经过混音页组件树。
 - **响度区**:显示 integrated LUFS(-100…18)与 true-peak dBTP(-60…0)。reset 首次点击进入 3 秒 `CONFIRM RESET`,第二次才发送命令,ack 结果使用非阻断提示。
 - **读数与对齐**:ON 下方的 meter 与 fader 顶部对齐。MTR 保留带框、tabular number 的双行 dock;level 取消标题与外框,数值以 0.86rem 字号居中在轨道列,dB 单位从右侧标尺列起点向右偏移 0.38rem,与 `-18.9` 等长负数保持适中间距且不裁剪。
 - **通道分区与布局**:按 `channel/main/sub/aux/mixm/mtx` 固定顺序渲染,空分区不出现。默认使用跨类型 flex 流并以 0.9rem 行距自然折行,第二类起标题列增加 0.85rem 左侧间隔;标题列与该类首通道组成不可拆分 lead,避免标题孤立在上一行。某类型不足一行时后续类型进入剩余空间。`TYPE ROWS` 开启后每类以全宽标题强制从新行开始,设置保存于 `localStorage` 键 `flwc.layout.typeRows`。通道删除保留 180ms exit presence 后卸载,新增使用短淡入/位移,不整页闪烁。
 - **类型颜色**:统一 palette 映射为 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple,应用于标题、条带顶边、名称短线和轻背景 tint,meter 信号色保持独立。每个 section 通过 `--channel-accent` 注入颜色,为 Phase 5 的 view 单通道 palette 覆盖保留入口。
-- **控制锁**:`CONTROL LOCK` 可直接选择 UNLOCKED/FADERS/ALL,保存于 `flwc.controls.lockMode.v1`。FADERS 禁用拖动、键盘和 LVL 输入但保留 ON;ALL 同时禁用 ON;meter、响度与 reset 不受影响。断线与 exiting 禁用优先于锁档。
+- **控制锁**:`CONTROL LOCK` 可直接选择 UNLOCKED/FADERS/ALL,保存于 `flwc.controls.lockMode.v1`。FADERS 禁用拖动、键盘和 level 精确输入但保留 ON;ALL 同时禁用 ON;meter、响度与 reset 不受影响。断线与 exiting 禁用优先于锁档。
 - **固定深色主题与动效**:全局 `color-scheme: dark`,不读取浅色偏好、不维护主题状态、不提供切换入口。视觉采用暖石墨机架、琥珀状态灯、Barlow Condensed 与 IBM Plex Mono 本地字体。通用动效为 140–200ms,拖动禁用补间以保持跟手,meter 使用 45–60ms 线性反馈;reduced-motion 将非必要动画降至 1ms。
 - **界面语言**:除 Fairlight/应用运行时带入的通道名称等动态文本外,全部固定 UI 文本使用英文;约束已同步至项目规则、规范、架构和阶段提示词。
 
@@ -38,12 +38,15 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 1. 在仓库根目录运行 `pnpm install`,再运行 `pnpm dev`。
 2. 用 REST 配置真实 Ember host/port,等待 `GET /api/v1/connection` 返回 `connected`。
 3. 只通过 `http://localhost:5173` 打开页面(不要使用 `127.0.0.1:5173`)。
-4. 确认顶部显示 `MIXER ONLINE`;页面按 INPUTS/MAIN/AUX 等实际存在类型分区,名称与 Fairlight 一致且不显示 Ember 编号。
-5. 对照 Fairlight 软件观察各通道 meter、integrated LUFS 与 true-peak dBTP,确认读数和变化方向一致。
-6. 记录上述四个允许通道之一的原始推子值,小幅拖动或键盘微调,确认页面本地回显流畅且 Fairlight 值一致,随后精确恢复原值。
-7. **不要在真机测试 ON/mute。**
-8. 如明确接受响度归零,点击 RESET 后确认首次仅出现 `CONFIRM RESET`,第二次才复位;否则跳过该步骤。
-9. 可在不写入参数的前提下短暂断开网络或停止后端,确认控件禁用和 meter 停走;恢复后确认新快照自动恢复。
+4. 确认顶部显示 `MIXER ONLINE`;页面按 INPUTS/MAIN/AUX 等实际存在类型排序,名称与 Fairlight 一致且不显示 Ember 编号。检查类型 accent、标题与首通道不拆行、自然折行行距、全宽 ON、meter/fader 双列及无框 level 读数均正确。
+5. 对照 Fairlight 软件观察各通道 meter、integrated LUFS 与 true-peak dBTP,确认读数和变化方向一致;检查 meter 空槽淡色三段背景、前景阈值颜色与峰值保持。
+6. 切换 `TYPE ROWS`,确认分类换行与跨类型流式布局均正确;刷新页面确认设置持久化,最后恢复所需状态。
+7. 依次选择 FADERS/ALL/UNLOCKED,确认 FADERS 仅禁用推子与 level 精确输入、ALL 进一步禁用 ON、UNLOCKED 恢复。**只检查禁用状态,不要在真机点击 ON。**
+8. 记录上述四个允许通道之一的原始推子值,小幅拖动或键盘微调,确认页面本地回显流畅且 Fairlight 值一致,随后精确恢复原值。
+9. 仅对同一个允许通道点击无框 level 数值,输入一个接近原值且在 -100…+10dB 内的小幅变化,确认写入与推子位置一致后精确恢复原值;检查长负数与 dB 单位不重叠。不要在真机执行 -100/+10 端点演示。
+10. **不要在真机测试 ON/mute,不得修改其它通道或参数。**
+11. 如明确接受响度归零,点击 RESET 后确认首次仅出现 `CONFIRM RESET`,第二次才复位;否则跳过该步骤。
+12. 可在不写入参数的前提下短暂断开网络或停止后端,确认控件禁用和 meter 停走;恢复后确认新快照自动恢复。
 
 ## 5. 交付物清单
 
@@ -63,6 +66,7 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 | `apps/web/src/styles.css` | 固定深色设计 token、工业调音台布局与动效 |
 | `apps/web/src/**/*.test.*` | 纯函数、store 与组件单元测试 |
 | `apps/web/tests/mixer.integration.test.tsx` | fake socket 端到端前端状态与控制集成测试 |
+| `/opt/cursor/artifacts/phase4_clean_fader_readout_demo.mp4` | 最终全宽 ON、自然推子行程、淡色 meter 背景及 `-18.9 dB` 间距演示 |
 | `AGENTS.md`、`CLAUDE.md`、`.cursor/rules/project.mdc`、`docs/` 规范 | 固定 UI 文本使用英文等项目开发要求 |
 
 ## 6. 依赖清单与许可确认
@@ -97,9 +101,10 @@ Phase 4 云端范围已全部完成。前端已接入 socket.io 与 zustand,实�
 
 ## 9. 提交记录
 
-分支:`cursor/phase-4-frontend-192a`
+分支:`cursor/phase-4-frontend-192a`。以下记录截至本报告修订前,不包含承载本次报告文字修订的提交。
 
 ```text
+bbeceb9 docs: record fader readout CI result
 5e466e2 docs: record final level unit spacing
 8d58e7c fix(web): fine-tune level unit spacing
 293d7cd docs: record final fader readout layout
