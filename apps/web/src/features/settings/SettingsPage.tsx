@@ -81,14 +81,15 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   const [confirmCleanup, setConfirmCleanup] = useState(false);
 
   useEffect(() => {
-    if (selected !== null) {
-      setDraft(copyView(selected));
+    const current = views.find((view) => view.id === selectedId);
+    if (current !== undefined) {
+      setDraft(copyView(current));
       return;
     }
     const fallback = views[0] ?? null;
     setSelectedId(fallback?.id ?? null);
     setDraft(fallback === null ? null : copyView(fallback));
-  }, [selected, views]);
+  }, [selectedId, views]);
 
   useEffect(() => {
     setConfirmDelete(false);
@@ -111,6 +112,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     if (created !== null) {
       setNewName('');
       setSelectedId(created.id);
+      setDraft(copyView(created));
     }
   };
 
@@ -273,7 +275,10 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                   type="button"
                   className={view.id === selectedId ? 'is-selected' : ''}
                   key={view.id}
-                  onClick={() => setSelectedId(view.id)}
+                  onClick={() => {
+                    setSelectedId(view.id);
+                    setDraft(copyView(view));
+                  }}
                 >
                   <span>{(index + 1).toString().padStart(2, '0')}</span>
                   <strong>{view.name}</strong>
