@@ -44,17 +44,17 @@ describe('mixer store', () => {
 
     replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' });
     expect(mixerStore.getState().channels).toEqual({});
-    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
     expect(controlsAvailable(mixerStore.getState())).toBe(false);
   });
 
-  it('requires a fresh connected snapshot after Ember becomes unavailable', () => {
+  it('distinguishes an initial disconnected snapshot from a reconnect', () => {
+    replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'disconnected' });
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
     replaceMixerSnapshot(snapshot);
     setEmberStatus('reconnecting');
-    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
     setEmberStatus('connected');
-    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
-    replaceMixerSnapshot(snapshot);
     expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
   });
 

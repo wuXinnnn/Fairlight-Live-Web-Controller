@@ -57,23 +57,20 @@ export function setSocketConnected(connected: boolean): void {
 }
 
 export function setEmberStatus(status: ConnectionStatus): void {
-  mixerStore.setState((state) => ({
-    emberStatus: status,
-    channelInventoryLoaded: status === 'connected' ? state.channelInventoryLoaded : false,
-  }));
+  mixerStore.setState({ emberStatus: status });
 }
 
 export function replaceMixerSnapshot(snapshot: MixerSnapshot): void {
   const channels = Object.fromEntries(snapshot.channels.map((channel) => [channel.id, channel]));
-  mixerStore.setState({
+  mixerStore.setState((state) => ({
     channels,
     channelOrder: snapshot.channels.map((channel) => channel.id),
     loudness: snapshot.loudness,
     emberStatus: snapshot.connection,
-    channelInventoryLoaded: snapshot.connection === 'connected',
+    channelInventoryLoaded: state.channelInventoryLoaded || snapshot.connection === 'connected',
     pendingLevels: {},
     pendingOns: {},
-  });
+  }));
 }
 
 export function applyMixerPatch(patch: MixerPatch): void {
