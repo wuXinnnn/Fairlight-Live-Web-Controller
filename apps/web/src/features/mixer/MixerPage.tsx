@@ -32,15 +32,13 @@ interface MixerPageProps {
 }
 
 export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
-  const { channels, channelInventoryLoaded } = useStore(
+  const channels = useStore(
     mixerStore,
-    useShallow((state) => ({
-      channels: state.channelOrder
-        .map((id) => state.channels[id])
-        .filter((channel) => channel !== undefined),
-      channelInventoryLoaded: state.channelInventoryLoaded,
-    })),
+    useShallow((state) =>
+      state.channelOrder.map((id) => state.channels[id]).filter((channel) => channel !== undefined),
+    ),
   );
+  const channelInventoryLoaded = useStore(mixerStore, (state) => state.channelInventoryLoaded);
   const { views, activeViewId } = useStore(
     viewStore,
     useShallow((state) => ({ views: state.views, activeViewId: state.activeViewId })),
