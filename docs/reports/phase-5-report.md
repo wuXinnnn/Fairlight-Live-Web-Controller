@@ -12,7 +12,7 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 | 颜色配置与默认回退 | 通过 | shared 校验六个 palette key 且 `color` 可选;web 单元与集成测试覆盖六类默认色、自定义覆盖、清除回退和非法 key 拒绝。 |
 | 失配、树变化与主动清理 | 通过 | web 集成测试覆盖引用缺失后的 `lastKnownName` 占位、正常通道继续可控、patch 移除后延迟切换为占位、二次确认清理只移除失效引用并保持有效顺序;首个已连接快照到达前保持等待态且禁止清理,避免把尚未加载的树误判为全量失配。 |
 | 空 View、空配置、激活态与排序 | 通过 | 零 View 时 `All Channels` 正常显示;零通道 View 显示独立空态;激活 id 写入 `localStorage`,无效或已删除 id 回退全部通道;View 模式严格按持久化引用顺序平铺。 |
-| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 93.57%、分支 83.68%、函数 97.01%、行 93.60%;`apps/web`:语句 95.40%、分支 89.56%、函数 97.24%、行 95.12%。 |
+| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 93.57%、分支 83.68%、函数 97.01%、行 93.60%;`apps/web`:语句 95.14%、分支 89.11%、函数 97.24%、行 94.85%。 |
 | 全量质量门 | 通过 | 串行执行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。shared 26、test-utils 19、server 92、web 75,共 212 项测试通过;Vite 生产构建成功。 |
 | Mock Provider 端到端冒烟 | 通过 | Mock Provider 安全运行于 `127.0.0.1:9100`,`GET /api/v1/connection` 返回 `connected`;浏览器完成 Recovery Test 失配占位与二次确认清理、创建 Broadcast Desk、勾选 BASS/MIC-REVERB、排序、配色、改名 Live Desk、保存并返回主页切换。最终仅按 BASS/MIC-REVERB 顺序显示红/青条带。全过程未触碰 ON 或推子。证据:`/opt/cursor/artifacts/phase5_views_configuration_walkthrough.mp4`。 |
 | 远端 CI | 通过 | 功能提交 `74f63eb` 对应 PR checks 共 2 项均成功;最终报告提交继续使用同一流水线确认。 |
