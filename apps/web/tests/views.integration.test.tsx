@@ -1,5 +1,5 @@
 import { SOCKET_EVENTS, type MixerSnapshot } from '@flwc/shared';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
@@ -55,7 +55,8 @@ describe('views integration', () => {
       {
         id: 'startup',
         name: 'Startup',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
+        groups: [],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -92,7 +93,8 @@ describe('views integration', () => {
       {
         id: 'reconnect',
         name: 'Reconnect',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
+        groups: [],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -131,7 +133,8 @@ describe('views integration', () => {
       {
         id: 'handshake',
         name: 'Handshake',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
+        groups: [],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -192,10 +195,11 @@ describe('views integration', () => {
         id: 'foh',
         name: 'FOH',
         channels: [
-          { channelId: 'main/1', lastKnownName: 'MAIN', color: 'purple' },
-          { channelId: 'channel/404', lastKnownName: 'GUEST' },
-          { channelId: 'channel/1', lastKnownName: 'BASS' },
+          { kind: 'main', name: 'MAIN', channelId: 'main/1', color: 'purple' },
+          { kind: 'channel', name: 'GUEST', channelId: 'channel/404' },
+          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
         ],
+        groups: [],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -289,9 +293,10 @@ describe('views integration', () => {
         body: {
           name: 'Studio',
           channels: [
-            { channelId: 'main/1', lastKnownName: 'MAIN' },
-            { channelId: 'channel/1', lastKnownName: 'BASS', color: 'red' },
+            { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+            { kind: 'channel', name: 'BASS', channelId: 'channel/1', color: 'red' },
           ],
+          groups: [],
         },
       });
     });
@@ -312,9 +317,10 @@ describe('views integration', () => {
         id: 'cleanup',
         name: 'Cleanup',
         channels: [
-          { channelId: 'channel/1', lastKnownName: 'BASS' },
-          { channelId: 'channel/404', lastKnownName: 'GUEST', color: 'teal' },
+          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+          { kind: 'channel', name: 'GUEST', channelId: 'channel/404', color: 'teal' },
         ],
+        groups: [],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -340,7 +346,7 @@ describe('views integration', () => {
       expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(1);
     });
     expect(viewsClient.calls.find((call) => call.method === 'update')?.body?.channels).toEqual([
-      { channelId: 'channel/1', lastKnownName: 'BASS' },
+      { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
     ]);
 
     fireEvent.click(screen.getByRole('button', { name: 'DELETE VIEW' }));
@@ -354,7 +360,9 @@ describe('views integration', () => {
 
   it('handles empty views and configuration failures without hiding all-channel mode', async () => {
     const socket = new FakeSocket();
-    const viewsClient = new FakeViewsClient([{ id: 'empty', name: 'Empty', channels: [] }]);
+    const viewsClient = new FakeViewsClient([
+      { id: 'empty', name: 'Empty', channels: [], groups: [] },
+    ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('option', { name: 'Empty' });
@@ -377,5 +385,193 @@ describe('views integration', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Configuration service offline');
+  });
+
+  it('matches view references by kind and name after channels are renumbered', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'renumbered',
+        name: 'Renumbered',
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/9' }],
+        groups: [],
+      },
+    ]);
+    render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Renumbered' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'renumbered' },
+    });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_PATCH, {
+      upserts: [{ ...snapshot.channels[0], name: 'BASS DI' }],
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText('BASS missing channel')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('slider', { name: 'BASS DI level' })).not.toBeInTheDocument();
+  });
+
+  it('groups channels in the configuration page and renders group sections', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'grouped',
+        name: 'Grouped',
+        channels: [
+          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+          { kind: 'aux', name: 'FX', channelId: 'aux/1' },
+        ],
+        groups: [],
+      },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Grouped' });
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    await screen.findByRole('checkbox', { name: 'BASSINPUT' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADD GROUP' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a group name.');
+    fireEvent.change(screen.getByLabelText('NEW GROUP'), { target: { value: 'Rhythm' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ADD GROUP' }));
+    expect(screen.getByRole('textbox', { name: 'Group 1 name' })).toHaveValue('Rhythm');
+    expect(screen.getByText('ASSIGN CHANNELS BELOW')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move group Rhythm up' })).toBeDisabled();
+
+    const bassGroup = screen.getByRole('combobox', { name: 'BASS group' });
+    const groupId = within(bassGroup).getByRole('option', { name: 'Rhythm' }).getAttribute('value');
+    expect(groupId).not.toBeNull();
+    fireEvent.change(bassGroup, { target: { value: groupId } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'MAIN group' }), {
+      target: { value: groupId },
+    });
+    const block = container.querySelector<HTMLElement>(`[data-view-group-id="${groupId}"]`);
+    expect(block).not.toBeNull();
+    const memberNames = () =>
+      [...(block?.querySelectorAll('.channel-order-row strong') ?? [])].map(
+        (element) => element.textContent,
+      );
+    expect(memberNames()).toEqual(['BASS', 'MAIN']);
+    expect(block).toHaveTextContent('02 CH');
+    expect(screen.getByRole('combobox', { name: 'MAIN group' })).toHaveValue(groupId);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move MAIN up' }));
+    expect(memberNames()).toEqual(['MAIN', 'BASS']);
+    expect(container.querySelector('[data-ordered-channel-name="MAIN"]')).toHaveAttribute(
+      'data-moved',
+      'up',
+    );
+    expect(screen.getByRole('button', { name: 'Move MAIN up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move BASS down' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move group Rhythm up' }));
+    expect(block).toHaveAttribute('data-moved', 'up');
+    const orderedNames = () =>
+      [...container.querySelectorAll('.view-channel-list .channel-order-row strong')].map(
+        (element) => element.textContent,
+      );
+    expect(orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
+    expect(screen.getByRole('button', { name: 'Move group Rhythm up' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Move FX up' }));
+    expect(orderedNames()).toEqual(['FX', 'MAIN', 'BASS']);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Group 1 name' }), {
+      target: { value: 'Rhythm Section' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
+    await waitFor(() => {
+      expect(viewsClient.calls.at(-1)).toMatchObject({
+        method: 'update',
+        body: {
+          name: 'Grouped',
+          channels: [
+            { kind: 'aux', name: 'FX', channelId: 'aux/1' },
+            { kind: 'main', name: 'MAIN', channelId: 'main/1', groupId },
+            { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId },
+          ],
+          groups: [{ id: groupId, name: 'Rhythm Section' }],
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'RETURN TO MIXER' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'grouped' },
+    });
+    const section = container.querySelector<HTMLElement>(`[data-view-group-id="${groupId}"]`);
+    expect(section).not.toBeNull();
+    expect(
+      within(section as HTMLElement).getByRole('heading', { name: 'Rhythm Section', level: 2 }),
+    ).toBeInTheDocument();
+    expect(section?.querySelector('.mixer-section__header span')).toHaveTextContent('02');
+    expect(
+      [...container.querySelectorAll('.mixer-bays h3')].map((heading) => heading.textContent),
+    ).toEqual(['FX', 'MAIN', 'BASS']);
+    expect(section?.querySelector('.channel-group-lead')).toContainElement(
+      screen.getByRole('heading', { name: 'MAIN', level: 3 }),
+    );
+    const toggle = screen.getByRole('switch', { name: 'Start each group on a new row' });
+    expect(container.querySelector('.mixer-bays')).not.toHaveClass('is-type-rows');
+    fireEvent.click(toggle);
+    expect(container.querySelector('.mixer-bays')).toHaveClass('is-type-rows');
+  });
+
+  it('ungroups in one click, discards unsaved group edits, and flags duplicate names', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'grouped',
+        name: 'Grouped',
+        channels: [
+          { kind: 'channel', name: 'MIC', channelId: 'channel/1', groupId: 'g1' },
+          { kind: 'channel', name: 'GHOST', channelId: 'channel/404', groupId: 'g1' },
+        ],
+        groups: [{ id: 'g1', name: 'Rhythm' }],
+      },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      ...snapshot,
+      channels: [
+        { ...snapshot.channels[0], name: 'MIC' },
+        { ...snapshot.channels[0], id: 'channel/2', name: 'MIC' },
+      ],
+    });
+    await screen.findByRole('option', { name: 'Grouped' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'grouped' },
+    });
+    const section = container.querySelector<HTMLElement>('[data-view-group-id="g1"]');
+    expect(section).not.toBeNull();
+    expect(section?.querySelector('.mixer-section__header span')).toHaveTextContent('01');
+    expect(section).toContainElement(screen.getByLabelText('GHOST missing channel'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    expect(screen.getAllByText('DUPLICATE NAME')).toHaveLength(3);
+    expect(screen.getByText('1 MISSING')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ungroup Rhythm' }));
+    expect(screen.queryByRole('textbox', { name: 'Group 1 name' })).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.view-channel-list > .channel-order-row')).toHaveLength(2);
+    expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /Grouped/ }));
+    expect(screen.getByRole('textbox', { name: 'Group 1 name' })).toHaveValue('Rhythm');
+
+    fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIRM CLEAR' }));
+    await waitFor(() => {
+      expect(viewsClient.calls.at(-1)).toMatchObject({
+        method: 'update',
+        body: {
+          channels: [{ kind: 'channel', name: 'MIC', channelId: 'channel/1', groupId: 'g1' }],
+          groups: [{ id: 'g1', name: 'Rhythm' }],
+        },
+      });
+    });
   });
 });
