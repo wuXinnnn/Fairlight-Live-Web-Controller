@@ -5,7 +5,7 @@ import { App } from '../src/App.js';
 import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
-import { resetViewStore } from '../src/store/view-store.js';
+import { ACTIVE_VIEW_STORAGE_KEY, resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
 
@@ -46,6 +46,43 @@ describe('views integration', () => {
     resetMixerStore();
     resetMeterStore();
     resetViewStore();
+  });
+
+  it('waits for a connected mixer inventory before marking references missing', async () => {
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, 'startup');
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'startup',
+        name: 'Startup',
+        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+      },
+    ]);
+    render(<App socket={socket} viewsClient={viewsClient} />);
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Mixer view' })).toHaveValue('startup');
+    });
+    expect(screen.getByText('WAITING FOR MIXER SNAPSHOT')).toBeInTheDocument();
+    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CLEAR INVALID' })).not.toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [],
+      loudness: snapshot.loudness,
+      connection: 'disconnected',
+    });
+    expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [],
+      loudness: snapshot.loudness,
+      connection: 'connected',
+    });
+    expect(await screen.findByText('1 MISSING')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CLEAR INVALID' })).toBeInTheDocument();
   });
 
   it('switches to ordered view channels with color overrides and missing placeholders', async () => {
