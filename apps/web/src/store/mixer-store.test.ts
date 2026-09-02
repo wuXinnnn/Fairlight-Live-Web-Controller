@@ -10,6 +10,7 @@ import {
   mixerStore,
   replaceMixerSnapshot,
   resetMixerStore,
+  setEmberStatus,
   setLocalLevel,
   setSocketConnected,
 } from './mixer-store.js';
@@ -38,11 +39,48 @@ describe('mixer store', () => {
     replaceMixerSnapshot(snapshot);
     setSocketConnected(true);
     expect(mixerStore.getState().channelOrder).toEqual(['channel/1']);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
     expect(controlsAvailable(mixerStore.getState())).toBe(true);
 
-    replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' });
-    expect(mixerStore.getState().channels).toEqual({});
+    expect(replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' })).toBe(
+      false,
+    );
+    expect(mixerStore.getState().channels['channel/1']).toEqual(channel);
+    expect(mixerStore.getState().channelOrder).toEqual(['channel/1']);
+    expect(mixerStore.getState().emberStatus).toBe('reconnecting');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
     expect(controlsAvailable(mixerStore.getState())).toBe(false);
+  });
+
+  it('distinguishes an initial disconnected snapshot from a reconnect', () => {
+    replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'disconnected' });
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
+    replaceMixerSnapshot(snapshot);
+    setEmberStatus('reconnecting');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
+    setEmberStatus('connected');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
+  });
+
+  it('keeps cached inventory through an empty disconnected handshake', () => {
+    replaceMixerSnapshot(snapshot);
+    beginLevelInteraction(channel.id);
+    expect(replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'disconnected' })).toBe(
+      false,
+    );
+    expect(mixerStore.getState().channels['channel/1']).toEqual(channel);
+    expect(mixerStore.getState().pendingLevels[channel.id]?.baseline).toBe(-12);
+    expect(mixerStore.getState().emberStatus).toBe('disconnected');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
+  });
+
+  it('applies an empty connected snapshot after inventory has loaded', () => {
+    replaceMixerSnapshot(snapshot);
+    expect(replaceMixerSnapshot({ ...snapshot, channels: [] })).toBe(true);
+    expect(mixerStore.getState().channels).toEqual({});
+    expect(mixerStore.getState().channelOrder).toEqual([]);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
+    expect(mixerStore.getState().emberStatus).toBe('connected');
   });
 
   it('merges renamed and added channels and removes missing ids', () => {

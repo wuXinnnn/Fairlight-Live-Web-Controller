@@ -19,6 +19,8 @@ export {
 } from './channel.js';
 export {
   appConfigSchema,
+  CHANNEL_PALETTE_KEYS,
+  channelPaletteKeySchema,
   defaultAppConfig,
   DEFAULT_EMBER_HOST,
   DEFAULT_EMBER_PORT,
@@ -26,6 +28,7 @@ export {
   viewChannelRefSchema,
   viewSchema,
   type AppConfig,
+  type ChannelPaletteKey,
   type EmberEndpoint,
   type View,
   type ViewChannelRef,
@@ -68,3 +71,9 @@ export {
   type MixerSnapshot,
   type SystemStatus,
 } from './mixer.js';
+export {
+  viewsListResponseSchema,
+  viewWriteBodySchema,
+  type ViewsListResponse,
+  type ViewWriteBody,
+} from './views.js';

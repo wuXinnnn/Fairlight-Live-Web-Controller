@@ -1,18 +1,21 @@
 import { CHANNEL_KINDS, type ChannelKind } from '@flwc/shared';
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
 import type { ControlClient } from '../../lib/socket.js';
 import { mixerStore } from '../../store/mixer-store.js';
+import { viewStore } from '../../store/view-store.js';
 import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
-import { channelTypeColor } from './channel-colors.js';
+import { channelColor, channelTypeColor } from './channel-colors.js';
 import { ChannelStrip } from './ChannelStrip.js';
 import { ControlLock } from './ControlLock.js';
+import { MissingChannelStrip } from './MissingChannelStrip.js';
 import { TypeRowToggle } from './TypeRowToggle.js';
 import { useChannelPresence } from './use-channel-presence.js';
 import { useControlLockPreference } from './use-control-lock-preference.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
+import { ViewSelector } from './ViewSelector.js';
 
 const SECTION_LABELS: Record<ChannelKind, string> = {
   channel: 'INPUTS',
@@ -25,18 +28,41 @@ const SECTION_LABELS: Record<ChannelKind, string> = {
 
 interface MixerPageProps {
   controlClient: ControlClient;
+  onOpenSettings(): void;
 }
 
-export function MixerPage({ controlClient }: MixerPageProps) {
+export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
   const channels = useStore(
     mixerStore,
     useShallow((state) =>
       state.channelOrder.map((id) => state.channels[id]).filter((channel) => channel !== undefined),
     ),
   );
-  const renderedChannels = useChannelPresence(channels);
+  const channelInventoryLoaded = useStore(mixerStore, (state) => state.channelInventoryLoaded);
+  const { views, activeViewId } = useStore(
+    viewStore,
+    useShallow((state) => ({ views: state.views, activeViewId: state.activeViewId })),
+  );
+  const activeView = views.find((view) => view.id === activeViewId) ?? null;
+  const liveById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  );
+  const viewChannels = useMemo(
+    () =>
+      activeView?.channels
+        .map((reference) => liveById.get(reference.channelId))
+        .filter((channel) => channel !== undefined) ?? [],
+    [activeView, liveById],
+  );
+  const renderedChannels = useChannelPresence(activeView === null ? channels : viewChannels);
+  const renderedById = new Map(renderedChannels.map((item) => [item.channel.id, item]));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
+  const emptyMessage =
+    channelInventoryLoaded && activeView !== null && activeView.channels.length === 0
+      ? 'THIS VIEW HAS NO CHANNELS'
+      : 'WAITING FOR MIXER SNAPSHOT';
 
   return (
     <main className="mixer-shell" data-theme="dark">
@@ -44,20 +70,58 @@ export function MixerPage({ controlClient }: MixerPageProps) {
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
           <h1>CONTROL DESK</h1>
+          <button type="button" className="console-brand__action" onClick={onOpenSettings}>
+            CONFIGURE VIEWS
+          </button>
         </div>
         <ConnectionStatus />
         <div className="console-preferences">
-          <TypeRowToggle enabled={typeRows} onToggle={toggleTypeRows} />
+          <ViewSelector />
+          {activeView === null && <TypeRowToggle enabled={typeRows} onToggle={toggleTypeRows} />}
           <ControlLock mode={lockMode} onChange={setLockMode} />
         </div>
         <LoudnessPanel controlClient={controlClient} />
       </header>
 
-      {renderedChannels.length === 0 ? (
+      {!channelInventoryLoaded ||
+      (activeView === null && renderedChannels.length === 0) ||
+      (activeView !== null && activeView.channels.length === 0) ? (
         <section className="empty-console" aria-live="polite">
           <span className="empty-console__pulse" aria-hidden="true" />
-          <p>WAITING FOR MIXER SNAPSHOT</p>
+          <p>{emptyMessage}</p>
         </section>
+      ) : activeView !== null ? (
+        <div className="mixer-bays is-view-mode" data-view-id={activeView.id}>
+          {activeView.channels.map((reference, index) => {
+            const liveChannel = liveById.get(reference.channelId);
+            const item =
+              renderedById.get(reference.channelId) ??
+              (liveChannel === undefined ? undefined : { channel: liveChannel, exiting: false });
+            if (item === undefined) {
+              return (
+                <MissingChannelStrip
+                  key={`${reference.channelId}-${index}`}
+                  reference={reference}
+                  index={index}
+                />
+              );
+            }
+            return (
+              <ChannelStrip
+                key={`${reference.channelId}-${index}`}
+                item={item}
+                controlClient={controlClient}
+                lockMode={lockMode}
+                style={
+                  {
+                    '--strip-index': index,
+                    '--channel-accent': channelColor(item.channel.kind, reference.color),
+                  } as CSSProperties
+                }
+              />
+            );
+          })}
+        </div>
       ) : (
         <div className={`mixer-bays ${typeRows ? 'is-type-rows' : ''}`}>
           {CHANNEL_KINDS.map((kind) => {

@@ -3,6 +3,7 @@ import { ERROR_CODES, healthResponseSchema } from '@flwc/shared';
 import Fastify from 'fastify';
 import type { FastifyError, FastifyServerOptions } from 'fastify';
 import { registerConnectionRoutes } from './api/connection.js';
+import { registerViewRoutes } from './api/views.js';
 import type { MixerRuntime } from './runtime.js';
 
 export interface CreateAppOptions {
@@ -31,6 +32,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   if (options.runtime !== undefined) {
     registerConnectionRoutes(app, options.runtime);
+    registerViewRoutes(app, options.runtime);
   }
 
   if (options.staticRoot !== undefined) {

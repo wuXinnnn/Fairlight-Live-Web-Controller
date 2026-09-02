@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   appConfigSchema,
+  CHANNEL_PALETTE_KEYS,
   defaultAppConfig,
   DEFAULT_EMBER_HOST,
   DEFAULT_EMBER_PORT,
+  viewChannelRefSchema,
   viewSchema,
 } from './config.js';
 import { connectionGetResponseSchema, connectionPutBodySchema } from './connection.js';
 import { apiErrorSchema, ERROR_CODES } from './errors.js';
 import { SOCKET_EVENTS } from './events.js';
+import { viewsListResponseSchema, viewWriteBodySchema } from './views.js';
 
 describe('config and connection schemas', () => {
   it('returns the documented default config', () => {
@@ -35,6 +38,51 @@ describe('config and connection schemas', () => {
     };
     expect(appConfigSchema.parse(config)).toEqual(config);
     expect(viewSchema.parse(config.views[0])).toEqual(config.views[0]);
+  });
+
+  it('accepts palette colors while preserving old channel references', () => {
+    expect(CHANNEL_PALETTE_KEYS).toEqual(['green', 'red', 'teal', 'navy', 'lime', 'purple']);
+    expect(
+      viewChannelRefSchema.parse({
+        channelId: 'channel/3',
+        lastKnownName: 'BASS',
+        color: 'lime',
+      }),
+    ).toEqual({
+      channelId: 'channel/3',
+      lastKnownName: 'BASS',
+      color: 'lime',
+    });
+    expect(
+      viewChannelRefSchema.parse({
+        channelId: 'channel/3',
+        lastKnownName: 'BASS',
+      }),
+    ).toEqual({
+      channelId: 'channel/3',
+      lastKnownName: 'BASS',
+    });
+  });
+
+  it('validates view write payloads and list responses', () => {
+    const body = {
+      name: '  Broadcast  ',
+      channels: [{ channelId: 'main/1', lastKnownName: 'Main', color: 'red' as const }],
+    };
+    expect(viewWriteBodySchema.parse(body)).toEqual({
+      ...body,
+      name: 'Broadcast',
+    });
+    expect(viewsListResponseSchema.parse([{ id: 'broadcast', ...body }])).toEqual([
+      { id: 'broadcast', ...body, name: 'Broadcast' },
+    ]);
+    expect(() => viewWriteBodySchema.parse({ name: ' ', channels: [] })).toThrow();
+    expect(() =>
+      viewWriteBodySchema.parse({
+        name: 'Broadcast',
+        channels: [{ channelId: 'main/1', lastKnownName: 'Main', color: 'orange' }],
+      }),
+    ).toThrow();
   });
 
   it('rejects an invalid port or version', () => {
