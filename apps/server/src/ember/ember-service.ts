@@ -406,6 +406,11 @@ function defaultEmberClientFactory(
   port: number,
   timeoutMs: number,
 ): EmberClientHandle {
+  // emberplus-connection arms S101 keepalive on its own once the TCP socket connects: it sends a
+  // KeepAliveRequest every 10 s, answers the provider's requests, and closes the socket when a
+  // response is missing for 500 ms. That close surfaces here as 'disconnected' and feeds the
+  // reconnect backoff above. The library exposes no option for either value; see
+  // apps/server/src/ember/keepalive.test.ts, which guards this behaviour across upgrades.
   const client = new EmberClient(host, port, timeoutMs);
   return client as unknown as EmberClientHandle;
 }
