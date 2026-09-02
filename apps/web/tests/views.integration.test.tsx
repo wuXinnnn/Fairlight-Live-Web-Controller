@@ -85,6 +85,41 @@ describe('views integration', () => {
     expect(screen.getByRole('button', { name: 'CLEAR INVALID' })).toBeInTheDocument();
   });
 
+  it('keeps the loaded inventory through Ember reconnect without a new snapshot', async () => {
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, 'reconnect');
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'reconnect',
+        name: 'Reconnect',
+        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+      },
+    ]);
+    render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Mixer view' })).toHaveValue('reconnect');
+    });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'reconnecting' });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+  });
+
   it('switches to ordered view channels with color overrides and missing placeholders', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
