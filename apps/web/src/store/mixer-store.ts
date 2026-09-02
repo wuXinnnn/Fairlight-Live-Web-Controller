@@ -60,17 +60,34 @@ export function setEmberStatus(status: ConnectionStatus): void {
   mixerStore.setState({ emberStatus: status });
 }
 
-export function replaceMixerSnapshot(snapshot: MixerSnapshot): void {
-  const channels = Object.fromEntries(snapshot.channels.map((channel) => [channel.id, channel]));
-  mixerStore.setState((state) => ({
-    channels,
+function shouldRetainCachedInventory(
+  state: MixerStoreState,
+  snapshot: MixerSnapshot,
+): boolean {
+  return (
+    state.channelInventoryLoaded &&
+    snapshot.channels.length === 0 &&
+    snapshot.connection !== 'connected'
+  );
+}
+
+export function replaceMixerSnapshot(snapshot: MixerSnapshot): boolean {
+  const state = mixerStore.getState();
+  if (shouldRetainCachedInventory(state, snapshot)) {
+    mixerStore.setState({ emberStatus: snapshot.connection });
+    return false;
+  }
+
+  mixerStore.setState({
+    channels: Object.fromEntries(snapshot.channels.map((channel) => [channel.id, channel])),
     channelOrder: snapshot.channels.map((channel) => channel.id),
     loudness: snapshot.loudness,
     emberStatus: snapshot.connection,
     channelInventoryLoaded: state.channelInventoryLoaded || snapshot.connection === 'connected',
     pendingLevels: {},
     pendingOns: {},
-  }));
+  });
+  return true;
 }
 
 export function applyMixerPatch(patch: MixerPatch): void {

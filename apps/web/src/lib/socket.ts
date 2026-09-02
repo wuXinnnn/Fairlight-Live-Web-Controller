@@ -77,8 +77,10 @@ export function bindMixerSocket(socket: MixerSocket): () => void {
   };
   const onSnapshot: SocketListener = (payload) => {
     parseIncoming(mixerSnapshotSchema, payload, (snapshot) => {
-      replaceMixerSnapshot(snapshot);
-      seedMetersFromSnapshot(snapshot);
+      const replacedInventory = replaceMixerSnapshot(snapshot);
+      if (replacedInventory) {
+        seedMetersFromSnapshot(snapshot);
+      }
     });
   };
   const onPatch: SocketListener = (payload) => {

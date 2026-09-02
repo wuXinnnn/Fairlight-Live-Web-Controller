@@ -21,7 +21,7 @@ import {
   createControlClient,
   type MixerSocket,
 } from './socket.js';
-import { resetMeterStore } from '../store/meter-store.js';
+import { meterStore, resetMeterStore } from '../store/meter-store.js';
 import { mixerStore, resetMixerStore } from '../store/mixer-store.js';
 
 describe('socket client', () => {
@@ -47,6 +47,36 @@ describe('socket client', () => {
     expect(socketIoMock.off).toHaveBeenCalled();
     expect(socketIoMock.connect).toHaveBeenCalled();
     expect(socketIoMock.disconnect).toHaveBeenCalled();
+  });
+
+  it('keeps seeded meters when an empty reconnect handshake is retained', () => {
+    const socket = new FakeSocket();
+    bindMixerSocket(socket);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [
+        {
+          id: 'channel/1',
+          kind: 'channel',
+          name: 'BASS',
+          levelDb: -12,
+          muted: false,
+          meterDb: -28,
+        },
+      ],
+      loudness: { integratedLufs: -23, truePeakDbtp: -5 },
+      connection: 'connected',
+    });
+    expect(meterStore.getState().meters['channel/1']).toBe(-28);
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [],
+      loudness: { integratedLufs: 0, truePeakDbtp: 0 },
+      connection: 'disconnected',
+    });
+    expect(mixerStore.getState().channels['channel/1']?.name).toBe('BASS');
+    expect(mixerStore.getState().emberStatus).toBe('disconnected');
+    expect(meterStore.getState().meters['channel/1']).toBe(-28);
+    expect(meterStore.getState().loudness.integratedLufs).toBe(-23);
   });
 
   it('binds status events and removes all listeners during cleanup', () => {
