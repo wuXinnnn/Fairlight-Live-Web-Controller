@@ -99,6 +99,7 @@ describe('views integration', () => {
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await waitFor(() => expect(viewsClient.calls[0]?.method).toBe('list'));
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    await screen.findByRole('checkbox', { name: 'BASSINPUT' });
     const availableBass = container.querySelector<HTMLElement>(
       '[data-available-channel-id="channel/1"]',
     );
