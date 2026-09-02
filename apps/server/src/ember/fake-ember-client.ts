@@ -25,6 +25,7 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   getDirectoryDelayMs = 0;
   failConnect: Error | undefined;
   failSubscribe: Error | undefined;
+  readonly failSubscribeNodes = new Set<EmberTreeNode>();
   expandCalls = 0;
   setValueCalls: EmberValue[] = [];
   setValueDelayMs = 0;
@@ -96,6 +97,9 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
     this.subscribeCalls += 1;
     if (this.failSubscribe !== undefined) {
       throw this.failSubscribe;
+    }
+    if (node !== undefined && this.failSubscribeNodes.has(node)) {
+      throw new Error('subscribe denied');
     }
     if (node !== undefined && cb !== undefined) {
       this.directoryListeners.push({ node, cb });

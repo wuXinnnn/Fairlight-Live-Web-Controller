@@ -210,6 +210,26 @@ describe('EmberService', () => {
     expect(listeners).toHaveLength(1);
   });
 
+  it('continues structure watches when an earlier node fails', async () => {
+    const client = new FakeEmberClient();
+    const system = client.tree[0];
+    const channel = client.tree[1];
+    expect(system).toBeDefined();
+    expect(channel).toBeDefined();
+    if (system === undefined || channel === undefined) {
+      return;
+    }
+    client.failSubscribeNodes.add(system);
+    const service = createService(client);
+    await service.start();
+    expect(client.directoryListeners.filter((listener) => listener.node === system)).toHaveLength(
+      0,
+    );
+    expect(
+      client.directoryListeners.filter((listener) => listener.node === channel).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('retries structure watches after a subscribe failure', async () => {
     const client = new FakeEmberClient();
     client.failSubscribe = new Error('subscribe denied');

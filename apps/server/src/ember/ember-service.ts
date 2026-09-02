@@ -233,29 +233,31 @@ export class EmberService extends EventEmitter {
   }
 
   private async watchStructure(client: EmberClientHandle): Promise<void> {
-    try {
-      for (const root of Object.values(client.tree)) {
+    for (const root of Object.values(client.tree)) {
+      if (!this.isActiveClient(client)) {
+        return;
+      }
+      if (isParameterNode(root) || isFunctionNode(root)) {
+        continue;
+      }
+      await this.watchNode(root);
+      for (const child of childNodes(root)) {
         if (!this.isActiveClient(client)) {
           return;
         }
-        if (isParameterNode(root) || isFunctionNode(root)) {
+        if (isParameterNode(child) || isFunctionNode(child)) {
           continue;
         }
-        await this.subscribe(root, () => {
-          this.scheduleTreeRefresh();
-        });
-        for (const child of childNodes(root)) {
-          if (!this.isActiveClient(client)) {
-            return;
-          }
-          if (isParameterNode(child) || isFunctionNode(child)) {
-            continue;
-          }
-          await this.subscribe(child, () => {
-            this.scheduleTreeRefresh();
-          });
-        }
+        await this.watchNode(child);
       }
+    }
+  }
+
+  private async watchNode(node: EmberTreeNode): Promise<void> {
+    try {
+      await this.subscribe(node, () => {
+        this.scheduleTreeRefresh();
+      });
     } catch (error) {
       this.logger.warn(
         { err: errorMessage(error), layer: 'protocol' },
