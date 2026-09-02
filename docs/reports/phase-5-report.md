@@ -2,7 +2,7 @@
 
 ## 1. 结果总览
 
-Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道颜色与 REST 契约;后端提供持久化 views CRUD;前端新增与 Phase 4 同一工业深色视觉系统的配置工作台、View 切换、顺序投影、颜色覆盖与失配占位。自动化测试、覆盖率、全量质量门、远端 CI 以及 Mock Ember+ Provider 浏览器端到端冒烟均通过。云端未连接真实 Fairlight,真机手动验收按边界移交用户。
+Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道颜色与 REST 契约;后端提供持久化 views CRUD;前端新增与 Phase 4 同一工业深色视觉系统的配置工作台、View 切换、顺序投影、颜色覆盖与失配占位。三轮 Bugbot inventory 生命周期问题均已复现并修复,最终 HEAD 的自动化测试、覆盖率、全量质量门、远端 CI、Bugbot 与 Mock Ember+ Provider 浏览器端到端冒烟均通过。云端未连接真实 Fairlight,真机手动验收按边界移交用户。
 
 ## 2. 验收标准逐条核对
 
@@ -10,15 +10,15 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 | --- | --- | --- |
 | views CRUD 与持久化 | 通过 | `apps/server/src/api/views.test.ts` 覆盖创建、列表、更新、删除、服务端 UUID、404、非法名称/颜色/结构 400、并发创建、持久化往返、旧数据兼容及损坏/缺失配置恢复。 |
 | 颜色配置与默认回退 | 通过 | shared 校验六个 palette key 且 `color` 可选;web 单元与集成测试覆盖六类默认色、自定义覆盖、清除回退和非法 key 拒绝。 |
-| 失配、树变化与主动清理 | 通过 | web 集成测试覆盖引用缺失后的 `lastKnownName` 占位、正常通道继续可控、patch 移除后延迟切换为占位、二次确认清理只移除失效引用并保持有效顺序;首个已连接快照到达前保持等待态且禁止清理,避免把尚未加载的树误判为全量失配。 |
+| 失配、树变化与主动清理 | 通过 | web 集成测试覆盖引用缺失后的 `lastKnownName` 占位、正常通道继续可控、patch 移除后延迟切换为占位、二次确认清理只移除失效引用并保持有效顺序;首个已连接快照到达前保持等待态且禁止清理;已加载后保留缓存清单穿越 status-only reconnect 和空的非 connected socket handshake;最终已连接空快照仍作为权威清单生效。 |
 | 空 View、空配置、激活态与排序 | 通过 | 零 View 时 `All Channels` 正常显示;零通道 View 显示独立空态;激活 id 写入 `localStorage`,无效或已删除 id 回退全部通道;View 模式严格按持久化引用顺序平铺。 |
-| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 93.57%、分支 83.68%、函数 97.01%、行 93.60%;`apps/web`:语句 95.14%、分支 89.34%、函数 97.24%、行 94.85%。 |
-| 全量质量门 | 通过 | 串行执行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。shared 26、test-utils 19、server 92、web 76,共 213 项测试通过;Vite 生产构建成功。 |
-| Mock Provider 端到端冒烟 | 通过 | Mock Provider 安全运行于 `127.0.0.1:9100`,`GET /api/v1/connection` 返回 `connected`;浏览器完成 Recovery Test 失配占位与二次确认清理、创建 Broadcast Desk、勾选 BASS/MIC-REVERB、排序、配色、改名 Live Desk、保存并返回主页切换。最终仅按 BASS/MIC-REVERB 顺序显示红/青条带。全过程未触碰 ON 或推子。证据:`/opt/cursor/artifacts/phase5_views_configuration_walkthrough.mp4`。 |
-| 远端 CI | 通过 | 功能提交 `74f63eb` 对应 PR checks 共 2 项均成功;最终报告提交继续使用同一流水线确认。 |
+| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 93.57%、分支 83.68%、函数 97.01%、行 93.60%;`apps/web`:语句 95.17%、分支 89.50%、函数 97.24%、行 94.89%。 |
+| 全量质量门 | 通过 | 在最终 HEAD `5b0c7be` 串行执行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。shared 26、test-utils 19、server 92、web 80,共 217 项测试通过;Vite 生产构建成功。 |
+| Mock Provider 端到端冒烟 | 通过 | Mock Provider 安全运行于 `127.0.0.1:9100`,`GET /api/v1/connection` 返回 `connected`;浏览器完成 views CRUD、排序/配色、失配清理、未加载 inventory 等待态及 Ember 重连无刷新恢复。全过程未触碰 ON 或推子。证据见第 5 节。 |
+| 远端 CI 与 Bugbot | 通过 | 最终 HEAD `5b0c7be` 的 2 项 CI 与 Cursor Bugbot 共 3 项检查全部 `SUCCESS`;Bugbot 最终复审未报告新问题。 |
 | 本地真实 Fairlight 手动验收 | 移交用户 | 云端无真机访问能力。操作清单见第 4 节。 |
 
-首次加入配置页后,web 覆盖率曾为行 78.45%/分支 67.78%,随后补齐真实用户流程集成测试达到上述最终数字。首次全量 lint 发现 effect 内同步派生编辑态,已重构为渲染期派生状态;最终质量门无警告、无失败。
+首次加入配置页后,web 覆盖率曾为行 78.45%/分支 67.78%,随后补齐真实用户流程集成测试达到上述最终数字。首次全量 lint 发现 effect 内同步派生编辑态,已重构为渲染期派生状态。Bugbot 后续指出“未加载树被误判为失配”“重连后 inventory 标志无法恢复”“空的非 connected handshake 覆盖缓存”三项生命周期问题,均先以失败测试复现再修复;最终质量门与 Bugbot 无警告、无失败。
 
 ## 3. 实现摘要
 
@@ -28,7 +28,7 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 - **viewStore**:封装列表加载与 CRUD 状态,保存错误可见;激活 View 仅作为浏览器偏好保存于 `flwc.views.activeId.v1`,不会写入后端配置。
 - **配置工作台**:支持创建、重命名、二次确认删除;从实时 `mixerStore` 勾选通道;使用上移/下移调整顺序;按通道设置六色 palette 或恢复 AUTO。Available Channels 始终以类型默认色标识,Channel Order 初始使用类型默认色并在配置后即时切换为 View 覆盖色。失配项显示最后已知名称,二次确认后才清理。保存失败不会静默丢弃本地编辑。
 - **混音页切换**:始终提供 `All Channels`。全部通道模式保留 Phase 4 类型分区和 `TYPE ROWS`;View 模式隐藏 `TYPE ROWS`,严格按 View 引用顺序平铺,推子、ON、meter、控制锁行为不变。
-- **失配占位**:缺失引用使用同尺寸条带、`lastKnownName`、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter。`channelInventoryLoaded` 仅由已连接快照首次置为有效:首次加载前显示等待态;获得有效清单后,空的非 connected handshake/重连快照只更新 Ember 状态,不替换已缓存通道表或电平种子,控制与清理仍由连接状态门控。随后到达的已连接快照仍是权威清单,树 patch/snapshot 删除或恢复通道时占位与真实条带即时收敛;前端不自动写 View。
+- **失配占位**:缺失引用使用同尺寸条带、`lastKnownName`、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter。`channelInventoryLoaded` 仅由已连接快照首次置为有效:首次加载前显示等待态;获得有效清单后,status-only reconnect 保留缓存条带,空的非 connected handshake 只更新 Ember 状态,不替换通道表、pending 控制或 meter seed。`replaceMixerSnapshot()` 返回是否应用 inventory,Socket 层仅在实际应用时重播 meter seed。控制与清理仍由实时连接状态门控;随后到达的已连接快照仍是权威清单,树 patch/snapshot 删除或恢复通道时占位与真实条带即时收敛;前端不自动写 View。
 - **视觉一致性**:配置工作台和新控件继续复用 Phase 4 的石墨 surface、琥珀交互、Barlow Condensed/IBM Plex Mono、锐利边框、短动效与 reduced-motion。单通道颜色继续通过 `--channel-accent` 注入,meter 信号色不受 View palette 影响。未引入浅色主题、第二套 token、UI 库或拖拽库。
 
 ## 4. 真机验收操作清单(移交用户)
@@ -55,16 +55,22 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 | `apps/server/src/runtime.ts` | 原子化 views 列表/创建/更新/删除能力 |
 | `apps/server/src/api/views.test.ts` | CRUD、持久化、恢复、并发与错误边界测试 |
 | `apps/web/src/lib/views-api.ts` | 浏览器 views REST client 与响应校验 |
+| `apps/web/src/lib/socket.ts` | Socket 事件绑定;仅在接受 inventory 快照时重播 meter seed |
 | `apps/web/src/store/view-store.ts` | views 状态、错误与激活偏好持久化 |
+| `apps/web/src/store/mixer-store.ts` | 通道 inventory、连接态与空握手缓存保留规则 |
 | `apps/web/src/features/settings/SettingsPage.tsx` | View 配置工作台 |
 | `apps/web/src/features/mixer/ViewSelector.tsx` | 主页 View 切换控件 |
 | `apps/web/src/features/mixer/MissingChannelStrip.tsx` | 无交互失配占位条带 |
 | `apps/web/src/features/mixer/MixerPage.tsx` | All/View 两种布局和顺序投影 |
 | `apps/web/src/features/mixer/channel-colors.ts` | shared palette key 到 CSS 色值及默认回退 |
 | `apps/web/src/styles.css` | 复用 Phase 4 token 的配置页、选择器与占位样式 |
-| `apps/web/src/store/view-store.test.ts`、`apps/web/src/lib/views-api.test.ts` | 前端状态与 REST 单元测试 |
-| `apps/web/tests/views.integration.test.tsx` | View 用户流程、排序、配色、失配、清理与空态集成测试 |
+| `apps/web/src/store/view-store.test.ts`、`apps/web/src/store/mixer-store.test.ts`、`apps/web/src/lib/socket.test.ts` | 前端状态、inventory 生命周期与 Socket 快照单元测试 |
+| `apps/web/src/lib/views-api.test.ts` | views REST client 单元测试 |
+| `apps/web/tests/views.integration.test.tsx` | View 用户流程、排序、配色、失配、清理、空态、初始加载与两类重连集成测试 |
 | `/opt/cursor/artifacts/phase5_views_configuration_walkthrough.mp4` | Mock Provider 浏览器端到端演示 |
+| `/opt/cursor/artifacts/phase5_channel_list_color_behavior.mp4` | Available/Order 默认色与覆盖色隔离演示 |
+| `/opt/cursor/artifacts/phase5_inventory_loading_guard.mp4` | 初始 inventory 未加载时安全等待态演示 |
+| `/opt/cursor/artifacts/phase5_ember_reconnect_inventory_recovery_clean.mp4` | Ember 重连期间保留条带并无刷新恢复演示 |
 
 ## 6. 依赖清单与许可确认
 
@@ -89,6 +95,21 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 分支:`cursor/phase5-views-config-b83a`。以下记录截至本报告落盘前,不包含承载报告本身的提交。
 
 ```text
+5b0c7be fix: retain inventory through empty handshake (#6)
+c33fc67 docs: record reconnect inventory behavior
+f37b04e fix: retain inventory across Ember reconnect
+da06074 test: await reconnect UI state
+addcea0 test: cover inventory through Ember reconnect
+c5d5771 docs: update final Phase 5 coverage
+6302cdf docs: record channel inventory guard
+085dda3 fix: stabilize mixer inventory selector
+23b55dd fix: wait for authoritative channel inventory
+cb7d54c test: cover views before mixer inventory
+ab5ad0f test: inspect colors after view creation
+fe5f8e2 test: await mixer channels before color checks
+78067b2 test: wait for available channel colors
+36017be feat: show channel colors in view lists
+54141e3 docs: add Phase 5 execution report
 74f63eb fix: stabilize view channel presence
 ab9234b refactor: derive active view editor state
 54466ae fix: keep active view edits during store updates
