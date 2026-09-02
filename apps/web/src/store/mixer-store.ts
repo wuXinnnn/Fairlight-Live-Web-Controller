@@ -60,10 +60,7 @@ export function setEmberStatus(status: ConnectionStatus): void {
   mixerStore.setState({ emberStatus: status });
 }
 
-function shouldRetainCachedInventory(
-  state: MixerStoreState,
-  snapshot: MixerSnapshot,
-): boolean {
+function shouldRetainCachedInventory(state: MixerStoreState, snapshot: MixerSnapshot): boolean {
   return (
     state.channelInventoryLoaded &&
     snapshot.channels.length === 0 &&
