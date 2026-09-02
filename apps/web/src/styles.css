@@ -1668,15 +1668,18 @@ html.fader-cap-dragging * {
 }
 
 .view-channel-list {
-  display: grid;
+  display: flex;
   min-height: 14rem;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   overflow: auto;
   list-style: none;
+}
+
+.view-channel-list > li {
+  flex: 0 0 auto;
 }
 
 .channel-order-row {
