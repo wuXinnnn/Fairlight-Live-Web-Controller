@@ -1,4 +1,5 @@
 import {
+  CHANNEL_KINDS,
   CHANNEL_PALETTE_KEYS,
   type ChannelKind,
   type ChannelPaletteKey,
@@ -18,7 +19,7 @@ import {
   updateView,
   viewStore,
 } from '../../store/view-store.js';
-import { CHANNEL_PALETTE } from '../mixer/channel-colors.js';
+import { CHANNEL_PALETTE, channelColor, channelTypeColor } from '../mixer/channel-colors.js';
 
 const KIND_LABELS: Record<ChannelKind, string> = {
   channel: 'INPUT',
@@ -48,6 +49,11 @@ function copyView(view: View): View {
     ...view,
     channels: view.channels.map((channel) => ({ ...channel })),
   };
+}
+
+function kindFromChannelId(channelId: string): ChannelKind {
+  const prefix = channelId.split('/')[0];
+  return CHANNEL_KINDS.find((kind) => kind === prefix) ?? 'channel';
 }
 
 export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
@@ -345,13 +351,23 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                           (candidate) => candidate.channelId === channel.id,
                         );
                         return (
-                          <label key={channel.id} className={checked ? 'is-checked' : ''}>
+                          <label
+                            key={channel.id}
+                            className={checked ? 'is-checked' : ''}
+                            data-available-channel-id={channel.id}
+                            style={
+                              {
+                                '--channel-row-accent': channelTypeColor(channel.kind),
+                              } as CSSProperties
+                            }
+                          >
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleChannel(channel.id)}
                             />
                             <span className="channel-checklist__box" aria-hidden="true" />
+                            <span className="channel-checklist__accent" aria-hidden="true" />
                             <strong>{channel.name}</strong>
                             <small>{KIND_LABELS[channel.kind]}</small>
                           </label>
@@ -387,11 +403,22 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                       {activeDraft.channels.map((reference, index) => {
                         const channel = channels[reference.channelId];
                         const missing = channel === undefined;
+                        const kind = channel?.kind ?? kindFromChannelId(reference.channelId);
                         return (
-                          <li key={reference.channelId} className={missing ? 'is-missing' : ''}>
+                          <li
+                            key={reference.channelId}
+                            className={missing ? 'is-missing' : ''}
+                            data-ordered-channel-id={reference.channelId}
+                            style={
+                              {
+                                '--channel-row-accent': channelColor(kind, reference.color),
+                              } as CSSProperties
+                            }
+                          >
                             <div className="channel-order__index">
                               {(index + 1).toString().padStart(2, '0')}
                             </div>
+                            <span className="channel-order__accent" aria-hidden="true" />
                             <div className="channel-order__identity">
                               <strong>{channel?.name ?? reference.lastKnownName}</strong>
                               <small>{missing ? 'MISSING' : KIND_LABELS[channel.kind]}</small>

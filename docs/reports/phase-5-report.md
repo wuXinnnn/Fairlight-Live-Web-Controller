@@ -26,7 +26,7 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 - **REST CRUD**:`GET/POST /api/v1/views` 与 `PUT/DELETE /api/v1/views/:id` 全部经 shared zod schema 校验。id 使用 Node `crypto.randomUUID()`,未知 id 返回 `NOT_FOUND`,非法负载返回 `VALIDATION`;服务端不检查通道当前是否存在,也不自动清理、改名或同步 `lastKnownName`。
 - **持久化**:复用 Phase 3 `ConfigStore.update()`,与 Ember endpoint 共存于 `data/config.json`,保持串行更新和临时文件 rename 原子写入。
 - **viewStore**:封装列表加载与 CRUD 状态,保存错误可见;激活 View 仅作为浏览器偏好保存于 `flwc.views.activeId.v1`,不会写入后端配置。
-- **配置工作台**:支持创建、重命名、二次确认删除;从实时 `mixerStore` 勾选通道;使用上移/下移调整顺序;按通道设置六色 palette 或恢复 AUTO;失配项显示最后已知名称,二次确认后才清理。保存失败不会静默丢弃本地编辑。
+- **配置工作台**:支持创建、重命名、二次确认删除;从实时 `mixerStore` 勾选通道;使用上移/下移调整顺序;按通道设置六色 palette 或恢复 AUTO。Available Channels 始终以类型默认色标识,Channel Order 初始使用类型默认色并在配置后即时切换为 View 覆盖色。失配项显示最后已知名称,二次确认后才清理。保存失败不会静默丢弃本地编辑。
 - **混音页切换**:始终提供 `All Channels`。全部通道模式保留 Phase 4 类型分区和 `TYPE ROWS`;View 模式隐藏 `TYPE ROWS`,严格按 View 引用顺序平铺,推子、ON、meter、控制锁行为不变。
 - **失配占位**:缺失引用使用同尺寸条带、`lastKnownName`、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter。树 patch/snapshot 删除或恢复通道时,占位与真实条带即时收敛;前端不自动写 View。
 - **视觉一致性**:配置工作台和新控件继续复用 Phase 4 的石墨 surface、琥珀交互、Barlow Condensed/IBM Plex Mono、锐利边框、短动效与 reduced-motion。单通道颜色继续通过 `--channel-accent` 注入,meter 信号色不受 View palette 影响。未引入浅色主题、第二套 token、UI 库或拖拽库。

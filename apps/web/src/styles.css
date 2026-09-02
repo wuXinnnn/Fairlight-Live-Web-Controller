@@ -1456,7 +1456,7 @@ html.fader-cap-dragging * {
 
 .channel-checklist label {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 2.7rem;
@@ -1466,9 +1466,24 @@ html.fader-cap-dragging * {
   cursor: pointer;
 }
 
+.channel-checklist__accent,
+.channel-order__accent {
+  display: block;
+  width: 0.22rem;
+  height: 1.45rem;
+  background: var(--channel-row-accent);
+  box-shadow: 0 0 0.45rem color-mix(in srgb, var(--channel-row-accent) 42%, transparent);
+}
+
 .channel-checklist label:hover,
 .channel-checklist label.is-checked {
-  background: rgb(239 169 40 / 5%);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--channel-row-accent) 8%, transparent),
+      transparent 42%
+    ),
+    rgb(239 169 40 / 2%);
   color: var(--text);
 }
 
@@ -1561,12 +1576,16 @@ html.fader-cap-dragging * {
 
 .view-channel-list > li {
   display: grid;
-  grid-template-columns: auto minmax(7rem, 1fr) auto minmax(14rem, auto);
+  grid-template-columns: auto auto minmax(7rem, 1fr) auto minmax(14rem, auto);
   align-items: center;
   gap: 0.65rem;
   min-height: 3.35rem;
   padding: 0.55rem 0.7rem;
   border-bottom: 1px solid #292d35;
+}
+
+.channel-order__accent {
+  height: 1.85rem;
 }
 
 .view-channel-list > li.is-missing {
@@ -1748,11 +1767,11 @@ html.fader-cap-dragging * {
   }
 
   .view-channel-list > li {
-    grid-template-columns: auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto minmax(7rem, 1fr) auto;
   }
 
   .palette-control {
-    grid-column: 2 / 4;
+    grid-column: 3 / 5;
     justify-content: flex-start;
   }
 }

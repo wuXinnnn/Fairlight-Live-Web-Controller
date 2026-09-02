@@ -99,6 +99,16 @@ describe('views integration', () => {
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await waitFor(() => expect(viewsClient.calls[0]?.method).toBe('list'));
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    const availableBass = container.querySelector<HTMLElement>(
+      '[data-available-channel-id="channel/1"]',
+    );
+    const availableMain = container.querySelector<HTMLElement>(
+      '[data-available-channel-id="main/1"]',
+    );
+    expect(availableBass?.style.getPropertyValue('--channel-row-accent')).toBe(
+      CHANNEL_PALETTE.green,
+    );
+    expect(availableMain?.style.getPropertyValue('--channel-row-accent')).toBe(CHANNEL_PALETTE.red);
 
     fireEvent.change(screen.getByLabelText('NEW VIEW'), { target: { value: 'Broadcast' } });
     fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
@@ -109,8 +119,26 @@ describe('views integration', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'MAINMAIN' }));
     expect(screen.getByRole('checkbox', { name: 'BASSINPUT' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'MAINMAIN' })).toBeChecked();
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-ordered-channel-id="channel/1"]')
+        ?.style.getPropertyValue('--channel-row-accent'),
+    ).toBe(CHANNEL_PALETTE.green);
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-ordered-channel-id="main/1"]')
+        ?.style.getPropertyValue('--channel-row-accent'),
+    ).toBe(CHANNEL_PALETTE.red);
     fireEvent.click(screen.getByRole('button', { name: 'Move MAIN up' }));
-    fireEvent.click(screen.getByRole('button', { name: 'MAIN color Main Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'BASS color Main Red' }));
+    expect(availableBass?.style.getPropertyValue('--channel-row-accent')).toBe(
+      CHANNEL_PALETTE.green,
+    );
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-ordered-channel-id="channel/1"]')
+        ?.style.getPropertyValue('--channel-row-accent'),
+    ).toBe(CHANNEL_PALETTE.red);
     fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), {
       target: { value: 'Studio' },
     });
@@ -122,8 +150,8 @@ describe('views integration', () => {
         body: {
           name: 'Studio',
           channels: [
-            { channelId: 'main/1', lastKnownName: 'MAIN', color: 'red' },
-            { channelId: 'channel/1', lastKnownName: 'BASS' },
+            { channelId: 'main/1', lastKnownName: 'MAIN' },
+            { channelId: 'channel/1', lastKnownName: 'BASS', color: 'red' },
           ],
         },
       });
@@ -150,12 +178,22 @@ describe('views integration', () => {
         ],
       },
     ]);
-    render(<App socket={socket} viewsClient={viewsClient} />);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('option', { name: 'Cleanup' });
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
 
     expect(screen.getByText('1 MISSING')).toBeInTheDocument();
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-ordered-channel-id="channel/1"]')
+        ?.style.getPropertyValue('--channel-row-accent'),
+    ).toBe(CHANNEL_PALETTE.green);
+    expect(
+      container
+        .querySelector<HTMLElement>('[data-ordered-channel-id="channel/404"]')
+        ?.style.getPropertyValue('--channel-row-accent'),
+    ).toBe(CHANNEL_PALETTE.teal);
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
     expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: 'CONFIRM CLEAR' }));
