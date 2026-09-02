@@ -100,6 +100,10 @@ describe('views integration', () => {
     await waitFor(() => expect(viewsClient.calls[0]?.method).toBe('list'));
     await screen.findByRole('heading', { name: 'BASS' });
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+
+    fireEvent.change(screen.getByLabelText('NEW VIEW'), { target: { value: 'Broadcast' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
+    expect(await screen.findByDisplayValue('Broadcast')).toBeInTheDocument();
     await screen.findByRole('checkbox', { name: 'BASSINPUT' });
     const availableBass = container.querySelector<HTMLElement>(
       '[data-available-channel-id="channel/1"]',
@@ -111,10 +115,6 @@ describe('views integration', () => {
       CHANNEL_PALETTE.green,
     );
     expect(availableMain?.style.getPropertyValue('--channel-row-accent')).toBe(CHANNEL_PALETTE.red);
-
-    fireEvent.change(screen.getByLabelText('NEW VIEW'), { target: { value: 'Broadcast' } });
-    fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
-    expect(await screen.findByDisplayValue('Broadcast')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'BASSINPUT' }));
     expect(screen.getByRole('checkbox', { name: 'BASSINPUT' })).toBeChecked();
