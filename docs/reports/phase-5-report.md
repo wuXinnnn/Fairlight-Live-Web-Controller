@@ -28,7 +28,7 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 - **viewStore**:封装列表加载与 CRUD 状态,保存错误可见;激活 View 仅作为浏览器偏好保存于 `flwc.views.activeId.v1`,不会写入后端配置。
 - **配置工作台**:支持创建、重命名、二次确认删除;从实时 `mixerStore` 勾选通道;使用上移/下移调整顺序;按通道设置六色 palette 或恢复 AUTO。Available Channels 始终以类型默认色标识,Channel Order 初始使用类型默认色并在配置后即时切换为 View 覆盖色。失配项显示最后已知名称,二次确认后才清理。保存失败不会静默丢弃本地编辑。
 - **混音页切换**:始终提供 `All Channels`。全部通道模式保留 Phase 4 类型分区和 `TYPE ROWS`;View 模式隐藏 `TYPE ROWS`,严格按 View 引用顺序平铺,推子、ON、meter、控制锁行为不变。
-- **失配占位**:缺失引用使用同尺寸条带、`lastKnownName`、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter。`channelInventoryLoaded` 仅由已连接快照首次置为有效:首次加载前显示等待态;获得有效清单后,Ember 重连保留最后通道条带并通过连接状态禁用控制与清理,无需等待可能不会再次发送的 snapshot。树 patch/snapshot 删除或恢复通道时,占位与真实条带即时收敛;前端不自动写 View。
+- **失配占位**:缺失引用使用同尺寸条带、`lastKnownName`、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter。`channelInventoryLoaded` 仅由已连接快照首次置为有效:首次加载前显示等待态;获得有效清单后,空的非 connected handshake/重连快照只更新 Ember 状态,不替换已缓存通道表或电平种子,控制与清理仍由连接状态门控。随后到达的已连接快照仍是权威清单,树 patch/snapshot 删除或恢复通道时占位与真实条带即时收敛;前端不自动写 View。
 - **视觉一致性**:配置工作台和新控件继续复用 Phase 4 的石墨 surface、琥珀交互、Barlow Condensed/IBM Plex Mono、锐利边框、短动效与 reduced-motion。单通道颜色继续通过 `--channel-accent` 注入,meter 信号色不受 View palette 影响。未引入浅色主题、第二套 token、UI 库或拖拽库。
 
 ## 4. 真机验收操作清单(移交用户)
@@ -75,7 +75,7 @@ Phase 5 云端范围已全部完成。共享层新增向后兼容的 View 通道
 - `docs/development-plan.md` 的“Ember 路径”按 Phase 5 提示词和架构原则实现为逻辑 `channelId`(例如 `channel/3`),View 与 REST 不接触原始 Ember 路径。
 - View 模式严格按引用数组顺序平铺,因此不按类型分区;`TYPE ROWS` 仅适用于 `All Channels`,在 View 模式隐藏。
 - `lastKnownName` 只在用户勾选当前快照通道并保存时写入;后端和实时 patch 不自动修改 View。
-- 通道失配必须先由 Ember 已连接后的快照建立依据;初始空快照不具备清理权限。有效清单在 Ember/Socket 短暂断开及重连期间保留,避免无结构变化时服务端只发送状态或 patch、前端却永久等待新 snapshot;连接不在线时仍禁用控制与清理。
+- 通道失配必须先由 Ember 已连接后的快照建立依据;初始空快照不具备清理权限。有效清单在 Ember/Socket 短暂断开及重连期间保留,包括服务端在 handshake 中再次发送的空非 connected 快照;避免把缓存通道误判为失配,或在 Ember 尚未给出新树时解锁清理。连接不在线时仍禁用控制与清理。
 - 没有覆盖率排除项,未降低任何门槛;未修改 Ember 层、socket 契约、CI 结构或 Phase 5 无关文档。
 
 ## 8. 遗留问题与移交事项

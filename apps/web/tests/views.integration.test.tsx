@@ -124,6 +124,67 @@ describe('views integration', () => {
     expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
   });
 
+  it('retains cached inventory through an empty reconnect handshake', async () => {
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, 'handshake');
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'handshake',
+        name: 'Handshake',
+        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+      },
+    ]);
+    render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Mixer view' })).toHaveValue('handshake');
+    });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [],
+      loudness: snapshot.loudness,
+      connection: 'disconnected',
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
+    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CLEAR INVALID' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'BASSINPUT' })).toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
+    expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CLEAR INVALID' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'RETURN TO MIXER' }));
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      );
+    });
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      channels: [],
+      loudness: snapshot.loudness,
+      connection: 'connected',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    expect(await screen.findByText('1 MISSING')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CLEAR INVALID' })).toBeEnabled();
+  });
+
   it('switches to ordered view channels with color overrides and missing placeholders', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
