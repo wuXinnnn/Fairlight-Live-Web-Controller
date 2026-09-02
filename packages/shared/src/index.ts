@@ -25,13 +25,17 @@ export {
   DEFAULT_EMBER_HOST,
   DEFAULT_EMBER_PORT,
   emberEndpointSchema,
+  checkViewGroups,
   viewChannelRefSchema,
+  viewGroupSchema,
+  viewObjectSchema,
   viewSchema,
   type AppConfig,
   type ChannelPaletteKey,
   type EmberEndpoint,
   type View,
   type ViewChannelRef,
+  type ViewGroup,
 } from './config.js';
 export {
   connectionGetResponseSchema,

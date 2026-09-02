@@ -24,7 +24,7 @@ describe('config and connection schemas', () => {
     expect(appConfigSchema.parse(config)).toEqual(config);
   });
 
-  it('accepts a config that includes views for forward compatibility', () => {
+  it('accepts a config with kind and name channel references and groups', () => {
     const config = {
       version: 1 as const,
       ember: { host: '10.0.0.8', port: 9001 },
@@ -32,7 +32,11 @@ describe('config and connection schemas', () => {
         {
           id: 'foh',
           name: 'FOH',
-          channels: [{ channelId: 'channel/3', lastKnownName: 'BASS' }],
+          channels: [
+            { kind: 'channel' as const, name: 'BASS', channelId: 'channel/3', groupId: 'rhythm' },
+            { kind: 'aux' as const, name: 'FX', color: 'lime' as const },
+          ],
+          groups: [{ id: 'rhythm', name: 'Rhythm' }],
         },
       ],
     };
@@ -40,34 +44,57 @@ describe('config and connection schemas', () => {
     expect(viewSchema.parse(config.views[0])).toEqual(config.views[0]);
   });
 
-  it('accepts palette colors while preserving old channel references', () => {
+  it('defaults groups to an empty list', () => {
+    expect(viewSchema.parse({ id: 'foh', name: 'FOH', channels: [] })).toEqual({
+      id: 'foh',
+      name: 'FOH',
+      channels: [],
+      groups: [],
+    });
+  });
+
+  it('migrates legacy channelId and lastKnownName references', () => {
     expect(CHANNEL_PALETTE_KEYS).toEqual(['green', 'red', 'teal', 'navy', 'lime', 'purple']);
     expect(
       viewChannelRefSchema.parse({
-        channelId: 'channel/3',
-        lastKnownName: 'BASS',
+        channelId: 'aux/3',
+        lastKnownName: 'FX',
         color: 'lime',
       }),
-    ).toEqual({
-      channelId: 'channel/3',
-      lastKnownName: 'BASS',
-      color: 'lime',
-    });
+    ).toEqual({ kind: 'aux', name: 'FX', channelId: 'aux/3', color: 'lime' });
     expect(
       viewChannelRefSchema.parse({
         channelId: 'channel/3',
         lastKnownName: 'BASS',
       }),
-    ).toEqual({
-      channelId: 'channel/3',
-      lastKnownName: 'BASS',
+    ).toEqual({ kind: 'channel', name: 'BASS', channelId: 'channel/3' });
+    expect(viewChannelRefSchema.parse({ channelId: 'legacy', lastKnownName: 'Odd' })).toEqual({
+      kind: 'channel',
+      name: 'Odd',
+      channelId: 'legacy',
     });
+  });
+
+  it('passes new-shape and malformed references through to the object schema', () => {
+    const reference = { kind: 'main' as const, name: 'Main', channelId: 'main/1' };
+    expect(viewChannelRefSchema.parse(reference)).toEqual(reference);
+    expect(viewChannelRefSchema.parse({ ...reference, lastKnownName: 'Ignored' })).toEqual(
+      reference,
+    );
+    expect(() => viewChannelRefSchema.parse({ lastKnownName: 'BASS' })).toThrow();
+    expect(() => viewChannelRefSchema.parse({ kind: 'channel', name: ' ' })).toThrow();
+    expect(() => viewChannelRefSchema.parse({ kind: 'strip', name: 'BASS' })).toThrow();
+    expect(() => viewChannelRefSchema.parse('channel/3')).toThrow();
+    expect(() => viewChannelRefSchema.parse(null)).toThrow();
   });
 
   it('validates view write payloads and list responses', () => {
     const body = {
       name: '  Broadcast  ',
-      channels: [{ channelId: 'main/1', lastKnownName: 'Main', color: 'red' as const }],
+      channels: [
+        { kind: 'main' as const, name: 'Main', channelId: 'main/1', color: 'red' as const },
+      ],
+      groups: [],
     };
     expect(viewWriteBodySchema.parse(body)).toEqual({
       ...body,
@@ -80,7 +107,36 @@ describe('config and connection schemas', () => {
     expect(() =>
       viewWriteBodySchema.parse({
         name: 'Broadcast',
-        channels: [{ channelId: 'main/1', lastKnownName: 'Main', color: 'orange' }],
+        channels: [{ kind: 'main', name: 'Main', color: 'orange' }],
+      }),
+    ).toThrow();
+  });
+
+  it('rejects dangling group references and duplicate group ids', () => {
+    expect(() =>
+      viewWriteBodySchema.parse({
+        name: 'Broadcast',
+        channels: [{ kind: 'channel', name: 'BASS', groupId: 'missing' }],
+        groups: [],
+      }),
+    ).toThrow(/Unknown group id/);
+    expect(() =>
+      viewSchema.parse({
+        id: 'broadcast',
+        name: 'Broadcast',
+        channels: [],
+        groups: [
+          { id: 'g1', name: 'Rhythm' },
+          { id: 'g1', name: 'Vocals' },
+        ],
+      }),
+    ).toThrow(/Duplicate group id/);
+    expect(() =>
+      viewSchema.parse({
+        id: 'broadcast',
+        name: 'Broadcast',
+        channels: [],
+        groups: [{ id: 'g1', name: ' ' }],
       }),
     ).toThrow();
   });
