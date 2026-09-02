@@ -194,6 +194,71 @@ describe('EmberService', () => {
     expect(service.tree).toBe(client.tree);
   });
 
+  it('retries subscribe after a protocol failure', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    await service.start();
+    const subscribeCallsAfterStart = client.subscribeCalls;
+    const node = parameterNode(1, 'level', Model.ParameterType.Real, -6);
+    client.failSubscribe = new Error('subscribe denied');
+    await expect(service.subscribe(node, () => undefined)).rejects.toThrow('subscribe denied');
+    expect(client.subscribeCalls).toBe(subscribeCallsAfterStart + 1);
+    client.failSubscribe = undefined;
+    await service.subscribe(node, () => undefined);
+    expect(client.subscribeCalls).toBe(subscribeCallsAfterStart + 2);
+    const listeners = client.directoryListeners.filter((listener) => listener.node === node);
+    expect(listeners).toHaveLength(1);
+  });
+
+  it('retries structure watches after a subscribe failure', async () => {
+    const client = new FakeEmberClient();
+    client.failSubscribe = new Error('subscribe denied');
+    const service = createService(client);
+    await service.start();
+    const system = client.tree[0];
+    expect(system).toBeDefined();
+    expect(client.directoryListeners.filter((listener) => listener.node === system)).toHaveLength(
+      0,
+    );
+    client.failSubscribe = undefined;
+    await service.refreshTree();
+    expect(
+      client.directoryListeners.filter((listener) => listener.node === system).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('does not emit a stale tree after reconnect during refresh', async () => {
+    const first = new FakeEmberClient();
+    const second = new FakeEmberClient();
+    let created = 0;
+    const service = new EmberService({
+      host: '127.0.0.1',
+      port: 1,
+      logger: silentLogger(),
+      timeoutMs: 200,
+      disconnectTimeoutMs: 20,
+      reconnectInitialMs: 10,
+      reconnectMaxMs: 10,
+      treeRefreshDebounceMs: 10,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? first : second;
+      },
+    });
+    services.push(service);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    expect(trees).toEqual([first.tree]);
+    first.getDirectoryDelayMs = 80;
+    const refresh = service.refreshTree();
+    first.emit('disconnected');
+    await expect.poll(() => service.status).toBe('connected');
+    await refresh;
+    expect(trees.filter((tree) => tree === first.tree)).toHaveLength(1);
+    expect(trees.at(-1)).toBe(second.tree);
+  });
+
   it('ignores directory updates after stop', async () => {
     const client = new FakeEmberClient();
     const service = createService(client);
