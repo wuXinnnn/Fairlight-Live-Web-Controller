@@ -106,17 +106,21 @@ describe('views integration', () => {
     );
 
     socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'reconnecting' });
-    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
     expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
 
     socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
-    expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
-      'aria-disabled',
-      'false',
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      );
+    });
     expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
   });
 
