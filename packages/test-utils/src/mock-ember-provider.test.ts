@@ -25,7 +25,10 @@ describe('MockEmberProvider unit hooks', () => {
     const channel = createRequiredDump().nodes.find((node) => node.identifier === 'channel');
     const strip = channel?.children?.[0];
     expect(strip).toBeDefined();
-    expect(provider.addNode('channel', dumpNodeToEmber(strip!))).toBe(false);
+    if (strip === undefined) {
+      return;
+    }
+    expect(provider.addNode('channel', dumpNodeToEmber(strip))).toBe(false);
     expect(provider.setNodeOnline('channel/channel1', false)).toBe(false);
     expect(provider.getNode('channel')).toBeUndefined();
   });
@@ -37,7 +40,10 @@ describe('MockEmberProvider unit hooks', () => {
       const channel = createRequiredDump().nodes.find((node) => node.identifier === 'channel');
       const strip = channel?.children?.[0];
       expect(strip).toBeDefined();
-      expect(provider.addNode('missing', dumpNodeToEmber(strip!))).toBe(false);
+      if (strip === undefined) {
+        return;
+      }
+      expect(provider.addNode('missing', dumpNodeToEmber(strip))).toBe(false);
       expect(provider.setNodeOnline('channel/missing', false)).toBe(false);
       expect(provider.getNode('channel')?.contents).toMatchObject({ identifier: 'channel' });
     } finally {

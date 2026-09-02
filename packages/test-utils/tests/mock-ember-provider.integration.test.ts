@@ -118,17 +118,20 @@ describe('MockEmberProvider integration', () => {
     const dump = createRequiredDump();
     const first = dump.nodes.find((node) => node.identifier === 'channel')?.children?.[0];
     expect(first).toBeDefined();
+    if (first === undefined) {
+      return;
+    }
     expect(
       provider.addNode(
         'channel',
         dumpNodeToEmber({
-          ...first!,
+          ...first,
           number: 2,
           identifier: 'channel2',
           identifierPath: 'channel/channel2',
           numberPath: '1.2',
           description: 'PC',
-          children: first!.children?.map((child) => ({
+          children: first.children?.map((child) => ({
             ...child,
             numberPath: `1.2.${child.number}`,
             identifierPath: `channel/channel2/${child.identifier ?? child.number}`,

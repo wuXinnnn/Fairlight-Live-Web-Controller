@@ -221,10 +221,13 @@ describe('EmberService', () => {
     expect(trees).toHaveLength(1);
     const channelRoot = client.tree[1];
     expect(channelRoot).toBeDefined();
-    if (channelRoot?.children !== undefined) {
+    if (channelRoot === undefined) {
+      return;
+    }
+    if (channelRoot.children !== undefined) {
       channelRoot.children[2] = stripNode('channel', 2, 'PC');
     }
-    client.emitNodeUpdate(channelRoot!);
+    client.emitNodeUpdate(channelRoot);
     await expect.poll(() => trees.length).toBeGreaterThan(1);
     expect(client.tree[1]?.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
   });
