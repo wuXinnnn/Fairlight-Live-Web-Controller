@@ -10,6 +10,7 @@ import {
   mixerStore,
   replaceMixerSnapshot,
   resetMixerStore,
+  setEmberStatus,
   setLocalLevel,
   setSocketConnected,
 } from './mixer-store.js';
@@ -38,11 +39,23 @@ describe('mixer store', () => {
     replaceMixerSnapshot(snapshot);
     setSocketConnected(true);
     expect(mixerStore.getState().channelOrder).toEqual(['channel/1']);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
     expect(controlsAvailable(mixerStore.getState())).toBe(true);
 
     replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' });
     expect(mixerStore.getState().channels).toEqual({});
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
     expect(controlsAvailable(mixerStore.getState())).toBe(false);
+  });
+
+  it('requires a fresh connected snapshot after Ember becomes unavailable', () => {
+    replaceMixerSnapshot(snapshot);
+    setEmberStatus('reconnecting');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
+    setEmberStatus('connected');
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(false);
+    replaceMixerSnapshot(snapshot);
+    expect(mixerStore.getState().channelInventoryLoaded).toBe(true);
   });
 
   it('merges renamed and added channels and removes missing ids', () => {

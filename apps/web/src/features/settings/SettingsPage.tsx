@@ -65,11 +65,14 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
       error: state.error,
     })),
   );
-  const { channels, channelOrder } = useStore(
+  const { channels, channelOrder, channelInventoryLoaded, socketConnected, emberStatus } = useStore(
     mixerStore,
     useShallow((state) => ({
       channels: state.channels,
       channelOrder: state.channelOrder,
+      channelInventoryLoaded: state.channelInventoryLoaded,
+      socketConnected: state.socketConnected,
+      emberStatus: state.emberStatus,
     })),
   );
   const availableChannels = useMemo(
@@ -93,8 +96,10 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     setLocalError(null);
   };
 
-  const missingChannels =
-    activeDraft?.channels.filter((channel) => channels[channel.channelId] === undefined) ?? [];
+  const missingChannels = channelInventoryLoaded
+    ? (activeDraft?.channels.filter((channel) => channels[channel.channelId] === undefined) ?? [])
+    : [];
+  const canCleanMissing = channelInventoryLoaded && socketConnected && emberStatus === 'connected';
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -209,7 +214,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   };
 
   const handleCleanup = async () => {
-    if (activeDraft === null || missingChannels.length === 0) {
+    if (activeDraft === null || missingChannels.length === 0 || !canCleanMissing) {
       return;
     }
     if (!confirmCleanup) {
@@ -391,7 +396,11 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                         <strong>{missingChannels.length} MISSING</strong>
                         <span>References are preserved until you clear them.</span>
                       </div>
-                      <button type="button" onClick={handleCleanup} disabled={saving}>
+                      <button
+                        type="button"
+                        onClick={handleCleanup}
+                        disabled={saving || !canCleanMissing}
+                      >
                         {confirmCleanup ? 'CONFIRM CLEAR' : 'CLEAR INVALID'}
                       </button>
                     </div>
@@ -402,7 +411,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                     <ol className="view-channel-list">
                       {activeDraft.channels.map((reference, index) => {
                         const channel = channels[reference.channelId];
-                        const missing = channel === undefined;
+                        const missing = channelInventoryLoaded && channel === undefined;
                         const kind = channel?.kind ?? kindFromChannelId(reference.channelId);
                         return (
                           <li
@@ -421,7 +430,13 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                             <span className="channel-order__accent" aria-hidden="true" />
                             <div className="channel-order__identity">
                               <strong>{channel?.name ?? reference.lastKnownName}</strong>
-                              <small>{missing ? 'MISSING' : KIND_LABELS[channel.kind]}</small>
+                              <small>
+                                {!channelInventoryLoaded
+                                  ? 'WAITING'
+                                  : missing
+                                    ? 'MISSING'
+                                    : KIND_LABELS[channel?.kind ?? kind]}
+                              </small>
                             </div>
                             <div
                               className="order-buttons"

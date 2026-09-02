@@ -32,11 +32,14 @@ interface MixerPageProps {
 }
 
 export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
-  const channels = useStore(
+  const { channels, channelInventoryLoaded } = useStore(
     mixerStore,
-    useShallow((state) =>
-      state.channelOrder.map((id) => state.channels[id]).filter((channel) => channel !== undefined),
-    ),
+    useShallow((state) => ({
+      channels: state.channelOrder
+        .map((id) => state.channels[id])
+        .filter((channel) => channel !== undefined),
+      channelInventoryLoaded: state.channelInventoryLoaded,
+    })),
   );
   const { views, activeViewId } = useStore(
     viewStore,
@@ -59,7 +62,7 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const emptyMessage =
-    activeView !== null && activeView.channels.length === 0
+    channelInventoryLoaded && activeView !== null && activeView.channels.length === 0
       ? 'THIS VIEW HAS NO CHANNELS'
       : 'WAITING FOR MIXER SNAPSHOT';
 
@@ -82,7 +85,8 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
         <LoudnessPanel controlClient={controlClient} />
       </header>
 
-      {(activeView === null && renderedChannels.length === 0) ||
+      {!channelInventoryLoaded ||
+      (activeView === null && renderedChannels.length === 0) ||
       (activeView !== null && activeView.channels.length === 0) ? (
         <section className="empty-console" aria-live="polite">
           <span className="empty-console__pulse" aria-hidden="true" />

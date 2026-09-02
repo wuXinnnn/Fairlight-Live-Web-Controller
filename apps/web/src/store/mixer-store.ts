@@ -24,6 +24,7 @@ export interface MixerStoreState {
   loudness: ReturnType<typeof defaultLoudnessState>;
   socketConnected: boolean;
   emberStatus: ConnectionStatus;
+  channelInventoryLoaded: boolean;
   pendingLevels: Record<string, PendingLevel>;
   pendingOns: Record<string, PendingOn>;
   notice: string | null;
@@ -35,6 +36,7 @@ const INITIAL_STATE: MixerStoreState = {
   loudness: defaultLoudnessState(),
   socketConnected: false,
   emberStatus: 'disconnected',
+  channelInventoryLoaded: false,
   pendingLevels: {},
   pendingOns: {},
   notice: null,
@@ -55,7 +57,10 @@ export function setSocketConnected(connected: boolean): void {
 }
 
 export function setEmberStatus(status: ConnectionStatus): void {
-  mixerStore.setState({ emberStatus: status });
+  mixerStore.setState((state) => ({
+    emberStatus: status,
+    channelInventoryLoaded: status === 'connected' ? state.channelInventoryLoaded : false,
+  }));
 }
 
 export function replaceMixerSnapshot(snapshot: MixerSnapshot): void {
@@ -65,6 +70,7 @@ export function replaceMixerSnapshot(snapshot: MixerSnapshot): void {
     channelOrder: snapshot.channels.map((channel) => channel.id),
     loudness: snapshot.loudness,
     emberStatus: snapshot.connection,
+    channelInventoryLoaded: snapshot.connection === 'connected',
     pendingLevels: {},
     pendingOns: {},
   });
