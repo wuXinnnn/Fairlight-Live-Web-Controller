@@ -4,6 +4,7 @@ import {
   childNodes,
   findChildByIdentifier,
   isFunctionNode,
+  isNodeOnline,
   isParameterNode,
   readBooleanValue,
   readIdentifier,
@@ -42,5 +43,13 @@ describe('ember node utils', () => {
     expect(findChildByIdentifier(parent, 'level')).toBe(child);
     expect(findChildByIdentifier(parent, 'mute')).toBeUndefined();
     expect(childNodes(emberNode(2, new Model.EmberNodeImpl('empty')))).toEqual([]);
+  });
+
+  it('treats missing isOnline as online and false as offline', () => {
+    const unmarked = emberNode(1, new Model.EmberNodeImpl('channel1'));
+    const offline = emberNode(2, new Model.EmberNodeImpl('channel2', 'Gone', false, false));
+    expect(isNodeOnline(unmarked)).toBe(true);
+    expect(isNodeOnline(offline)).toBe(false);
+    expect(isNodeOnline(parameterNode(3, 'level', Model.ParameterType.Real, 0))).toBe(true);
   });
 });

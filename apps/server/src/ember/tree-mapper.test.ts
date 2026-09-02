@@ -30,6 +30,39 @@ describe('TreeMapper', () => {
     expect(mapper.resolveParameter('sub/1', 'level').contents.identifier).toBe('level');
   });
 
+  it('ignores an offline bus root', () => {
+    const mapper = new TreeMapper(silentLogger());
+    const tree = {
+      ...requiredTree(),
+      1: emberNode(1, new Model.EmberNodeImpl('channel', undefined, false, false), {
+        1: stripNode('channel', 1, 'BASS'),
+      }),
+    };
+    const result = mapper.sync(tree);
+    expect(result.added.map((channel) => channel.id)).not.toContain('channel/1');
+  });
+
+  it('treats an offline strip as removed on the next sync', () => {
+    const mapper = new TreeMapper(silentLogger());
+    mapper.sync(requiredTree());
+    const next = requiredTree();
+    const channelRoot = next[1];
+    if (channelRoot?.children !== undefined) {
+      channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    }
+    mapper.sync(next);
+    const offline = requiredTree();
+    const remaining = offline[1];
+    if (remaining?.children !== undefined) {
+      remaining.children[2] = stripNode('channel', 2, 'PC');
+      remaining.children[2].contents = new Model.EmberNodeImpl('channel2', 'PC', false, false);
+    }
+    const result = mapper.sync(offline);
+    expect(result.removedIds).toEqual(['channel/2']);
+    expect(result.structureChanged).toBe(true);
+    expect(mapper.get('channel/2')).toBeUndefined();
+  });
+
   it('diffs channel add and remove on later syncs', () => {
     const mapper = new TreeMapper(silentLogger());
     mapper.sync(requiredTree());

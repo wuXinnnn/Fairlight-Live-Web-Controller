@@ -1,4 +1,4 @@
-import { EmberServer, Model } from 'emberplus-connection';
+import { EmberServer, Model, Types, berEncode } from 'emberplus-connection';
 
 type EmberValue = string | number | boolean | Buffer | null;
 import type { DumpTree } from './dump-types.js';
@@ -91,17 +91,76 @@ export class MockEmberProvider {
   }
 
   getParameter(identifierPath: string): Model.NumberedTreeNode<Model.Parameter> | undefined {
-    if (this.server === undefined) {
-      return undefined;
-    }
-    const node =
-      this.server.getElementByPath(identifierPath, '/') ??
-      this.server.getElementByPath(identifierPath.replaceAll('/', '.'));
+    const node = this.getNode(identifierPath);
     if (node === undefined || node.contents.type !== Model.ElementType.Parameter) {
       return undefined;
     }
     return node as Model.NumberedTreeNode<Model.Parameter>;
   }
+
+  getNode(identifierPath: string): EmberTreeNode | undefined {
+    if (this.server === undefined) {
+      return undefined;
+    }
+    return (
+      this.server.getElementByPath(identifierPath, '/') ??
+      this.server.getElementByPath(identifierPath.replaceAll('/', '.'))
+    );
+  }
+
+  addNode(parentIdentifierPath: string, node: EmberTreeNode): boolean {
+    const parent = this.getNode(parentIdentifierPath);
+    if (parent === undefined || this.server === undefined) {
+      return false;
+    }
+    if (parent.children === undefined) {
+      parent.children = {};
+    }
+    parent.children[node.number] = node;
+    node.parent = parent;
+    this.notifyInserted(node);
+    return true;
+  }
+
+  setNodeOnline(identifierPath: string, online: boolean): boolean {
+    const node = this.getNode(identifierPath);
+    if (node === undefined || this.server === undefined) {
+      return false;
+    }
+    this.server.update(node, { isOnline: online });
+    return true;
+  }
+
+  private notifyInserted(node: EmberTreeNode): void {
+    if (this.server === undefined) {
+      return;
+    }
+    const qualified = new Model.QualifiedElementImpl(
+      emberNumberPath(node),
+      node.contents,
+      node.children,
+    );
+    const data = berEncode(
+      [qualified] as unknown as Parameters<typeof berEncode>[0],
+      Types.RootType.Elements,
+    );
+    const clients = (
+      this.server as unknown as { _clients: Set<{ sendBER: (data: Buffer) => void }> }
+    )._clients;
+    for (const client of clients) {
+      client.sendBER(data);
+    }
+  }
+}
+
+function emberNumberPath(node: EmberTreeNode): string {
+  const numbers: number[] = [];
+  let current: EmberTreeNode | undefined = node;
+  while (current !== undefined) {
+    numbers.unshift(current.number);
+    current = current.parent as EmberTreeNode | undefined;
+  }
+  return numbers.join('.');
 }
 
 function resetLoudness(server: EmberServer): void {

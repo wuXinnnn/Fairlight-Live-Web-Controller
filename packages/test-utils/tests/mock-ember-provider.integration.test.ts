@@ -1,5 +1,6 @@
 import { EmberClient, Model } from 'emberplus-connection';
 import { afterEach, describe, expect, it } from 'vitest';
+import { dumpNodeToEmber } from '../src/dump-to-ember-tree.js';
 import { createRequiredDump } from '../src/fixtures.js';
 import { MockEmberProvider } from '../src/mock-ember-provider.js';
 
@@ -108,6 +109,51 @@ describe('MockEmberProvider integration', () => {
           : undefined;
       })
       .toBe(-60);
+  });
+
+  it('inserts a new strip and marks it offline for subscribers', async () => {
+    const provider = MockEmberProvider.fromDump(createRequiredDump());
+    const client = await connectTo(provider);
+    await client.expand(client.tree);
+    const dump = createRequiredDump();
+    const first = dump.nodes.find((node) => node.identifier === 'channel')?.children?.[0];
+    expect(first).toBeDefined();
+    if (first === undefined) {
+      return;
+    }
+    expect(
+      provider.addNode(
+        'channel',
+        dumpNodeToEmber({
+          ...first,
+          number: 2,
+          identifier: 'channel2',
+          identifierPath: 'channel/channel2',
+          numberPath: '1.2',
+          description: 'PC',
+          children: first.children?.map((child) => ({
+            ...child,
+            numberPath: `1.2.${child.number}`,
+            identifierPath: `channel/channel2/${child.identifier ?? child.number}`,
+            value: child.identifier === 'name' ? 'PC' : child.value,
+          })),
+        }),
+      ),
+    ).toBe(true);
+    await expect.poll(() => findNode(client.tree, 'channel', 'channel2')).toBeDefined();
+    const added = findNode(client.tree, 'channel', 'channel2');
+    expect(added).toBeDefined();
+    const directory = await client.getDirectory(
+      added as Model.NumberedTreeNode<Model.EmberElement>,
+    );
+    await directory.response;
+    expect(provider.setNodeOnline('channel/channel2', false)).toBe(true);
+    await expect
+      .poll(() => {
+        const node = findNode(client.tree, 'channel', 'channel2');
+        return node !== undefined && 'isOnline' in node.contents ? node.contents.isOnline : true;
+      })
+      .toBe(false);
   });
 
   it('serves the archived live dump including required mixer nodes', async () => {

@@ -4,9 +4,15 @@ import type {
   EmberCollection,
   EmberDirectoryRequest,
   EmberParameterNode,
+  EmberTreeNode,
   EmberValue,
 } from './types.js';
 import { requiredTree } from './tree-helpers.js';
+
+interface DirectoryListener {
+  node: EmberTreeNode | EmberCollection;
+  cb: (node: EmberTreeNode) => void;
+}
 
 export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   tree: EmberCollection;
@@ -15,7 +21,11 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   connectDelayMs = 0;
   hangConnect = false;
   hangDisconnect = false;
+  hangGetDirectory = false;
+  getDirectoryDelayMs = 0;
   failConnect: Error | undefined;
+  failSubscribe: Error | undefined;
+  readonly failSubscribeNodes = new Set<EmberTreeNode>();
   expandCalls = 0;
   setValueCalls: EmberValue[] = [];
   setValueDelayMs = 0;
@@ -25,6 +35,7 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   hangInvokeResponse = false;
   failInvokeSend = false;
   subscribeCalls = 0;
+  readonly directoryListeners: DirectoryListener[] = [];
   readonly host: string | undefined;
   readonly port: number | undefined;
 
@@ -62,14 +73,46 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
     this.connected = false;
   }
 
-  async getDirectory(): Promise<EmberDirectoryRequest> {
+  async getDirectory(
+    node?: EmberTreeNode | EmberCollection,
+    onUpdate?: (node: EmberTreeNode) => void,
+  ): Promise<EmberDirectoryRequest> {
+    if (this.hangGetDirectory) {
+      return new Promise(() => undefined);
+    }
+    if (this.getDirectoryDelayMs > 0) {
+      await delay(this.getDirectoryDelayMs);
+    }
     this.expandCalls += 1;
+    if (node !== undefined && onUpdate !== undefined) {
+      this.directoryListeners.push({ node, cb: onUpdate });
+    }
     return {};
   }
 
-  async subscribe(): Promise<EmberDirectoryRequest> {
+  async subscribe(
+    node?: EmberTreeNode,
+    cb?: (node: EmberTreeNode) => void,
+  ): Promise<EmberDirectoryRequest> {
     this.subscribeCalls += 1;
+    if (this.failSubscribe !== undefined) {
+      throw this.failSubscribe;
+    }
+    if (node !== undefined && this.failSubscribeNodes.has(node)) {
+      throw new Error('subscribe denied');
+    }
+    if (node !== undefined && cb !== undefined) {
+      this.directoryListeners.push({ node, cb });
+    }
     return {};
+  }
+
+  emitNodeUpdate(node: EmberTreeNode): void {
+    for (const listener of this.directoryListeners) {
+      if (listener.node === node) {
+        listener.cb(node);
+      }
+    }
   }
 
   async unsubscribe(): Promise<EmberDirectoryRequest> {

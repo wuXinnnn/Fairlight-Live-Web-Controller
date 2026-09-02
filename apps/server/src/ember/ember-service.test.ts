@@ -3,7 +3,7 @@ import { silentLogger } from '../logger.js';
 import { EmberProtocolError } from './errors.js';
 import { EmberService } from './ember-service.js';
 import { FakeEmberClient } from './fake-ember-client.js';
-import { parameterNode } from './tree-helpers.js';
+import { parameterNode, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
 import { Model } from 'emberplus-connection';
 
@@ -26,6 +26,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 30,
       reconnectInitialMs: 20,
       reconnectMaxMs: 40,
+      treeRefreshDebounceMs: 10,
       createClient: () => client,
       ...extra,
     });
@@ -187,9 +188,133 @@ describe('EmberService', () => {
     await service.start();
     const node = parameterNode(1, 'level', Model.ParameterType.Real, -6);
     await service.subscribe(node, () => undefined);
+    await service.subscribe(node, () => undefined);
     await service.invoke({ contents: { identifier: 'reset' } } as EmberFunctionNode);
     await service.refreshTree();
     expect(service.tree).toBe(client.tree);
+  });
+
+  it('retries subscribe after a protocol failure', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    await service.start();
+    const subscribeCallsAfterStart = client.subscribeCalls;
+    const node = parameterNode(1, 'level', Model.ParameterType.Real, -6);
+    client.failSubscribe = new Error('subscribe denied');
+    await expect(service.subscribe(node, () => undefined)).rejects.toThrow('subscribe denied');
+    expect(client.subscribeCalls).toBe(subscribeCallsAfterStart + 1);
+    client.failSubscribe = undefined;
+    await service.subscribe(node, () => undefined);
+    expect(client.subscribeCalls).toBe(subscribeCallsAfterStart + 2);
+    const listeners = client.directoryListeners.filter((listener) => listener.node === node);
+    expect(listeners).toHaveLength(1);
+  });
+
+  it('continues structure watches when an earlier node fails', async () => {
+    const client = new FakeEmberClient();
+    const system = client.tree[0];
+    const channel = client.tree[1];
+    expect(system).toBeDefined();
+    expect(channel).toBeDefined();
+    if (system === undefined || channel === undefined) {
+      return;
+    }
+    client.failSubscribeNodes.add(system);
+    const service = createService(client);
+    await service.start();
+    expect(client.directoryListeners.filter((listener) => listener.node === system)).toHaveLength(
+      0,
+    );
+    expect(
+      client.directoryListeners.filter((listener) => listener.node === channel).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('retries structure watches after a subscribe failure', async () => {
+    const client = new FakeEmberClient();
+    client.failSubscribe = new Error('subscribe denied');
+    const service = createService(client);
+    await service.start();
+    const system = client.tree[0];
+    expect(system).toBeDefined();
+    expect(client.directoryListeners.filter((listener) => listener.node === system)).toHaveLength(
+      0,
+    );
+    client.failSubscribe = undefined;
+    await service.refreshTree();
+    expect(
+      client.directoryListeners.filter((listener) => listener.node === system).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('does not emit a stale tree after reconnect during refresh', async () => {
+    const first = new FakeEmberClient();
+    const second = new FakeEmberClient();
+    let created = 0;
+    const service = new EmberService({
+      host: '127.0.0.1',
+      port: 1,
+      logger: silentLogger(),
+      timeoutMs: 200,
+      disconnectTimeoutMs: 20,
+      reconnectInitialMs: 10,
+      reconnectMaxMs: 10,
+      treeRefreshDebounceMs: 10,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? first : second;
+      },
+    });
+    services.push(service);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    expect(trees).toEqual([first.tree]);
+    first.getDirectoryDelayMs = 80;
+    const refresh = service.refreshTree();
+    first.emit('disconnected');
+    await expect.poll(() => service.status).toBe('connected');
+    await refresh;
+    expect(trees.filter((tree) => tree === first.tree)).toHaveLength(1);
+    expect(trees.at(-1)).toBe(second.tree);
+  });
+
+  it('ignores directory updates after stop', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    await service.stop();
+    const count = trees.length;
+    const channelRoot = client.tree[1];
+    if (channelRoot !== undefined) {
+      client.emitNodeUpdate(channelRoot);
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 30);
+    });
+    expect(trees).toHaveLength(count);
+  });
+
+  it('re-emits the tree when a watched bus node is updated', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    expect(trees).toHaveLength(1);
+    const channelRoot = client.tree[1];
+    expect(channelRoot).toBeDefined();
+    if (channelRoot === undefined) {
+      return;
+    }
+    if (channelRoot.children !== undefined) {
+      channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    }
+    client.emitNodeUpdate(channelRoot);
+    await expect.poll(() => trees.length).toBeGreaterThan(1);
+    expect(client.tree[1]?.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
   });
 
   it('resolves invoke after send when the provider never returns a result', async () => {

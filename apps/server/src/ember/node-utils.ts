@@ -27,6 +27,10 @@ export function readStringValue(node: EmberParameterNode): string | undefined {
   return typeof node.contents.value === 'string' ? node.contents.value : undefined;
 }
 
+export function isNodeOnline(node: EmberTreeNode): boolean {
+  return !('isOnline' in node.contents) || node.contents.isOnline !== false;
+}
+
 export function childNodes(node: EmberTreeNode): EmberTreeNode[] {
   return node.children === undefined ? [] : Object.values(node.children);
 }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ChannelNotFoundError } from './ember/errors.js';
 import { FakeEmberClient } from './ember/fake-ember-client.js';
+import { findChildByIdentifier, isParameterNode } from './ember/node-utils.js';
 import { requiredTree, stripNode } from './ember/tree-helpers.js';
 import { silentLogger } from './logger.js';
 import { MixerRuntime } from './runtime.js';
@@ -26,6 +27,7 @@ describe('MixerRuntime', () => {
       host: '127.0.0.1',
       port: 1,
       createClient: () => client,
+      treeRefreshDebounceMs: 10,
     });
     runtimes.push(runtime);
     await runtime.start();
@@ -58,5 +60,41 @@ describe('MixerRuntime', () => {
     await runtime.ember.refreshTree();
     await expect.poll(() => snapshots.length).toBeGreaterThan(0);
     expect(runtime.store.getChannel('channel/2')?.name).toBe('PC');
+  });
+
+  it('subscribes remaining mapped parameters after one subscribe failure', async () => {
+    const client = new FakeEmberClient();
+    const channelRoot = client.tree[1];
+    const strip =
+      channelRoot === undefined ? undefined : findChildByIdentifier(channelRoot, 'channel1');
+    const level = strip === undefined ? undefined : findChildByIdentifier(strip, 'level');
+    const mute = strip === undefined ? undefined : findChildByIdentifier(strip, 'mute');
+    expect(level).toBeDefined();
+    expect(mute).toBeDefined();
+    if (level === undefined || mute === undefined || !isParameterNode(mute)) {
+      return;
+    }
+    client.failSubscribeNodes.add(level);
+    const { runtime } = await startRuntime(client);
+    expect(client.directoryListeners.filter((listener) => listener.node === level)).toHaveLength(0);
+    expect(
+      client.directoryListeners.filter((listener) => listener.node === mute).length,
+    ).toBeGreaterThan(0);
+    mute.contents.value = true;
+    client.emitNodeUpdate(mute);
+    await expect.poll(() => runtime.store.getChannel('channel/1')?.muted).toBe(true);
+  });
+
+  it('remaps when a watched directory node reports a new strip', async () => {
+    const client = new FakeEmberClient();
+    const { runtime } = await startRuntime(client);
+    expect(runtime.store.getChannel('channel/2')).toBeUndefined();
+    const channelRoot = client.tree[1];
+    if (channelRoot?.children === undefined) {
+      throw new Error('expected channel root');
+    }
+    channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    client.emitNodeUpdate(channelRoot);
+    await expect.poll(() => runtime.store.getChannel('channel/2')?.name).toBe('PC');
   });
 });
