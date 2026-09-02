@@ -6,6 +6,7 @@
 - **Ember+ 是自描述协议,没有官方路径文档**。树结构、节点类型、取值范围只能通过连接 Provider 在运行时获取
 - 树随混音器配置动态变化:增删通道/总线会实时反映到树中(这是 view 失配处理的依据)
 - 订阅电平类参数最快约 50ms 更新一次
+- S101 keepalive:`emberplus-connection@0.3.1` 在 TCP 连上后自动每 10 s 发送 KeepAliveRequest、自动应答 Provider 的请求,并在 500 ms 内收不到 KeepAliveResponse 时关闭 socket(表现为 `disconnected`,由 `EmberService` 退避重连)。间隔与应答窗口是库内部常量,没有公开配置项。真机若周期性(约每 10 s)出现 `ember socket disconnected`,应先怀疑 500 ms 应答窗口过紧,而不是网络
 
 ## 唯一开发依据:本地 dump 的实际树
 
@@ -53,6 +54,7 @@
 - 推子 level 与电平表在 Ember 元数据中**没有** `format`/`factor`;推子量程 -100…10,电平表量程 -60…0
 - **根节点 number 从 0 起**(`system` = 0);通道/总线实例 identifier 从 1 起(`channel1`)
 - 显示名以 `name` 参数为准,不要用 Ember number 当用户可见编号
+- **通道没有稳定 ID**:在通道之间插入或调整次序会让 `channelN` identifier 重新编号。View 引用以「类型 + `name`」匹配,由 identifier 派生的逻辑 id 只用于同名裁决,不能当作跨重排的键
 
 ## 本地测试安全约束
 
