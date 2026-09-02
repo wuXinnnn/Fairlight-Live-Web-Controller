@@ -114,7 +114,13 @@ export class EmberService extends EventEmitter {
   async refreshTree(): Promise<void> {
     const client = this.requireClient();
     await this.expandTree(client);
+    if (!this.isActiveClient(client)) {
+      return;
+    }
     await this.watchStructure(client);
+    if (!this.isActiveClient(client)) {
+      return;
+    }
     this.emit('tree', client.tree);
   }
 
@@ -123,14 +129,19 @@ export class EmberService extends EventEmitter {
       return;
     }
     this.subscribedNodes.add(node);
-    const client = this.requireClient();
-    const request = await withTimeout(
-      client.subscribe(node, onUpdate),
-      this.timeoutMs,
-      'subscribe',
-    );
-    if (request.response !== undefined) {
-      await withTimeout(request.response, this.timeoutMs, 'subscribe response');
+    try {
+      const client = this.requireClient();
+      const request = await withTimeout(
+        client.subscribe(node, onUpdate),
+        this.timeoutMs,
+        'subscribe',
+      );
+      if (request.response !== undefined) {
+        await withTimeout(request.response, this.timeoutMs, 'subscribe response');
+      }
+    } catch (error) {
+      this.subscribedNodes.delete(node);
+      throw error;
     }
   }
 
@@ -178,15 +189,15 @@ export class EmberService extends EventEmitter {
       if (result instanceof Error) {
         throw result;
       }
-      if (this.client !== client || !this.started) {
+      if (!this.isActiveClient(client)) {
         return;
       }
       await this.expandTree(client);
-      if (this.client !== client || !this.started) {
+      if (!this.isActiveClient(client)) {
         return;
       }
       await this.watchStructure(client);
-      if (this.client !== client || !this.started) {
+      if (!this.isActiveClient(client)) {
         return;
       }
       this.hasConnected = true;
@@ -222,23 +233,31 @@ export class EmberService extends EventEmitter {
   }
 
   private async watchStructure(client: EmberClientHandle): Promise<void> {
-    try {
-      for (const root of Object.values(client.tree)) {
-        if (isParameterNode(root) || isFunctionNode(root)) {
+    for (const root of Object.values(client.tree)) {
+      if (!this.isActiveClient(client)) {
+        return;
+      }
+      if (isParameterNode(root) || isFunctionNode(root)) {
+        continue;
+      }
+      await this.watchNode(root);
+      for (const child of childNodes(root)) {
+        if (!this.isActiveClient(client)) {
+          return;
+        }
+        if (isParameterNode(child) || isFunctionNode(child)) {
           continue;
         }
-        await this.subscribe(root, () => {
-          this.scheduleTreeRefresh();
-        });
-        for (const child of childNodes(root)) {
-          if (isParameterNode(child) || isFunctionNode(child)) {
-            continue;
-          }
-          await this.subscribe(child, () => {
-            this.scheduleTreeRefresh();
-          });
-        }
+        await this.watchNode(child);
       }
+    }
+  }
+
+  private async watchNode(node: EmberTreeNode): Promise<void> {
+    try {
+      await this.subscribe(node, () => {
+        this.scheduleTreeRefresh();
+      });
     } catch (error) {
       this.logger.warn(
         { err: errorMessage(error), layer: 'protocol' },
@@ -351,6 +370,10 @@ export class EmberService extends EventEmitter {
     } catch (error) {
       this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'discard failed');
     }
+  }
+
+  private isActiveClient(client: EmberClientHandle): boolean {
+    return this.started && this.client === client;
   }
 
   private requireClient(): EmberClientHandle {

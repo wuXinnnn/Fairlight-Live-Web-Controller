@@ -172,26 +172,26 @@ export class MixerRuntime {
 
   private async subscribeMapped(): Promise<void> {
     for (const channel of this.mapper.list()) {
-      await this.ember.subscribe(channel.level, (node) => {
+      await this.subscribeMappedNode(channel.level, (node) => {
         const value = numericFrom(node);
         if (value !== undefined) {
           this.store.setLevel(channel.id, value);
         }
       });
-      await this.ember.subscribe(channel.mute, (node) => {
+      await this.subscribeMappedNode(channel.mute, (node) => {
         const value = booleanFrom(node);
         if (value !== undefined) {
           this.store.setMuted(channel.id, value);
         }
       });
-      await this.ember.subscribe(channel.name, (node) => {
+      await this.subscribeMappedNode(channel.name, (node) => {
         const value = stringFrom(node);
         if (value !== undefined) {
           this.store.setName(channel.id, value);
         }
       });
       if (channel.meter !== undefined) {
-        await this.ember.subscribe(channel.meter, (node) => {
+        await this.subscribeMappedNode(channel.meter, (node) => {
           const value = numericFrom(node);
           if (value !== undefined) {
             this.store.setMeterSilent(channel.id, value);
@@ -204,18 +204,32 @@ export class MixerRuntime {
     if (loudness === undefined) {
       return;
     }
-    await this.ember.subscribe(loudness.integrated, (node) => {
+    await this.subscribeMappedNode(loudness.integrated, (node) => {
       const value = numericFrom(node);
       if (value !== undefined) {
         this.applyLoudness({ integratedLufs: value });
       }
     });
-    await this.ember.subscribe(loudness.truePeak, (node) => {
+    await this.subscribeMappedNode(loudness.truePeak, (node) => {
       const value = numericFrom(node);
       if (value !== undefined) {
         this.applyLoudness({ truePeakDbtp: value });
       }
     });
+  }
+
+  private async subscribeMappedNode(
+    node: EmberTreeNode,
+    onUpdate: (node: EmberTreeNode) => void,
+  ): Promise<void> {
+    try {
+      await this.ember.subscribe(node, onUpdate);
+    } catch (error) {
+      this.logger.warn(
+        { err: error instanceof Error ? error.message : String(error), layer: 'protocol' },
+        'failed to subscribe mapped node',
+      );
+    }
   }
 
   private applyLoudness(partial: Partial<LoudnessState>): void {
