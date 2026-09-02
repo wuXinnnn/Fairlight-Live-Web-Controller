@@ -98,6 +98,7 @@ describe('views integration', () => {
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await waitFor(() => expect(viewsClient.calls[0]?.method).toBe('list'));
+    await screen.findByRole('heading', { name: 'BASS' });
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
     await screen.findByRole('checkbox', { name: 'BASSINPUT' });
     const availableBass = container.querySelector<HTMLElement>(
