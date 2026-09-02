@@ -1,5 +1,5 @@
 import { CHANNEL_KINDS, type ChannelKind } from '@flwc/shared';
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -112,7 +112,12 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     const { group, entries } = segment;
     const first = entries[0];
     if (group === undefined || first === undefined) {
-      return entries.map((entry, position) => renderViewStrip(entry, offset + position));
+      return (
+        <Fragment key={`loose-${first?.index ?? offset}`}>
+          {offset > 0 && <span className="view-row-break" aria-hidden="true" />}
+          {entries.map((entry, position) => renderViewStrip(entry, offset + position))}
+        </Fragment>
+      );
     }
     const headingId = `view-group-${group.id}-${first.index}`;
     const presentCount = entries.filter((entry) => entry.channel !== undefined).length;

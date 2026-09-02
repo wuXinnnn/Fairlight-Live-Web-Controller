@@ -469,17 +469,29 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   return (
     <main className="mixer-shell settings-shell" data-theme="dark">
       <header className="console-header settings-header">
+        <button
+          type="button"
+          className="console-back"
+          onClick={onBack}
+          aria-label="RETURN TO MIXER"
+          title="Return to mixer"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path
+              d="M14 8H3.5M8 3.5 3.5 8 8 12.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="square"
+            />
+          </svg>
+          <span>MIXER</span>
+        </button>
         <div className="console-brand">
-          <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
+          <span className="console-brand__eyebrow">FAIRLIGHT LIVE / CONTROL DESK</span>
           <h1>VIEW CONFIGURATION</h1>
         </div>
         <ConnectionStatus />
-        <div className="console-navigation">
-          <span>WORKSPACE</span>
-          <button type="button" onClick={onBack}>
-            RETURN TO MIXER
-          </button>
-        </div>
       </header>
 
       {(error ?? localError) !== null && (
