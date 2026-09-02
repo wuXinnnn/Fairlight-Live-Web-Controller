@@ -1,7 +1,12 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createRequiredDump, findFreePort, MockEmberProvider } from '@flwc/test-utils';
+import {
+  createRequiredDump,
+  dumpNodeToEmber,
+  findFreePort,
+  MockEmberProvider,
+} from '@flwc/test-utils';
 import { SOCKET_EVENTS, type ControlAck, type MixerPatch, type MixerSnapshot } from '@flwc/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
@@ -43,6 +48,16 @@ function extraChannelDump(): DumpTree {
   return dump;
 }
 
+function extraStripNode() {
+  const dump = extraChannelDump();
+  const channelRoot = dump.nodes.find((node) => node.identifier === 'channel');
+  const added = channelRoot?.children?.find((node) => node.identifier === 'channel2');
+  if (added === undefined) {
+    throw new Error('extra channel dump missing channel2');
+  }
+  return dumpNodeToEmber(added);
+}
+
 describe('mixer backend integration', { timeout: 15_000 }, () => {
   const providers: MockEmberProvider[] = [];
   const servers: StartedServer[] = [];
@@ -80,6 +95,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       disconnectTimeoutMs: 500,
       reconnectInitialMs: 50,
       reconnectMaxMs: 100,
+      treeRefreshDebounceMs: 20,
     });
     servers.push(server);
     const url = `http://127.0.0.1:${httpPort}`;
@@ -174,6 +190,15 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     });
     expect(disconnect.status).toBe(200);
     await expect.poll(() => server.runtime.store.connection).toBe('reconnecting');
+  });
+
+  it('emits a snapshot when the provider adds and offlines a channel', async () => {
+    const { server, provider } = await startStack();
+    expect(server.runtime.store.getChannel('channel/2')).toBeUndefined();
+    expect(provider.addNode('channel', extraStripNode())).toBe(true);
+    await expect.poll(() => server.runtime.store.getChannel('channel/2')?.name).toBe('PC');
+    expect(provider.setNodeOnline('channel/channel2', false)).toBe(true);
+    await expect.poll(() => server.runtime.store.getChannel('channel/2')).toBeUndefined();
   });
 
   it('emits a new snapshot after reconnecting to a tree with an added channel', async () => {

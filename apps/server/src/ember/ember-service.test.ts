@@ -3,7 +3,7 @@ import { silentLogger } from '../logger.js';
 import { EmberProtocolError } from './errors.js';
 import { EmberService } from './ember-service.js';
 import { FakeEmberClient } from './fake-ember-client.js';
-import { parameterNode } from './tree-helpers.js';
+import { parameterNode, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
 import { Model } from 'emberplus-connection';
 
@@ -26,6 +26,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 30,
       reconnectInitialMs: 20,
       reconnectMaxMs: 40,
+      treeRefreshDebounceMs: 10,
       createClient: () => client,
       ...extra,
     });
@@ -187,9 +188,45 @@ describe('EmberService', () => {
     await service.start();
     const node = parameterNode(1, 'level', Model.ParameterType.Real, -6);
     await service.subscribe(node, () => undefined);
+    await service.subscribe(node, () => undefined);
     await service.invoke({ contents: { identifier: 'reset' } } as EmberFunctionNode);
     await service.refreshTree();
     expect(service.tree).toBe(client.tree);
+  });
+
+  it('ignores directory updates after stop', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    await service.stop();
+    const count = trees.length;
+    const channelRoot = client.tree[1];
+    if (channelRoot !== undefined) {
+      client.emitNodeUpdate(channelRoot);
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 30);
+    });
+    expect(trees).toHaveLength(count);
+  });
+
+  it('re-emits the tree when a watched bus node is updated', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client);
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    expect(trees).toHaveLength(1);
+    const channelRoot = client.tree[1];
+    expect(channelRoot).toBeDefined();
+    if (channelRoot?.children !== undefined) {
+      channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    }
+    client.emitNodeUpdate(channelRoot!);
+    await expect.poll(() => trees.length).toBeGreaterThan(1);
+    expect(client.tree[1]?.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
   });
 
   it('resolves invoke after send when the provider never returns a result', async () => {

@@ -26,6 +26,7 @@ describe('MixerRuntime', () => {
       host: '127.0.0.1',
       port: 1,
       createClient: () => client,
+      treeRefreshDebounceMs: 10,
     });
     runtimes.push(runtime);
     await runtime.start();
@@ -58,5 +59,18 @@ describe('MixerRuntime', () => {
     await runtime.ember.refreshTree();
     await expect.poll(() => snapshots.length).toBeGreaterThan(0);
     expect(runtime.store.getChannel('channel/2')?.name).toBe('PC');
+  });
+
+  it('remaps when a watched directory node reports a new strip', async () => {
+    const client = new FakeEmberClient();
+    const { runtime } = await startRuntime(client);
+    expect(runtime.store.getChannel('channel/2')).toBeUndefined();
+    const channelRoot = client.tree[1];
+    if (channelRoot?.children === undefined) {
+      throw new Error('expected channel root');
+    }
+    channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    client.emitNodeUpdate(channelRoot);
+    await expect.poll(() => runtime.store.getChannel('channel/2')?.name).toBe('PC');
   });
 });

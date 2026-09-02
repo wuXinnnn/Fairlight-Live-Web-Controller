@@ -12,6 +12,7 @@ import {
   childNodes,
   findChildByIdentifier,
   isFunctionNode,
+  isNodeOnline,
   isParameterNode,
   readBooleanValue,
   readIdentifier,
@@ -71,6 +72,10 @@ export class TreeMapper {
         continue;
       }
       if (isChannelKind(identifier)) {
+        if (!isNodeOnline(root)) {
+          this.logger.debug({ identifier }, 'ignoring offline bus root');
+          continue;
+        }
         this.walkBus(root, identifier, discovered);
         continue;
       }
@@ -154,6 +159,10 @@ export class TreeMapper {
       const identifier = readIdentifier(child);
       if (identifier === undefined) {
         this.logger.debug({ kind, number: child.number }, 'ignoring strip without identifier');
+        continue;
+      }
+      if (!isNodeOnline(child)) {
+        this.logger.debug({ identifier, kind }, 'ignoring offline strip');
         continue;
       }
       const match = pattern.exec(identifier);

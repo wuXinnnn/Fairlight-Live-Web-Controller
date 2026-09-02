@@ -21,7 +21,9 @@ describe('resolveDataDir and resolveConfigPath', () => {
     expect(resolveConfigPath(undefined, fromSrc)).toBe(
       path.resolve(process.cwd(), '../../data/config.json'),
     );
-    expect(resolveConfigPath('/tmp/flwc-config', fromSrc)).toBe('/tmp/flwc-config/config.json');
+    expect(resolveConfigPath('/tmp/flwc-config', fromSrc)).toBe(
+      path.join('/tmp/flwc-config', 'config.json'),
+    );
   });
 
   it('uses import.meta.url when no module url is passed', () => {

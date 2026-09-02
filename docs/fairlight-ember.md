@@ -74,3 +74,5 @@
 5. **disconnect 可能挂起**。dump 完成后 `EmberClient.disconnect()` 曾因未完成的 getDirectory 请求或 `ECONNRESET` 不返回。工具脚本对 disconnect 做 2s 超时后 `discard()`。
 6. **本 show 没有 sub / mixm / mtx**。不得把「当前 dump 没有」写成「Fairlight 永远没有」;TreeMapper 必须按运行时树发现。
 7. **`system/loudness/reset` 会执行但不回 InvocationResult**。2026-09-02 直连 `127.0.0.1:9000` 实测:`client.invoke` 立即 `sentOk: true`,28ms 内 `integrated` 变为 `-100` 且后续响度继续更新,但 `request.response` 至少 8s 无 `InvocationResult`。库同时报 `decode root elements: Unexpected BER context tag '96'`。接线与节点路径正确,不要把缺回包当成未发送。`EmberService.invoke` 以发送成功为准并忽略悬挂的 InvocationResult,避免 5s 超时导致前端 toast `The mixer did not respond.`。
+8. **通道增删不会自动进 Store**。`getDirectory` 会在协议层订阅目录变化,`emberplus-connection` 会把新子节点合并进本地树,但**不会删除**已消失的子节点;删除在 Fairlight 侧通常表现为条带 `isOnline === false`。只订阅 level/mute/name 时名称能实时更新,通道清单不会变。必须监听总线根与条带节点,debounce 后重新 expand + `TreeMapper.sync`,并把离线条带当作已移除。
+9. **对已展开的根再 GetDirectory 会丢掉子树**。Provider 根目录响应通常只含根节点 contents、不含 children;`emberplus-connection` 会用该响应整体替换 `tree[number]`。连接后只对已有总线根/条带 `subscribe`,不要再对根做 GetDirectory。

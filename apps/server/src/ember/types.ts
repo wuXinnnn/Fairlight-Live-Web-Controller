@@ -18,7 +18,10 @@ export interface EmberClientHandle {
   connect(): Promise<Error | undefined>;
   disconnect(): Promise<void>;
   discard(): void;
-  getDirectory(node: EmberTreeNode | EmberCollection): Promise<EmberDirectoryRequest>;
+  getDirectory(
+    node: EmberTreeNode | EmberCollection,
+    onUpdate?: (node: EmberTreeNode) => void,
+  ): Promise<EmberDirectoryRequest>;
   subscribe(
     node: EmberTreeNode,
     cb?: (node: EmberTreeNode) => void,

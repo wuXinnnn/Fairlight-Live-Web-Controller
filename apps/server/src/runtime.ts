@@ -24,6 +24,7 @@ export interface MixerRuntimeOptions {
   disconnectTimeoutMs?: number;
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
+  treeRefreshDebounceMs?: number;
   createClient?: EmberClientFactory;
   meterIntervalMs?: number;
   onMeterFrame?: MeterHub['onFrame'];
@@ -58,6 +59,7 @@ export class MixerRuntime {
       disconnectTimeoutMs: options.disconnectTimeoutMs,
       reconnectInitialMs: options.reconnectInitialMs,
       reconnectMaxMs: options.reconnectMaxMs,
+      treeRefreshDebounceMs: options.treeRefreshDebounceMs,
       createClient: options.createClient,
     });
     this.meters = new MeterHub(options.onMeterFrame ?? (() => undefined), options.meterIntervalMs);
@@ -65,7 +67,10 @@ export class MixerRuntime {
       this.store.setConnection(status);
     });
     this.ember.on('tree', (tree: EmberCollection) => {
-      this.treeReady = this.onTree(tree);
+      this.treeReady = this.treeReady.then(
+        () => this.onTree(tree),
+        () => this.onTree(tree),
+      );
     });
   }
 

@@ -5,6 +5,7 @@ import type { AppLogger } from '../logger.js';
 import { errorMessage } from '../logger.js';
 import { expandEmberTree, withTimeout } from '../tools/expand-ember-tree.js';
 import { EmberProtocolError } from './errors.js';
+import { childNodes, isFunctionNode, isParameterNode } from './node-utils.js';
 import type {
   EmberClientFactory,
   EmberClientHandle,
@@ -19,6 +20,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_DISCONNECT_TIMEOUT_MS = 2_000;
 const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_MS = 30_000;
+const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 
 export interface EmberServiceOptions {
@@ -29,6 +31,7 @@ export interface EmberServiceOptions {
   disconnectTimeoutMs?: number;
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
+  treeRefreshDebounceMs?: number;
   createClient?: EmberClientFactory;
 }
 
@@ -45,6 +48,7 @@ export class EmberService extends EventEmitter {
   private readonly disconnectTimeoutMs: number;
   private readonly reconnectInitialMs: number;
   private readonly reconnectMaxMs: number;
+  private readonly treeRefreshDebounceMs: number;
   private readonly createClient: EmberClientFactory;
   private client: EmberClientHandle | undefined;
   private started = false;
@@ -52,7 +56,10 @@ export class EmberService extends EventEmitter {
   private statusValue: ConnectionStatus = 'disconnected';
   private backoffMs: number;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private treeRefreshTail: Promise<void> = Promise.resolve();
   private writeTail: Promise<void> = Promise.resolve();
+  private subscribedNodes = new WeakSet<EmberTreeNode>();
 
   constructor(options: EmberServiceOptions) {
     super();
@@ -63,6 +70,7 @@ export class EmberService extends EventEmitter {
     this.disconnectTimeoutMs = options.disconnectTimeoutMs ?? DEFAULT_DISCONNECT_TIMEOUT_MS;
     this.reconnectInitialMs = options.reconnectInitialMs ?? DEFAULT_RECONNECT_INITIAL_MS;
     this.reconnectMaxMs = options.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
+    this.treeRefreshDebounceMs = options.treeRefreshDebounceMs ?? DEFAULT_TREE_REFRESH_DEBOUNCE_MS;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
   }
@@ -90,6 +98,7 @@ export class EmberService extends EventEmitter {
   async stop(): Promise<void> {
     this.started = false;
     this.clearReconnectTimer();
+    this.clearTreeRefreshTimer();
     await this.safeClose();
     this.setStatus('disconnected');
   }
@@ -105,10 +114,15 @@ export class EmberService extends EventEmitter {
   async refreshTree(): Promise<void> {
     const client = this.requireClient();
     await this.expandTree(client);
+    await this.watchStructure(client);
     this.emit('tree', client.tree);
   }
 
   async subscribe(node: EmberTreeNode, onUpdate: (node: EmberTreeNode) => void): Promise<void> {
+    if (this.subscribedNodes.has(node)) {
+      return;
+    }
+    this.subscribedNodes.add(node);
     const client = this.requireClient();
     const request = await withTimeout(
       client.subscribe(node, onUpdate),
@@ -171,6 +185,10 @@ export class EmberService extends EventEmitter {
       if (this.client !== client || !this.started) {
         return;
       }
+      await this.watchStructure(client);
+      if (this.client !== client || !this.started) {
+        return;
+      }
       this.hasConnected = true;
       this.backoffMs = this.reconnectInitialMs;
       this.setStatus('connected');
@@ -200,6 +218,59 @@ export class EmberService extends EventEmitter {
         { path: error.path, err: error.message, layer: 'protocol' },
         'tree expand error',
       );
+    }
+  }
+
+  private async watchStructure(client: EmberClientHandle): Promise<void> {
+    try {
+      for (const root of Object.values(client.tree)) {
+        if (isParameterNode(root) || isFunctionNode(root)) {
+          continue;
+        }
+        await this.subscribe(root, () => {
+          this.scheduleTreeRefresh();
+        });
+        for (const child of childNodes(root)) {
+          if (isParameterNode(child) || isFunctionNode(child)) {
+            continue;
+          }
+          await this.subscribe(child, () => {
+            this.scheduleTreeRefresh();
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        { err: errorMessage(error), layer: 'protocol' },
+        'failed to watch tree structure',
+      );
+    }
+  }
+
+  private scheduleTreeRefresh(): void {
+    if (!this.started || this.client === undefined) {
+      return;
+    }
+    if (this.treeRefreshTimer !== undefined) {
+      clearTimeout(this.treeRefreshTimer);
+    }
+    this.treeRefreshTimer = setTimeout(() => {
+      this.treeRefreshTimer = undefined;
+      this.treeRefreshTail = this.treeRefreshTail.then(
+        () => this.refreshTreeIfConnected(),
+        () => this.refreshTreeIfConnected(),
+      );
+    }, this.treeRefreshDebounceMs);
+  }
+
+  private async refreshTreeIfConnected(): Promise<void> {
+    if (!this.started || this.client === undefined || !this.client.connected) {
+      return;
+    }
+    try {
+      await this.refreshTree();
+    } catch (error) {
+      this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'tree refresh failed');
     }
   }
 
@@ -251,7 +322,20 @@ export class EmberService extends EventEmitter {
     }
   }
 
+  private clearTreeRefreshTimer(): void {
+    if (this.treeRefreshTimer !== undefined) {
+      clearTimeout(this.treeRefreshTimer);
+      this.treeRefreshTimer = undefined;
+    }
+  }
+
+  private resetWatches(): void {
+    this.subscribedNodes = new WeakSet();
+  }
+
   private async safeClose(): Promise<void> {
+    this.clearTreeRefreshTimer();
+    this.resetWatches();
     const client = this.client;
     this.client = undefined;
     if (client === undefined) {
