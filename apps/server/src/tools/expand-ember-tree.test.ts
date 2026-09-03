@@ -1,6 +1,11 @@
 import { Model } from 'emberplus-connection';
 import { describe, expect, it, vi } from 'vitest';
-import { expandEmberTree, withTimeout } from './expand-ember-tree.js';
+import {
+  expandEmberTree,
+  hasIncompleteMixerStrips,
+  incompleteMixerStripKeys,
+  withTimeout,
+} from './expand-ember-tree.js';
 import type { EmberDirectoryRequest, EmberTreeClient } from './expand-ember-tree.js';
 
 function node(
@@ -92,5 +97,97 @@ describe('expandEmberTree', () => {
 
     await expandEmberTree(client);
     expect(client.getDirectory).not.toHaveBeenCalled();
+  });
+
+  it('getDirectory on strip-like nodes that have an empty children object', async () => {
+    const strip = node(1, new Model.EmberNodeImpl('channel2'), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: strip });
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async (target): Promise<EmberDirectoryRequest> => {
+        if (target === strip) {
+          strip.children = {
+            1: node(
+              1,
+              new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6),
+            ),
+          };
+        }
+        return { response: Promise.resolve(target) };
+      }),
+    };
+
+    await expandEmberTree(client);
+    expect(client.getDirectory).toHaveBeenCalledWith(strip);
+    expect(strip.children?.[1]?.contents).toMatchObject({ identifier: 'level' });
+  });
+
+  it('clears an empty children object on a strip before getDirectory', async () => {
+    const strip = node(1, new Model.EmberNodeImpl('channel2'), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: strip });
+    let seenChildren: unknown;
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async (target): Promise<EmberDirectoryRequest> => {
+        if (target === strip) {
+          seenChildren = strip.children;
+        }
+        return { response: Promise.resolve(target) };
+      }),
+    };
+
+    await expandEmberTree(client);
+    expect(seenChildren).toBeUndefined();
+  });
+
+  it('does not getDirectory on an already expanded bus root', async () => {
+    const strip = node(1, new Model.EmberNodeImpl('channel1'), {
+      1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
+    });
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: strip });
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async () => ({ response: Promise.resolve(undefined) })),
+    };
+
+    await expandEmberTree(client);
+    expect(client.getDirectory).not.toHaveBeenCalled();
+  });
+
+  it('does not getDirectory on a bus root with empty children', async () => {
+    const root = node(1, new Model.EmberNodeImpl('channel'), {});
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async () => ({ response: Promise.resolve(undefined) })),
+    };
+
+    await expandEmberTree(client);
+    expect(client.getDirectory).not.toHaveBeenCalled();
+  });
+});
+
+describe('incomplete mixer strips', () => {
+  it('reports online strips that are missing required parameters', () => {
+    const complete = node(1, new Model.EmberNodeImpl('channel1'), {
+      1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
+      2: node(2, new Model.ParameterImpl(Model.ParameterType.Boolean, 'mute', undefined, false)),
+      4: node(4, new Model.ParameterImpl(Model.ParameterType.String, 'name', undefined, 'BASS')),
+    });
+    const stub = node(2, new Model.EmberNodeImpl('channel2'), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: complete, 2: stub });
+    const tree = { 1: root };
+    expect(hasIncompleteMixerStrips(tree)).toBe(true);
+    expect(incompleteMixerStripKeys(tree)).toEqual(['channel/channel2']);
+  });
+
+  it('ignores offline stubs and complete strips', () => {
+    const complete = node(1, new Model.EmberNodeImpl('channel1'), {
+      1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
+      2: node(2, new Model.ParameterImpl(Model.ParameterType.Boolean, 'mute', undefined, false)),
+      4: node(4, new Model.ParameterImpl(Model.ParameterType.String, 'name', undefined, 'BASS')),
+    });
+    const offline = node(2, new Model.EmberNodeImpl('channel2', undefined, true, false), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: complete, 2: offline });
+    expect(hasIncompleteMixerStrips({ 1: root })).toBe(false);
   });
 });

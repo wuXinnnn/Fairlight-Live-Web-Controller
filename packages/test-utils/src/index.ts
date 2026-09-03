@@ -16,4 +16,4 @@ export {
   resolveRepoRoot,
 } from './load-dump.js';
 export { MockEmberProvider } from './mock-ember-provider.js';
-export type { MockEmberProviderOptions } from './mock-ember-provider.js';
+export type { AddNodeOptions, MockEmberProviderOptions } from './mock-ember-provider.js';

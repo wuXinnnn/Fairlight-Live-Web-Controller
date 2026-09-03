@@ -14,6 +14,11 @@ export interface MockEmberProviderOptions {
   port?: number;
 }
 
+export interface AddNodeOptions {
+  notify?: boolean;
+  announceChildren?: boolean;
+}
+
 export class MockEmberProvider {
   readonly host: string;
   private boundPort: number | undefined;
@@ -108,7 +113,11 @@ export class MockEmberProvider {
     );
   }
 
-  addNode(parentIdentifierPath: string, node: EmberTreeNode): boolean {
+  addNode(
+    parentIdentifierPath: string,
+    node: EmberTreeNode,
+    options: AddNodeOptions = {},
+  ): boolean {
     const parent = this.getNode(parentIdentifierPath);
     if (parent === undefined || this.server === undefined) {
       return false;
@@ -118,7 +127,9 @@ export class MockEmberProvider {
     }
     parent.children[node.number] = node;
     node.parent = parent;
-    this.notifyInserted(node);
+    if (options.notify !== false) {
+      this.notifyInserted(node, options.announceChildren !== false);
+    }
     return true;
   }
 
@@ -131,14 +142,14 @@ export class MockEmberProvider {
     return true;
   }
 
-  private notifyInserted(node: EmberTreeNode): void {
+  private notifyInserted(node: EmberTreeNode, announceChildren = true): void {
     if (this.server === undefined) {
       return;
     }
     const qualified = new Model.QualifiedElementImpl(
       emberNumberPath(node),
       node.contents,
-      node.children,
+      announceChildren ? node.children : undefined,
     );
     const data = berEncode(
       [qualified] as unknown as Parameters<typeof berEncode>[0],
