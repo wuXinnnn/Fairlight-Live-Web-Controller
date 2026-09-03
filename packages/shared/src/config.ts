@@ -40,9 +40,11 @@ function migrateLegacyChannelRef(input: unknown): unknown {
   ) {
     return input;
   }
+  // Old references could carry an empty name; fall back to the id so one such entry never
+  // invalidates the whole persisted config.
   const migrated: Record<string, unknown> = {
     kind: kindFromChannelId(candidate.channelId),
-    name: candidate.lastKnownName,
+    name: candidate.lastKnownName.trim().length > 0 ? candidate.lastKnownName : candidate.channelId,
     channelId: candidate.channelId,
   };
   if (candidate.color !== undefined) {

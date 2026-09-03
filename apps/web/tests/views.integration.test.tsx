@@ -415,6 +415,39 @@ describe('views integration', () => {
     expect(screen.queryByRole('slider', { name: 'BASS DI level' })).not.toBeInTheDocument();
   });
 
+  it('keeps the exit animation when a renumbered channel disappears', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'renumbered',
+        name: 'Renumbered',
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/9' }],
+        groups: [],
+      },
+    ]);
+    render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Renumbered' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'renumbered' },
+    });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_PATCH, { removedIds: ['channel/1'] });
+    expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText('BASS missing channel')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('slider', { name: 'BASS level' })).not.toBeInTheDocument();
+  });
+
   it('groups channels in the configuration page and renders group sections', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([

@@ -73,6 +73,17 @@ describe('config and connection schemas', () => {
       name: 'Odd',
       channelId: 'legacy',
     });
+    expect(viewChannelRefSchema.parse({ channelId: 'main/1', lastKnownName: '   ' })).toEqual({
+      kind: 'main',
+      name: 'main/1',
+      channelId: 'main/1',
+    });
+    expect(
+      appConfigSchema.safeParse({
+        ...defaultAppConfig(),
+        views: [{ id: 'v', name: 'V', channels: [{ channelId: 'aux/2', lastKnownName: '' }] }],
+      }).success,
+    ).toBe(true);
   });
 
   it('passes new-shape and malformed references through to the object schema', () => {

@@ -71,6 +71,11 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
   );
   const renderedChannels = useChannelPresence(activeView === null ? channels : viewChannels);
   const renderedById = new Map(renderedChannels.map((item) => [item.channel.id, item]));
+  // Live channels already resolved to a reference; rendered strips outside this set are on
+  // their way out and may still be shown for the reference they last belonged to.
+  const claimedIds = new Set(
+    resolvedView.map((entry) => entry.channel?.id).filter((id) => id !== undefined),
+  );
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const viewHasGroups = activeView !== null && activeView.groups.length > 0;
@@ -84,10 +89,18 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     let item: PresenceChannel | undefined;
     if (channel !== undefined) {
       item = renderedById.get(channel.id) ?? { channel, exiting: false };
-    } else if (reference.channelId !== undefined) {
-      // Keep the exit animation of a strip that just disappeared from the inventory.
-      const exiting = renderedById.get(reference.channelId);
-      item = exiting?.exiting === true ? exiting : undefined;
+    } else {
+      // Keep the exit animation of the strip that just disappeared from the inventory. It is
+      // matched by kind and name, not by the persisted id, which Fairlight may have renumbered.
+      item = renderedChannels.find(
+        (candidate) =>
+          !claimedIds.has(candidate.channel.id) &&
+          candidate.channel.kind === reference.kind &&
+          candidate.channel.name.trim() === reference.name.trim(),
+      );
+      if (item !== undefined) {
+        claimedIds.add(item.channel.id);
+      }
     }
     if (item === undefined) {
       return <MissingChannelStrip key={`ref-${index}`} reference={reference} index={position} />;

@@ -154,6 +154,7 @@ describe('view routes', () => {
             channels: [
               { channelId: 'channel/1', lastKnownName: 'BASS' },
               { channelId: 'aux/2', lastKnownName: 'FX', color: 'lime' },
+              { channelId: 'main/1', lastKnownName: '' },
             ],
           },
         ],
@@ -165,6 +166,7 @@ describe('view routes', () => {
       channels: [
         { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
         { kind: 'aux', name: 'FX', channelId: 'aux/2', color: 'lime' },
+        { kind: 'main', name: 'main/1', channelId: 'main/1' },
       ],
       groups: [],
     };
