@@ -158,7 +158,7 @@ describe('expandEmberTree', () => {
     const root = node(1, new Model.EmberNodeImpl('channel'), { 2: ghost });
     const client: EmberTreeClient = {
       tree: { 1: root },
-      getDirectory: vi.fn(async () => new Promise(() => undefined)),
+      getDirectory: vi.fn(() => new Promise<EmberDirectoryRequest>(() => undefined)),
     };
 
     const started = Date.now();
