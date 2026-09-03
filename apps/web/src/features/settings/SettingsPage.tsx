@@ -271,6 +271,21 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     });
   };
 
+  const handleAssignGroup = (index: number, groupId: string | undefined) => {
+    editDraft((source) => {
+      const next = assignGroup(source, index, groupId);
+      if (next === source) {
+        return source;
+      }
+      const movedReference = next.channels.find(
+        (reference) => !source.channels.includes(reference),
+      );
+      const newIndex = movedReference === undefined ? index : next.channels.indexOf(movedReference);
+      setMoved({ reference: movedReference, direction: newIndex < index ? 'up' : 'down' });
+      return next;
+    });
+  };
+
   const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
     editDraft((source) => ({
       ...source,
@@ -353,9 +368,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
           <select
             aria-label={`${reference.name} group`}
             value={reference.groupId ?? ''}
-            onChange={(event) =>
-              editDraft((source) => assignGroup(source, index, event.target.value || undefined))
-            }
+            onChange={(event) => handleAssignGroup(index, event.target.value || undefined)}
           >
             <option value="">NO GROUP</option>
             {view.groups.map((group) => (

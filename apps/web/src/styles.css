@@ -1809,9 +1809,10 @@ html.fader-cap-dragging * {
 
 .view-group {
   border-bottom: 1px solid #292d35;
-  background: color-mix(in srgb, var(--channel-row-accent) 4%, #14171c);
+  background: #111318;
 }
 
+/* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
   grid-template-columns: auto auto minmax(7rem, 1fr) auto auto auto;
@@ -1819,8 +1820,22 @@ html.fader-cap-dragging * {
   gap: 0.65rem;
   min-height: 3.1rem;
   padding: 0.5rem 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--channel-row-accent) 45%, #2a2e37);
   border-bottom: 1px solid #292d35;
   border-left: 3px solid var(--channel-row-accent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--channel-row-accent) 16%, transparent),
+      transparent 38%
+    ),
+    var(--surface-2);
+}
+
+.view-group__header > .channel-order__index {
+  padding: 0.15rem 0.35rem;
+  border: 1px solid #75602f;
+  color: var(--amber);
 }
 
 .view-group__header input {
@@ -1832,9 +1847,9 @@ html.fader-cap-dragging * {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.07em;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -1857,14 +1872,20 @@ html.fader-cap-dragging * {
 }
 
 .view-group__members {
-  margin: 0;
+  margin: 0 0 0 1.35rem;
   padding: 0;
+  border-left: 2px solid color-mix(in srgb, var(--channel-row-accent) 50%, transparent);
   list-style: none;
 }
 
+/* Member rows sit visibly inside the group: deeper indent, dimmer surface, smaller index. */
 .view-group__members > .channel-order-row {
-  padding-left: 1.1rem;
-  border-left: 3px solid color-mix(in srgb, var(--channel-row-accent) 55%, transparent);
+  padding-left: 1.5rem;
+  background: rgb(255 255 255 / 1.6%);
+}
+
+.view-group__members > .channel-order-row > .channel-order__index {
+  color: #6f7580;
 }
 
 .view-group__members > .channel-order-row:last-child {
@@ -1872,35 +1893,57 @@ html.fader-cap-dragging * {
 }
 
 .view-group__empty {
-  margin: 0;
-  padding: 0.7rem 1.1rem;
-  border-left: 3px solid color-mix(in srgb, var(--channel-row-accent) 55%, transparent);
+  margin: 0 0 0 1.35rem;
+  padding: 0.7rem 1.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--channel-row-accent) 50%, transparent);
   color: #6f7580;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.55rem;
   letter-spacing: 0.1em;
 }
 
+/* Moved rows and groups slide back into place under a short amber flash drawn above their content. */
+.channel-order-row,
+.view-group {
+  position: relative;
+}
+
 .channel-order-row[data-moved='up'],
 .view-group[data-moved='up'] {
-  animation: order-shift-up var(--motion-medium) ease-out;
+  animation: order-shift-up calc(var(--motion-medium) * 1.6) ease-out;
 }
 
 .channel-order-row[data-moved='down'],
 .view-group[data-moved='down'] {
-  animation: order-shift-down var(--motion-medium) ease-out;
+  animation: order-shift-down calc(var(--motion-medium) * 1.6) ease-out;
+}
+
+.channel-order-row[data-moved]::after,
+.view-group[data-moved]::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border: 1px solid rgb(239 169 40 / 75%);
+  background: rgb(239 169 40 / 16%);
+  animation: order-flash calc(var(--motion-medium) * 1.6) ease-out forwards;
+  content: '';
+  pointer-events: none;
+}
+
+@keyframes order-flash {
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes order-shift-up {
   from {
-    background-color: rgb(239 169 40 / 14%);
     transform: translateY(0.55rem);
   }
 }
 
 @keyframes order-shift-down {
   from {
-    background-color: rgb(239 169 40 / 14%);
     transform: translateY(-0.55rem);
   }
 }

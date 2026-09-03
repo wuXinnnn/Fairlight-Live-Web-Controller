@@ -480,6 +480,10 @@ describe('views integration', () => {
     const groupId = within(bassGroup).getByRole('option', { name: 'Rhythm' }).getAttribute('value');
     expect(groupId).not.toBeNull();
     fireEvent.change(bassGroup, { target: { value: groupId } });
+    expect(container.querySelector('[data-ordered-channel-name="BASS"]')).toHaveAttribute(
+      'data-moved',
+      'down',
+    );
     fireEvent.change(screen.getByRole('combobox', { name: 'MAIN group' }), {
       target: { value: groupId },
     });
@@ -587,6 +591,14 @@ describe('views integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
     expect(screen.getAllByText('DUPLICATE NAME')).toHaveLength(3);
     expect(screen.getByText('1 MISSING')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'GHOST group' }), {
+      target: { value: '' },
+    });
+    expect(container.querySelector('[data-ordered-channel-name="GHOST"]')).toHaveAttribute(
+      'data-moved',
+      'down',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Grouped/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Ungroup Rhythm' }));
     expect(screen.queryByRole('textbox', { name: 'Group 1 name' })).not.toBeInTheDocument();
     expect(container.querySelectorAll('.view-channel-list > .channel-order-row')).toHaveLength(2);
