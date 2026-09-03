@@ -368,9 +368,11 @@ describe('EmberService', () => {
     });
     services.push(service);
     await service.start();
-    await expect.poll(() => primary.tree[1]?.children?.[2]?.contents).toMatchObject({
-      identifier: 'channel2',
-    });
+    await expect
+      .poll(() => primary.tree[1]?.children?.[2]?.contents)
+      .toMatchObject({
+        identifier: 'channel2',
+      });
   });
 
   it('reclaims a ghost occupant when the probe finds a new strip', async () => {
@@ -401,9 +403,11 @@ describe('EmberService', () => {
     });
     services.push(service);
     await service.start();
-    await expect.poll(() => primary.tree[1]?.children?.[2]?.contents).toMatchObject({
-      identifier: 'channel2',
-    });
+    await expect
+      .poll(() => primary.tree[1]?.children?.[2]?.contents)
+      .toMatchObject({
+        identifier: 'channel2',
+      });
   });
 
   it('resolves invoke after send when the provider never returns a result', async () => {

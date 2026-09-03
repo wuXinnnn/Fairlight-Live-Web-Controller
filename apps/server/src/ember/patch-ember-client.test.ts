@@ -90,7 +90,9 @@ describe('patchEmberClientTreeMerge', () => {
     };
     patchEmberClientTreeMerge(client, { onIncomingError });
     expect(() => client._handleIncoming?.({})).not.toThrow();
-    expect(onIncomingError).toHaveBeenCalledWith(expect.objectContaining({ message: 'merge failed' }));
+    expect(onIncomingError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'merge failed' }),
+    );
   });
 
   it('lets emberplus-connection merge a numbered directory update with a new strip', () => {

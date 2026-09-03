@@ -7,6 +7,7 @@ import {
   hasIncompleteMixerStrips,
   incompleteMixerStripKeys,
   listMixerStripRefs,
+  STRIP_STUB_DIRECTORY_TIMEOUT_MS,
   withTimeout,
 } from './expand-ember-tree.js';
 import type { EmberDirectoryRequest, EmberTreeClient } from './expand-ember-tree.js';
@@ -150,6 +151,26 @@ describe('expandEmberTree', () => {
 
     await expandEmberTree(client);
     expect(client.getDirectory).toHaveBeenCalledWith(ghost);
+  });
+
+  it('times out unidentified mixer-bus ghosts as stubs and restores empty children', async () => {
+    const ghost = node(2, new Model.EmberNodeImpl(), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 2: ghost });
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async () => new Promise(() => undefined)),
+    };
+
+    const started = Date.now();
+    const { errors } = await expandEmberTree(client, { timeoutMs: 2_000 });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(errors).toEqual([
+      {
+        path: 'channel/2',
+        message: `Timeout after ${STRIP_STUB_DIRECTORY_TIMEOUT_MS}ms: getDirectory channel/2`,
+      },
+    ]);
+    expect(ghost.children).toEqual({});
   });
 
   it('does not getDirectory on an already expanded bus root', async () => {

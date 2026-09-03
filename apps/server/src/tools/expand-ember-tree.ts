@@ -83,11 +83,15 @@ async function expandNode(
   }
 
   if (shouldGetDirectory(node, identifier, parentIdentifier)) {
-    const directoryTimeoutMs = isStripIdentifier(identifier)
+    const stubDirectory = isMixerBusStub(identifier, parentIdentifier);
+    const directoryTimeoutMs = stubDirectory
       ? Math.min(timeoutMs, stripDirectoryTimeoutMs ?? STRIP_STUB_DIRECTORY_TIMEOUT_MS)
       : timeoutMs;
     const ok = await getDirectorySafe(client, node, identifierPath, errors, directoryTimeoutMs);
     if (!ok) {
+      if (stubDirectory && node.children === undefined) {
+        node.children = {};
+      }
       return;
     }
   }
@@ -124,6 +128,20 @@ function isStripIdentifier(identifier: string | undefined): boolean {
   return identifier !== undefined && STRIP_IDENTIFIER.test(identifier);
 }
 
+function isMixerBus(identifier: string | undefined): identifier is (typeof CHANNEL_KINDS)[number] {
+  return identifier !== undefined && CHANNEL_KINDS.some((kind) => kind === identifier);
+}
+
+/** Strip stubs and identifier-less ghosts under a mixer bus hang if given the full timeout. */
+function isMixerBusStub(
+  identifier: string | undefined,
+  parentIdentifier: string | undefined,
+): boolean {
+  return (
+    isStripIdentifier(identifier) || (identifier === undefined && isMixerBus(parentIdentifier))
+  );
+}
+
 function hasEmptyChildren(node: EmberTreeNode): boolean {
   return node.children !== undefined && Object.keys(node.children).length === 0;
 }
@@ -148,9 +166,7 @@ function shouldGetDirectory(
   if (identifier !== undefined && BUS_ROOT_IDENTIFIERS.has(identifier)) {
     return false;
   }
-  const underMixerBus =
-    parentIdentifier !== undefined && CHANNEL_KINDS.some((kind) => kind === parentIdentifier);
-  if ((isStripIdentifier(identifier) || (underMixerBus && identifier === undefined)) && hasEmptyChildren(node)) {
+  if (isMixerBusStub(identifier, parentIdentifier) && hasEmptyChildren(node)) {
     node.children = undefined;
     return true;
   }
@@ -264,7 +280,10 @@ export function attachMissingMixerStrips(
         continue;
       }
     }
-    const stub = new Model.NumberedTreeNodeImpl(ref.number, new Model.EmberNodeImpl(ref.identifier));
+    const stub = new Model.NumberedTreeNodeImpl(
+      ref.number,
+      new Model.EmberNodeImpl(ref.identifier),
+    );
     stub.parent = root;
     root.children[ref.number] = stub;
     added.push(ref);
