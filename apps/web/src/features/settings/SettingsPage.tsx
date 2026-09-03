@@ -132,7 +132,6 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
   const [newGroupName, setNewGroupName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmCleanup, setConfirmCleanup] = useState(false);
   const [moved, setMoved] = useState<MovedMarker | null>(null);
 
   const resolved = useMemo(
@@ -157,7 +156,6 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     setSelectedId(view.id);
     setDraft(copyView(view));
     setConfirmDelete(false);
-    setConfirmCleanup(false);
     setLocalError(null);
     setMoved(null);
   };
@@ -225,7 +223,6 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
       setSelectedId(null);
       setDraft(null);
       setConfirmDelete(false);
-      setConfirmCleanup(false);
     }
   };
 
@@ -307,24 +304,15 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
     editDraft((source) => addGroup(source, { id: createLocalId('group'), name }));
   };
 
-  const handleCleanup = async () => {
+  const handleCleanup = () => {
     if (activeDraft === null || missingEntries.length === 0 || !canCleanMissing) {
       return;
     }
-    if (!confirmCleanup) {
-      setConfirmCleanup(true);
-      return;
-    }
     const missingIndexes = new Set(missingEntries.map((entry) => entry.index));
-    const updated = await updateView(viewsClient, activeDraft.id, {
-      name: activeDraft.name,
-      channels: activeDraft.channels.filter((_, index) => !missingIndexes.has(index)),
-      groups: activeDraft.groups,
-    });
-    if (updated !== null) {
-      setDraft(copyView(updated));
-      setConfirmCleanup(false);
-    }
+    editDraft((source) => ({
+      ...source,
+      channels: source.channels.filter((_, index) => !missingIndexes.has(index)),
+    }));
   };
 
   const renderChannelRow = (entry: ResolvedViewChannel, view: View): ReactNode => {
@@ -671,14 +659,14 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
                     <div className="missing-warning" role="status">
                       <div>
                         <strong>{missingEntries.length} MISSING</strong>
-                        <span>References are preserved until you clear them.</span>
+                        <span>Clear invalid references, then save the view.</span>
                       </div>
                       <button
                         type="button"
                         onClick={handleCleanup}
                         disabled={saving || !canCleanMissing}
                       >
-                        {confirmCleanup ? 'CONFIRM CLEAR' : 'CLEAR INVALID'}
+                        CLEAR INVALID
                       </button>
                     </div>
                   )}
