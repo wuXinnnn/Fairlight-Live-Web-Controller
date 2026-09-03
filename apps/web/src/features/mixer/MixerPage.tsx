@@ -85,7 +85,11 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
       ? 'THIS VIEW HAS NO CHANNELS'
       : 'WAITING FOR MIXER SNAPSHOT';
 
-  const renderViewStrip = (entry: ResolvedViewChannel, position: number): ReactNode => {
+  const renderViewStrip = (
+    entry: ResolvedViewChannel,
+    position: number,
+    extraClass?: string,
+  ): ReactNode => {
     const { reference, channel, index } = entry;
     let item: PresenceChannel | undefined;
     if (channel !== undefined) {
@@ -108,7 +112,14 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
       }
     }
     if (item === undefined) {
-      return <MissingChannelStrip key={`ref-${index}`} reference={reference} index={position} />;
+      return (
+        <MissingChannelStrip
+          key={`ref-${index}`}
+          reference={reference}
+          index={position}
+          className={extraClass}
+        />
+      );
     }
     return (
       <ChannelStrip
@@ -116,6 +127,7 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
         item={item}
         controlClient={controlClient}
         lockMode={lockMode}
+        className={extraClass}
         style={
           {
             '--strip-index': position,
@@ -126,14 +138,24 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     );
   };
 
-  const renderViewSegment = (segment: ViewSegment, offset: number): ReactNode => {
+  const renderViewSegment = (
+    segment: ViewSegment,
+    offset: number,
+    afterGroup: boolean,
+  ): ReactNode => {
     const { group, entries } = segment;
     const first = entries[0];
     if (group === undefined || first === undefined) {
       return (
         <Fragment key={`loose-${first?.index ?? offset}`}>
           {offset > 0 && <span className="view-row-break" aria-hidden="true" />}
-          {entries.map((entry, position) => renderViewStrip(entry, offset + position))}
+          {entries.map((entry, position) =>
+            renderViewStrip(
+              entry,
+              offset + position,
+              afterGroup && position === 0 ? 'is-after-group' : undefined,
+            ),
+          )}
         </Fragment>
       );
     }
@@ -167,8 +189,10 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
     }
     const segments = segmentViewChannels(activeView, resolvedView);
     let offset = 0;
+    let previousWasGroup = false;
     return segments.map((segment) => {
-      const rendered = renderViewSegment(segment, offset);
+      const rendered = renderViewSegment(segment, offset, previousWasGroup);
+      previousWasGroup = segment.group !== undefined;
       offset += segment.entries.length;
       return rendered;
     });

@@ -22,10 +22,17 @@ interface ChannelStripProps {
   item: PresenceChannel;
   controlClient: ControlClient;
   lockMode: ControlLockMode;
+  className?: string;
   style?: CSSProperties;
 }
 
-export function ChannelStrip({ item, controlClient, lockMode, style }: ChannelStripProps) {
+export function ChannelStrip({
+  item,
+  controlClient,
+  lockMode,
+  className,
+  style,
+}: ChannelStripProps) {
   const { channel } = item;
   const liveChannel = useStore(mixerStore, (state) => state.channels[channel.id] ?? channel);
   const controlsEnabled = useStore(mixerStore, controlsAvailable);
@@ -86,7 +93,7 @@ export function ChannelStrip({ item, controlClient, lockMode, style }: ChannelSt
 
   return (
     <article
-      className={`channel-strip ${item.exiting ? 'is-exiting' : 'is-entering'}`}
+      className={`channel-strip ${item.exiting ? 'is-exiting' : 'is-entering'}${className === undefined ? '' : ` ${className}`}`}
       style={style}
       data-channel-id={channel.id}
     >

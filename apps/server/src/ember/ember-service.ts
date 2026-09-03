@@ -3,7 +3,11 @@ import { EmberClient } from 'emberplus-connection';
 import type { ConnectionStatus } from '@flwc/shared';
 import type { AppLogger } from '../logger.js';
 import { errorMessage } from '../logger.js';
-import { expandEmberTree, withTimeout } from '../tools/expand-ember-tree.js';
+import {
+  expandEmberTree,
+  incompleteMixerStripKeys,
+  withTimeout,
+} from '../tools/expand-ember-tree.js';
 import { EmberProtocolError } from './errors.js';
 import { childNodes, isFunctionNode, isParameterNode } from './node-utils.js';
 import type {
@@ -21,6 +25,7 @@ const DEFAULT_DISCONNECT_TIMEOUT_MS = 2_000;
 const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_MS = 30_000;
 const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
+const DEFAULT_INCOMPLETE_STRIP_RETRY_MS = 300;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 
 export interface EmberServiceOptions {
@@ -32,6 +37,7 @@ export interface EmberServiceOptions {
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
   treeRefreshDebounceMs?: number;
+  incompleteStripRetryMs?: number;
   createClient?: EmberClientFactory;
 }
 
@@ -49,6 +55,7 @@ export class EmberService extends EventEmitter {
   private readonly reconnectInitialMs: number;
   private readonly reconnectMaxMs: number;
   private readonly treeRefreshDebounceMs: number;
+  private readonly incompleteStripRetryMs: number;
   private readonly createClient: EmberClientFactory;
   private client: EmberClientHandle | undefined;
   private started = false;
@@ -57,6 +64,8 @@ export class EmberService extends EventEmitter {
   private backoffMs: number;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private incompleteStripRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly retriedIncompleteStrips = new Set<string>();
   private treeRefreshTail: Promise<void> = Promise.resolve();
   private writeTail: Promise<void> = Promise.resolve();
   private subscribedNodes = new WeakSet<EmberTreeNode>();
@@ -71,6 +80,8 @@ export class EmberService extends EventEmitter {
     this.reconnectInitialMs = options.reconnectInitialMs ?? DEFAULT_RECONNECT_INITIAL_MS;
     this.reconnectMaxMs = options.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
     this.treeRefreshDebounceMs = options.treeRefreshDebounceMs ?? DEFAULT_TREE_REFRESH_DEBOUNCE_MS;
+    this.incompleteStripRetryMs =
+      options.incompleteStripRetryMs ?? DEFAULT_INCOMPLETE_STRIP_RETRY_MS;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
   }
@@ -99,6 +110,7 @@ export class EmberService extends EventEmitter {
     this.started = false;
     this.clearReconnectTimer();
     this.clearTreeRefreshTimer();
+    this.clearIncompleteStripRetryTimer();
     await this.safeClose();
     this.setStatus('disconnected');
   }
@@ -121,7 +133,7 @@ export class EmberService extends EventEmitter {
     if (!this.isActiveClient(client)) {
       return;
     }
-    this.emit('tree', client.tree);
+    this.publishTree(client);
   }
 
   async subscribe(node: EmberTreeNode, onUpdate: (node: EmberTreeNode) => void): Promise<void> {
@@ -203,7 +215,7 @@ export class EmberService extends EventEmitter {
       this.hasConnected = true;
       this.backoffMs = this.reconnectInitialMs;
       this.setStatus('connected');
-      this.emit('tree', client.tree);
+      this.publishTree(client);
     } catch (error) {
       this.logger.error(
         { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
@@ -264,6 +276,38 @@ export class EmberService extends EventEmitter {
         'failed to watch tree structure',
       );
     }
+  }
+
+  private publishTree(client: EmberClientHandle): void {
+    this.emit('tree', client.tree);
+    this.scheduleIncompleteStripRetry(client);
+  }
+
+  private scheduleIncompleteStripRetry(client: EmberClientHandle): void {
+    if (this.incompleteStripRetryMs <= 0 || !this.isActiveClient(client)) {
+      return;
+    }
+    const pending = incompleteMixerStripKeys(client.tree);
+    for (const key of [...this.retriedIncompleteStrips]) {
+      if (!pending.includes(key)) {
+        this.retriedIncompleteStrips.delete(key);
+      }
+    }
+    const fresh = pending.filter((key) => !this.retriedIncompleteStrips.has(key));
+    if (fresh.length === 0) {
+      return;
+    }
+    for (const key of pending) {
+      this.retriedIncompleteStrips.add(key);
+    }
+    this.clearIncompleteStripRetryTimer();
+    this.incompleteStripRetryTimer = setTimeout(() => {
+      this.incompleteStripRetryTimer = undefined;
+      this.treeRefreshTail = this.treeRefreshTail.then(
+        () => this.refreshTreeIfConnected(),
+        () => this.refreshTreeIfConnected(),
+      );
+    }, this.incompleteStripRetryMs);
   }
 
   private scheduleTreeRefresh(): void {
@@ -348,12 +392,21 @@ export class EmberService extends EventEmitter {
     }
   }
 
+  private clearIncompleteStripRetryTimer(): void {
+    if (this.incompleteStripRetryTimer !== undefined) {
+      clearTimeout(this.incompleteStripRetryTimer);
+      this.incompleteStripRetryTimer = undefined;
+    }
+  }
+
   private resetWatches(): void {
     this.subscribedNodes = new WeakSet();
+    this.retriedIncompleteStrips.clear();
   }
 
   private async safeClose(): Promise<void> {
     this.clearTreeRefreshTimer();
+    this.clearIncompleteStripRetryTimer();
     this.resetWatches();
     const client = this.client;
     this.client = undefined;

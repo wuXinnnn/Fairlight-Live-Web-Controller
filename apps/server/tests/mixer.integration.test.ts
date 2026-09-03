@@ -73,7 +73,10 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     }
   });
 
-  async function startStack(dump: DumpTree = createRequiredDump()): Promise<{
+  async function startStack(
+    dump: DumpTree = createRequiredDump(),
+    extra: { incompleteStripRetryMs?: number } = {},
+  ): Promise<{
     server: StartedServer;
     provider: MockEmberProvider;
     socket: Socket;
@@ -96,6 +99,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       reconnectInitialMs: 50,
       reconnectMaxMs: 100,
       treeRefreshDebounceMs: 20,
+      incompleteStripRetryMs: extra.incompleteStripRetryMs,
     });
     servers.push(server);
     const url = `http://127.0.0.1:${httpPort}`;
@@ -199,6 +203,34 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     await expect.poll(() => server.runtime.store.getChannel('channel/2')?.name).toBe('PC');
     expect(provider.setNodeOnline('channel/channel2', false)).toBe(true);
     await expect.poll(() => server.runtime.store.getChannel('channel/2')).toBeUndefined();
+  });
+
+  it('discovers a strip that arrives as an empty stub then gains parameters', async () => {
+    const { server, provider } = await startStack(createRequiredDump(), {
+      incompleteStripRetryMs: 80,
+    });
+    const complete = extraStripNode();
+    const parameters = complete.children;
+    complete.children = {};
+    expect(provider.addNode('channel', complete)).toBe(true);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+    expect(server.runtime.store.getChannel('channel/2')).toBeUndefined();
+
+    const live = provider.getNode('channel/channel2');
+    expect(live).toBeDefined();
+    if (live === undefined || parameters === undefined) {
+      return;
+    }
+    live.children = parameters;
+    for (const child of Object.values(parameters)) {
+      child.parent = live;
+    }
+
+    await expect
+      .poll(() => server.runtime.store.getChannel('channel/2')?.name, { timeout: 3_000 })
+      .toBe('PC');
   });
 
   it('emits a new snapshot after reconnecting to a tree with an added channel', async () => {

@@ -310,7 +310,7 @@ describe('views integration', () => {
     expect(headings).toEqual(['MAIN', 'BASS']);
   });
 
-  it('cleans only missing references and requires confirmation before deleting', async () => {
+  it('cleans only missing references in the draft and requires confirmation before deleting', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
       {
@@ -341,7 +341,14 @@ describe('views integration', () => {
     ).toBe(CHANNEL_PALETTE.teal);
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
     expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'CONFIRM CLEAR' }));
+    expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CONFIRM CLEAR' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Cleanup/ }));
+    expect(screen.getByText('1 MISSING')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
+    fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
     await waitFor(() => {
       expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(1);
     });
@@ -560,6 +567,52 @@ describe('views integration', () => {
     expect(container.querySelector('.mixer-bays')).toHaveClass('is-type-rows');
   });
 
+  it('adds a gap after a group before a loose strip, but not between adjacent loose strips', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'gaps',
+        name: 'Gaps',
+        channels: [
+          { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId: 'g1' },
+          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+          { kind: 'aux', name: 'FX', channelId: 'aux/1', groupId: 'g2' },
+        ],
+        groups: [
+          { id: 'g1', name: 'Inputs' },
+          { id: 'g2', name: 'Sends' },
+        ],
+      },
+      {
+        id: 'adjacent',
+        name: 'Adjacent',
+        channels: [
+          { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId: 'g1' },
+          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+          { kind: 'aux', name: 'FX', channelId: 'aux/1' },
+        ],
+        groups: [{ id: 'g1', name: 'Inputs' }],
+      },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Gaps' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'gaps' },
+    });
+    expect(container.querySelector('[data-channel-id="main/1"]')).toHaveClass('is-after-group');
+    expect(container.querySelector('[data-channel-id="channel/1"]')).not.toHaveClass(
+      'is-after-group',
+    );
+    expect(container.querySelector('[data-channel-id="aux/1"]')).not.toHaveClass('is-after-group');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'adjacent' },
+    });
+    expect(container.querySelector('[data-channel-id="main/1"]')).toHaveClass('is-after-group');
+    expect(container.querySelector('[data-channel-id="aux/1"]')).not.toHaveClass('is-after-group');
+  });
+
   it('ungroups in one click, discards unsaved group edits, and flags duplicate names', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
@@ -610,7 +663,8 @@ describe('views integration', () => {
     expect(screen.getByRole('textbox', { name: 'Group 1 name' })).toHaveValue('Rhythm');
 
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
-    fireEvent.click(screen.getByRole('button', { name: 'CONFIRM CLEAR' }));
+    expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
     await waitFor(() => {
       expect(viewsClient.calls.at(-1)).toMatchObject({
         method: 'update',

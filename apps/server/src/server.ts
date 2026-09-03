@@ -20,6 +20,7 @@ export interface StartOptions {
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
   treeRefreshDebounceMs?: number;
+  incompleteStripRetryMs?: number;
 }
 
 export interface StartedServer {
@@ -52,6 +53,7 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
       reconnectInitialMs: options.reconnectInitialMs,
       reconnectMaxMs: options.reconnectMaxMs,
       treeRefreshDebounceMs: options.treeRefreshDebounceMs,
+      incompleteStripRetryMs: options.incompleteStripRetryMs,
     });
   const app = await createApp({
     staticRoot: existsSync(staticRoot) ? staticRoot : undefined,

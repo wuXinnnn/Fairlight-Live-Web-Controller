@@ -1,9 +1,14 @@
+import { CHANNEL_KINDS } from '@flwc/shared';
 import { Model } from 'emberplus-connection';
 import type { DumpError } from './dump-types.js';
 import { joinIdentifierPath, joinNumberPath } from './serialize-ember-tree.js';
 
 type EmberTreeNode = Model.NumberedTreeNode<Model.EmberElement>;
 type EmberCollection = { readonly [index: number]: EmberTreeNode };
+
+const BUS_ROOT_IDENTIFIERS = new Set<string>(['system', ...CHANNEL_KINDS]);
+const STRIP_IDENTIFIER = new RegExp(`^(${CHANNEL_KINDS.join('|')})\\d+$`);
+const REQUIRED_STRIP_PARAMS = ['level', 'mute', 'name'] as const;
 
 export interface EmberDirectoryRequest {
   response?: Promise<unknown>;
@@ -20,6 +25,8 @@ export interface ExpandOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+/** Empty strip stubs must not use the full protocol timeout; GetDirectory hangs until children exist. */
+export const STRIP_STUB_DIRECTORY_TIMEOUT_MS = 400;
 
 export async function expandEmberTree(
   client: EmberTreeClient,
@@ -60,8 +67,11 @@ async function expandNode(
     return;
   }
 
-  if (canBeExpanded(node) && node.children === undefined) {
-    const ok = await getDirectorySafe(client, node, identifierPath, errors, timeoutMs);
+  if (shouldGetDirectory(node, identifier)) {
+    const directoryTimeoutMs = isStripIdentifier(identifier)
+      ? Math.min(timeoutMs, STRIP_STUB_DIRECTORY_TIMEOUT_MS)
+      : timeoutMs;
+    const ok = await getDirectorySafe(client, node, identifierPath, errors, directoryTimeoutMs);
     if (!ok) {
       return;
     }
@@ -83,6 +93,85 @@ function canBeExpanded(node: EmberTreeNode): boolean {
     node.contents.type !== Model.ElementType.Parameter &&
     node.contents.type !== Model.ElementType.Function
   );
+}
+
+function isStripIdentifier(identifier: string | undefined): boolean {
+  return identifier !== undefined && STRIP_IDENTIFIER.test(identifier);
+}
+
+function hasEmptyChildren(node: EmberTreeNode): boolean {
+  return node.children !== undefined && Object.keys(node.children).length === 0;
+}
+
+/**
+ * GetDirectory empty strip stubs; never re-fetch an already-expanded bus/system root.
+ * emberplus-connection only attaches GetDirectory children when `node.children` is undefined,
+ * so an empty `{}` stub must be cleared first.
+ */
+function shouldGetDirectory(node: EmberTreeNode, identifier: string | undefined): boolean {
+  if (!canBeExpanded(node)) {
+    return false;
+  }
+  if (node.children === undefined) {
+    return true;
+  }
+  if (identifier !== undefined && BUS_ROOT_IDENTIFIERS.has(identifier)) {
+    return false;
+  }
+  if (isStripIdentifier(identifier) && hasEmptyChildren(node)) {
+    node.children = undefined;
+    return true;
+  }
+  return false;
+}
+
+function readIdentifier(node: EmberTreeNode): string | undefined {
+  return 'identifier' in node.contents && typeof node.contents.identifier === 'string'
+    ? node.contents.identifier
+    : undefined;
+}
+
+function isNodeOnline(node: EmberTreeNode): boolean {
+  return !('isOnline' in node.contents) || node.contents.isOnline !== false;
+}
+
+function stripHasRequiredParams(node: EmberTreeNode): boolean {
+  const identifiers = new Set(
+    Object.values(node.children ?? {})
+      .map((child) => readIdentifier(child))
+      .filter((identifier): identifier is string => identifier !== undefined),
+  );
+  return REQUIRED_STRIP_PARAMS.every((identifier) => identifiers.has(identifier));
+}
+
+/** True when an online `channelN`-style strip is present but still missing level/mute/name. */
+export function hasIncompleteMixerStrips(tree: EmberCollection): boolean {
+  return incompleteMixerStripKeys(tree).length > 0;
+}
+
+export function incompleteMixerStripKeys(tree: EmberCollection): string[] {
+  const keys: string[] = [];
+  for (const root of Object.values(tree)) {
+    const rootId = readIdentifier(root);
+    if (rootId === undefined || !CHANNEL_KINDS.some((kind) => kind === rootId)) {
+      continue;
+    }
+    if (!isNodeOnline(root)) {
+      continue;
+    }
+    const pattern = new RegExp(`^${rootId}\\d+$`);
+    for (const child of Object.values(root.children ?? {})) {
+      const identifier = readIdentifier(child);
+      if (identifier === undefined || !pattern.test(identifier)) {
+        continue;
+      }
+      if (!isNodeOnline(child) || stripHasRequiredParams(child)) {
+        continue;
+      }
+      keys.push(`${rootId}/${identifier}`);
+    }
+  }
+  return keys;
 }
 
 async function getDirectorySafe(

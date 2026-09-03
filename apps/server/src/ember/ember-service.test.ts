@@ -3,7 +3,7 @@ import { silentLogger } from '../logger.js';
 import { EmberProtocolError } from './errors.js';
 import { EmberService } from './ember-service.js';
 import { FakeEmberClient } from './fake-ember-client.js';
-import { parameterNode, stripNode } from './tree-helpers.js';
+import { emberNode, parameterNode, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
 import { Model } from 'emberplus-connection';
 
@@ -295,6 +295,27 @@ describe('EmberService', () => {
       setTimeout(resolve, 30);
     });
     expect(trees).toHaveLength(count);
+  });
+
+  it('retries tree expand once when a new strip is missing parameters', async () => {
+    const client = new FakeEmberClient();
+    const service = createService(client, { incompleteStripRetryMs: 20 });
+    const trees: EmberCollection[] = [];
+    service.on('tree', (tree) => trees.push(tree));
+    await service.start();
+    expect(trees).toHaveLength(1);
+    const channelRoot = client.tree[1];
+    expect(channelRoot?.children).toBeDefined();
+    if (channelRoot?.children === undefined) {
+      return;
+    }
+    channelRoot.children[2] = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
+    client.emitNodeUpdate(channelRoot);
+    await expect.poll(() => trees.length).toBe(3);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(trees).toHaveLength(3);
   });
 
   it('re-emits the tree when a watched bus node is updated', async () => {

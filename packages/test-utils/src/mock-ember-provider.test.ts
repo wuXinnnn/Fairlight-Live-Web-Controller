@@ -44,6 +44,18 @@ describe('MockEmberProvider unit hooks', () => {
         return;
       }
       expect(provider.addNode('missing', dumpNodeToEmber(strip))).toBe(false);
+      expect(
+        provider.addNode(
+          'channel',
+          dumpNodeToEmber({ ...strip, number: 9, identifier: 'channel9' }),
+          {
+            notify: false,
+          },
+        ),
+      ).toBe(true);
+      expect(provider.getNode('channel/channel9')?.contents).toMatchObject({
+        identifier: 'channel9',
+      });
       expect(provider.setNodeOnline('channel/missing', false)).toBe(false);
       expect(provider.getNode('channel')?.contents).toMatchObject({ identifier: 'channel' });
     } finally {

@@ -10,7 +10,7 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 | --- | --- | --- |
 | views CRUD 与持久化 | 通过 | `apps/server/src/api/views.test.ts` 覆盖创建、列表、更新、删除、服务端 UUID、404、非法名称/颜色/类型/悬空 `groupId`/重复组 id 的 400、并发创建、持久化往返、旧形状引用在读取与写入时的迁移、损坏配置恢复。 |
 | 颜色配置与默认回退 | 通过 | shared 校验六个 palette key 且 `color` 可选;web 单元与集成测试覆盖六类默认色、自定义覆盖、清除回退和非法 key 拒绝。 |
-| 按名称匹配、失配、树变化与主动清理 | 通过 | `view-resolver.test.ts` 覆盖两遍认领、同名优先 id、单次认领、改名不回退 id、重复名集合、连续段切分;集成测试覆盖通道重新编号后 View 仍命中、改名后转为占位、patch 移除后延迟切换为占位、二次确认清理只移除失效引用并保留分组;首个已连接快照到达前保持等待态且禁止清理;已加载后保留缓存清单穿越 status-only reconnect 和空的非 connected socket handshake。 |
+| 按名称匹配、失配、树变化与主动清理 | 通过 | `view-resolver.test.ts` 覆盖两遍认领、同名优先 id、单次认领、改名不回退 id、重复名集合、连续段切分;集成测试覆盖通道重新编号后 View 仍命中、改名后转为占位、patch 移除后延迟切换为占位、单击清理只改草稿并在 SAVE VIEW 后只移除失效引用且保留分组;首个已连接快照到达前保持等待态且禁止清理;已加载后保留缓存清单穿越 status-only reconnect 和空的非 connected socket handshake。 |
 | 通道分组 | 通过 | `view-order.test.ts` 覆盖块切分、组内/跨块移动、整组移动、空组阻挡、分配到组尾、解散原位保留、增删改组;集成测试覆盖建组(空名报错)、分配、组内与整组上下移动及 `data-moved` 动效标记、改名、保存 PUT 含 `groups`/`groupId` 且顺序连续、单击解散、未保存时切换 View 丢弃草稿、`DUPLICATE NAME` 标注、混音页组标题/计数/组内占位、含分组 View 的 `TYPE ROWS`。 |
 | 路由与页面壳 | 通过 | `router.test.ts` 与 `routing.integration.test.tsx` 覆盖 `/views` 直达、`CONFIGURE VIEWS` 推入历史、popstate 前进/后退、返回按钮、路由切换 `scrollTo(0, 0)`;`app.test.ts` 覆盖 `GET /views` 返回 SPA shell、`/api` 未命中与非 GET 仍 404。 |
 | Ember+ keepalive | 通过 | `apps/server/src/ember/keepalive.test.ts`:连接 Mock Provider 后库布防 10 s 的 keepalive 定时器,手动触发一次请求后 700 ms 内未断线;对不应答的裸 TCP server 触发后约 500 ms 收到 `disconnected`。 |
@@ -27,7 +27,7 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 - **REST CRUD**:`GET/POST /api/v1/views` 与 `PUT/DELETE /api/v1/views/:id` 全部经 shared zod schema 校验。id 使用 Node `crypto.randomUUID()`,未知 id 返回 `NOT_FOUND`,非法负载(空名、非法颜色/类型、悬空 `groupId`、重复组 id)返回 `VALIDATION`;服务端不检查通道当前是否存在,不强制组成员连续,也不自动清理或改写 View。旧形状 body 被接受并以新形状回写。
 - **持久化**:复用 Phase 3 `ConfigStore.update()`,与 Ember endpoint 共存于 `data/config.json`,保持串行更新和临时文件 rename 原子写入;旧文件加载后回写即完成迁移。
 - **viewStore**:封装列表加载与 CRUD 状态,保存错误可见;激活 View 仅作为浏览器偏好保存于 `flwc.views.activeId.v1`,不会写入后端配置。
-- **配置工作台**:保持 01 VIEWS / 02 AVAILABLE CHANNELS / 03 CHANNEL ORDER & COLOR 三块结构。03 区新增 `NEW GROUP` 工具条;列表以块结构渲染:组块(可编辑名称、在场成员数、整块上下移动、单击 `UNGROUP` 解散且成员原位保留)与无组单行;每行新增 `GROUP` 下拉(`NO GROUP` | 各组),选定后移动到目标组块末尾;`UP`/`DN` 改为箭头图标按钮(`OrderButtons`),成员在组内移动、无组行跨过相邻块、空组块不可被越过;被移动的行或组块用 `data-moved` 播放一次 `translateY` 回位 + 琥珀底色的短动效。所有分组操作只改本地草稿,由 `SAVE VIEW` 统一保存,误操作不保存即可放弃。失配项显示引用名称,二次确认后才清理且清理不删组;同名实时通道标注 `DUPLICATE NAME`。窄列(容器查询 ≤ 44rem)把调色板换到第二行。
+- **配置工作台**:保持 01 VIEWS / 02 AVAILABLE CHANNELS / 03 CHANNEL ORDER & COLOR 三块结构。03 区新增 `NEW GROUP` 工具条;列表以块结构渲染:组块(可编辑名称、在场成员数、整块上下移动、单击 `UNGROUP` 解散且成员原位保留)与无组单行;每行新增 `GROUP` 下拉(`NO GROUP` | 各组),选定后移动到目标组块末尾;`UP`/`DN` 改为箭头图标按钮(`OrderButtons`),成员在组内移动、无组行跨过相邻块、空组块不可被越过;被移动的行或组块用 `data-moved` 播放一次 `translateY` 回位 + 琥珀底色的短动效。所有分组操作只改本地草稿,由 `SAVE VIEW` 统一保存,误操作不保存即可放弃。失配项显示引用名称,单击 `CLEAR INVALID` 只改本地草稿且不删组,由 `SAVE VIEW` 提交;同名实时通道标注 `DUPLICATE NAME`。窄列(容器查询 ≤ 44rem)把调色板换到第二行。
 - **混音页**:始终提供 `All Channels`。全部通道模式保留 Phase 4 类型分区和 `TYPE ROWS`;View 模式按连续段渲染:同组段复用 `mixer-section` 标记(竖排组名 + 在场计数,组头色取组内第一个在场成员的解析色),无组引用平铺;含分组的 View 显示 `TYPE ROWS`(文案 "Start each group on a new row"),横排模式下无组条带另起一行。推子、ON、meter、控制锁行为不变。
 - **失配占位**:解析不到实时通道的引用使用同尺寸条带、引用名称、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter;刚从清单消失的通道按类型 + 名称找到仍在退场的条带沿用动效,不依赖可能已重新编号的持久化 id;只借用 id 已从实时清单消失的条带(改名的通道不会被借用),且借用条带一律以退场态禁用控件,不可能操作到别的通道。`channelInventoryLoaded` 仅由已连接快照首次置为有效,缓存清单穿越 status-only reconnect 与空的非 connected handshake 的规则不变。
 - **路由与页面壳**:`lib/router.ts` 用 history API 自绘(`useSyncExternalStore` + `popstate` + 内部监听器,因 `pushState` 不触发 `popstate`),`/` 混音页、`/views` 配置页,未知路径回退混音页;两页互斥挂载,路由变化时 `scrollTo(0, 0)`,`history.scrollRestoration = 'manual'`。Fastify 在托管静态产物时对非 `/api` 的 GET 未命中返回 `index.html`。配置页页头为 `[返回按钮][面包屑 eyebrow + 标题][连接状态]`,返回按钮是内联 SVG 左箭头 + `MIXER` 小字,可访问名仍为 `RETURN TO MIXER`。
@@ -50,7 +50,7 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 9. 刷新页面,确认激活 View 恢复;删除激活 View 后确认自动回退 `All Channels`。
 10. **名称匹配验收(只读操作)**:如当前 show 允许,在 Fairlight 内把一个不在允许清单里的通道拖动到 View 引用通道之前以改变编号(这是 Fairlight 侧的顺序调整,不删改通道;如不确定是否安全则跳过),回到混音页确认 View 仍命中同名通道;复原顺序。
 11. 如需确认现有推子行为未回归,只能选上述四个允许通道之一,记录原值、小幅移动后立即精确复原。不得点击 ON。
-12. **失配验收必须使用 Mock Provider 或已有的自然失配配置。不得为制造 MISSING 状态而删除、改名、重排或断开真实 Fairlight 通道。** 在 Mock 环境删除/改名快照通道后,确认占位显示引用名称,其它条带仍正常;在配置页二次确认清理后只移除失效引用且分组保留。
+12. **失配验收必须使用 Mock Provider 或已有的自然失配配置。不得为制造 MISSING 状态而删除、改名、重排或断开真实 Fairlight 通道。** 在 Mock 环境删除/改名快照通道后,确认占位显示引用名称,其它条带仍正常;在配置页单击清理后失效引用离开草稿,不保存再点选该 View 可恢复;SAVE VIEW 后只移除失效引用且分组保留。
 13. 长时间(≥10 分钟)不操作后确认连接状态仍为 `MIXER ONLINE`;若日志周期性出现 `ember socket disconnected`,记录间隔(约 10 s 一次通常指向 keepalive 的 500 ms 应答窗口)。
 
 ## 5. 交付物清单
@@ -95,7 +95,7 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 - 旧持久化形状在 schema 层原地迁移而不提升 `version`,旧 `config.json` 可直接加载并在下次写入时转为新形状。
 - 组 id 由前端 `createLocalId()` 生成而不是 `crypto.randomUUID()`:后者在浏览器里只存在于安全上下文,本应用是明文 HTTP 局域网部署。服务端只校验组 id 唯一与 `groupId` 指向已存在的组。
 - 同组成员在 `channels` 数组中保持连续由编辑器维护,服务端不强制;混音页与配置页都按连续段解释,外部编辑造成的不连续会渲染为多个同名段。
-- 分组操作与其它编辑一样只改本地草稿,`UNGROUP` 单击生效不做二次确认;删除 View 与清理失效引用仍保留二次确认。
+- 分组操作与其它编辑一样只改本地草稿,`UNGROUP` 与 `CLEAR INVALID` 单击生效不做二次确认,由 `SAVE VIEW` 提交;删除 View 仍保留二次确认。
 - 配置页不再复制 CONTROL DESK 的页头结构,而是以返回按钮 + 面包屑表明次级页面身份。
 - keepalive 由库自动维持且无公开配置项,后端不新增开关;若真机验证证明 500 ms 应答窗口过紧,后续再考虑在客户端工厂覆盖实例字段或向上游提 PR。
 - 没有覆盖率排除项,未降低任何门槛;未修改 socket 契约或 CI 结构。
