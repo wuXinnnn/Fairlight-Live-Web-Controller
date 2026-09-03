@@ -409,9 +409,11 @@ describe('views integration', () => {
     socket.serverEmit(SOCKET_EVENTS.MIXER_PATCH, {
       upserts: [{ ...snapshot.channels[0], name: 'BASS DI' }],
     });
+    // A renamed strip is never borrowed for the exit animation: the placeholder replaces it.
     await waitFor(() => {
       expect(screen.getByLabelText('BASS missing channel')).toBeInTheDocument();
     });
+    expect(screen.queryByRole('slider', { name: 'BASS level' })).not.toBeInTheDocument();
     expect(screen.queryByRole('slider', { name: 'BASS DI level' })).not.toBeInTheDocument();
   });
 
@@ -434,14 +436,14 @@ describe('views integration', () => {
     expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
 
     socket.serverEmit(SOCKET_EVENTS.MIXER_PATCH, { removedIds: ['channel/1'] });
-    expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
+    // The leaving strip stays for its exit animation, disabled, before the placeholder appears.
     await waitFor(() => {
       expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
         'aria-disabled',
         'true',
       );
     });
+    expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText('BASS missing channel')).toBeInTheDocument();
     });

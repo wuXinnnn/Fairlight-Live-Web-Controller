@@ -76,6 +76,7 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
   const claimedIds = new Set(
     resolvedView.map((entry) => entry.channel?.id).filter((id) => id !== undefined),
   );
+  const liveIds = new Set(channels.map((channel) => channel.id));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const viewHasGroups = activeView !== null && activeView.groups.length > 0;
@@ -91,15 +92,19 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
       item = renderedById.get(channel.id) ?? { channel, exiting: false };
     } else {
       // Keep the exit animation of the strip that just disappeared from the inventory. It is
-      // matched by kind and name, not by the persisted id, which Fairlight may have renumbered.
-      item = renderedChannels.find(
+      // matched by kind and name, not by the persisted id, which Fairlight may have renumbered,
+      // and only while its id is really gone: a renamed strip must not be borrowed, and the
+      // borrowed strip is always shown disabled so it can never control another channel.
+      const leaving = renderedChannels.find(
         (candidate) =>
           !claimedIds.has(candidate.channel.id) &&
+          !liveIds.has(candidate.channel.id) &&
           candidate.channel.kind === reference.kind &&
           candidate.channel.name.trim() === reference.name.trim(),
       );
-      if (item !== undefined) {
-        claimedIds.add(item.channel.id);
+      if (leaving !== undefined) {
+        claimedIds.add(leaving.channel.id);
+        item = { channel: leaving.channel, exiting: true };
       }
     }
     if (item === undefined) {
