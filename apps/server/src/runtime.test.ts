@@ -28,6 +28,7 @@ describe('MixerRuntime', () => {
       port: 1,
       createClient: () => client,
       treeRefreshDebounceMs: 10,
+      busDirectoryPollMs: 0,
     });
     runtimes.push(runtime);
     await runtime.start();

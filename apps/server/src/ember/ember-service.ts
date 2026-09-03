@@ -4,12 +4,17 @@ import type { ConnectionStatus } from '@flwc/shared';
 import type { AppLogger } from '../logger.js';
 import { errorMessage } from '../logger.js';
 import {
+  attachMissingMixerStrips,
+  discoverMixerStripRefs,
   expandEmberTree,
   incompleteMixerStripKeys,
+  listMixerStripRefs,
+  mixerStripKey,
   withTimeout,
 } from '../tools/expand-ember-tree.js';
 import { EmberProtocolError } from './errors.js';
 import { childNodes, isFunctionNode, isParameterNode } from './node-utils.js';
+import { patchEmberClientTreeMerge } from './patch-ember-client.js';
 import type {
   EmberClientFactory,
   EmberClientHandle,
@@ -26,6 +31,7 @@ const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_MS = 30_000;
 const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
 const DEFAULT_INCOMPLETE_STRIP_RETRY_MS = 300;
+const DEFAULT_BUS_DIRECTORY_POLL_MS = 2_000;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 
 export interface EmberServiceOptions {
@@ -38,6 +44,7 @@ export interface EmberServiceOptions {
   reconnectMaxMs?: number;
   treeRefreshDebounceMs?: number;
   incompleteStripRetryMs?: number;
+  busDirectoryPollMs?: number;
   createClient?: EmberClientFactory;
 }
 
@@ -56,6 +63,7 @@ export class EmberService extends EventEmitter {
   private readonly reconnectMaxMs: number;
   private readonly treeRefreshDebounceMs: number;
   private readonly incompleteStripRetryMs: number;
+  private readonly busDirectoryPollMs: number;
   private readonly createClient: EmberClientFactory;
   private client: EmberClientHandle | undefined;
   private started = false;
@@ -65,6 +73,8 @@ export class EmberService extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private incompleteStripRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private busDirectoryPollTimer: ReturnType<typeof setInterval> | undefined;
+  private mixerProbeInFlight = false;
   private readonly retriedIncompleteStrips = new Set<string>();
   private treeRefreshTail: Promise<void> = Promise.resolve();
   private writeTail: Promise<void> = Promise.resolve();
@@ -82,6 +92,7 @@ export class EmberService extends EventEmitter {
     this.treeRefreshDebounceMs = options.treeRefreshDebounceMs ?? DEFAULT_TREE_REFRESH_DEBOUNCE_MS;
     this.incompleteStripRetryMs =
       options.incompleteStripRetryMs ?? DEFAULT_INCOMPLETE_STRIP_RETRY_MS;
+    this.busDirectoryPollMs = options.busDirectoryPollMs ?? DEFAULT_BUS_DIRECTORY_POLL_MS;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
   }
@@ -111,6 +122,7 @@ export class EmberService extends EventEmitter {
     this.clearReconnectTimer();
     this.clearTreeRefreshTimer();
     this.clearIncompleteStripRetryTimer();
+    this.clearBusDirectoryPollTimer();
     await this.safeClose();
     this.setStatus('disconnected');
   }
@@ -123,9 +135,9 @@ export class EmberService extends EventEmitter {
     }
   }
 
-  async refreshTree(): Promise<void> {
+  async refreshTree(stripDirectoryTimeoutMs?: number): Promise<void> {
     const client = this.requireClient();
-    await this.expandTree(client);
+    await this.expandTree(client, stripDirectoryTimeoutMs);
     if (!this.isActiveClient(client)) {
       return;
     }
@@ -193,7 +205,7 @@ export class EmberService extends EventEmitter {
     this.clearReconnectTimer();
     this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting');
     await this.safeClose();
-    const client = this.createClient(this.host, this.port, this.timeoutMs);
+    const client = this.createBoundClient();
     this.client = client;
     this.bindClient(client);
     try {
@@ -216,6 +228,10 @@ export class EmberService extends EventEmitter {
       this.backoffMs = this.reconnectInitialMs;
       this.setStatus('connected');
       this.publishTree(client);
+      this.startBusDirectoryPoll();
+      if (this.busDirectoryPollMs > 0) {
+        this.enqueueMixerStripReconcile();
+      }
     } catch (error) {
       this.logger.error(
         { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
@@ -231,10 +247,14 @@ export class EmberService extends EventEmitter {
     }
   }
 
-  private async expandTree(client: EmberClientHandle): Promise<void> {
+  private async expandTree(
+    client: EmberClientHandle,
+    stripDirectoryTimeoutMs?: number,
+  ): Promise<void> {
     const { errors } = await expandEmberTree(client, {
       timeoutMs: this.timeoutMs,
       skipIdentifiers: SKIP_IDENTIFIERS,
+      stripDirectoryTimeoutMs,
     });
     for (const error of errors) {
       this.logger.warn(
@@ -337,6 +357,76 @@ export class EmberService extends EventEmitter {
     }
   }
 
+  private enqueueMixerStripReconcile(): void {
+    if (this.mixerProbeInFlight) {
+      return;
+    }
+    this.treeRefreshTail = this.treeRefreshTail.then(
+      () => this.reconcileMixerStripsIfConnected(),
+      () => this.reconcileMixerStripsIfConnected(),
+    );
+  }
+
+  private async reconcileMixerStripsIfConnected(): Promise<void> {
+    const primary = this.client;
+    if (this.mixerProbeInFlight || !this.started || primary === undefined || !primary.connected) {
+      return;
+    }
+    this.mixerProbeInFlight = true;
+    const probe = this.createClient(this.host, this.port, this.timeoutMs);
+    try {
+      const result = await withTimeout(probe.connect(), this.timeoutMs, 'probe connect');
+      if (result instanceof Error) {
+        throw result;
+      }
+      const { refs, errors } = await discoverMixerStripRefs(probe, { timeoutMs: this.timeoutMs });
+      for (const error of errors) {
+        this.logger.warn(
+          { path: error.path, err: error.message, layer: 'protocol' },
+          'strip probe error',
+        );
+      }
+      if (!this.isActiveClient(primary)) {
+        return;
+      }
+      const known = listMixerStripRefs(primary.tree);
+      const knownKeys = new Set(known.map(mixerStripKey));
+      const extra = refs.filter((ref) => !knownKeys.has(mixerStripKey(ref)));
+      const added = attachMissingMixerStrips(primary.tree, refs);
+      if (extra.length > 0 || added.length > 0 || known.length !== refs.length) {
+        this.logger.info(
+          {
+            known: known.length,
+            discovered: refs.length,
+            extra: extra.map((ref) => `${mixerStripKey(ref)}#${ref.number}`),
+            added: added.map((ref) => mixerStripKey(ref)),
+            layer: 'protocol',
+          },
+          'mixer strip probe',
+        );
+      }
+      if (added.length === 0) {
+        return;
+      }
+      await this.refreshTree(this.timeoutMs);
+    } catch (error) {
+      this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'mixer strip probe failed');
+    } finally {
+      if (probe !== primary) {
+        try {
+          await withTimeout(probe.disconnect(), this.disconnectTimeoutMs, 'probe disconnect');
+        } catch {
+          try {
+            probe.discard();
+          } catch {
+            // The probe is discarded after a hung disconnect; nothing else to clean up.
+          }
+        }
+      }
+      this.mixerProbeInFlight = false;
+    }
+  }
+
   private bindClient(client: EmberClientHandle): void {
     const onDisconnected = (): void => {
       if (this.client !== client) {
@@ -399,6 +489,39 @@ export class EmberService extends EventEmitter {
     }
   }
 
+  private startBusDirectoryPoll(): void {
+    this.clearBusDirectoryPollTimer();
+    if (this.busDirectoryPollMs <= 0 || !this.started) {
+      return;
+    }
+    this.busDirectoryPollTimer = setInterval(() => {
+      this.enqueueMixerStripReconcile();
+    }, this.busDirectoryPollMs);
+  }
+
+  private clearBusDirectoryPollTimer(): void {
+    if (this.busDirectoryPollTimer !== undefined) {
+      clearInterval(this.busDirectoryPollTimer);
+      this.busDirectoryPollTimer = undefined;
+    }
+  }
+
+  private createBoundClient(): EmberClientHandle {
+    const client = this.createClient(this.host, this.port, this.timeoutMs);
+    patchEmberClientTreeMerge(client, {
+      onChildrenAdded: () => {
+        this.scheduleTreeRefresh();
+      },
+      onIncomingError: (error) => {
+        this.logger.warn(
+          { err: errorMessage(error), layer: 'protocol' },
+          'ember tree update dropped',
+        );
+      },
+    });
+    return client;
+  }
+
   private resetWatches(): void {
     this.subscribedNodes = new WeakSet();
     this.retriedIncompleteStrips.clear();
@@ -407,6 +530,7 @@ export class EmberService extends EventEmitter {
   private async safeClose(): Promise<void> {
     this.clearTreeRefreshTimer();
     this.clearIncompleteStripRetryTimer();
+    this.clearBusDirectoryPollTimer();
     this.resetWatches();
     const client = this.client;
     this.client = undefined;
