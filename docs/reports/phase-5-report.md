@@ -15,21 +15,21 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 | 路由与页面壳 | 通过 | `router.test.ts` 与 `routing.integration.test.tsx` 覆盖 `/views` 直达、`CONFIGURE VIEWS` 推入历史、popstate 前进/后退、返回按钮、路由切换 `scrollTo(0, 0)`;`app.test.ts` 覆盖 `GET /views` 返回 SPA shell、`/api` 未命中与非 GET 仍 404。 |
 | Ember+ keepalive | 通过 | `apps/server/src/ember/keepalive.test.ts`:连接 Mock Provider 后库布防 10 s 的 keepalive 定时器,手动触发一次请求后 700 ms 内未断线;对不应答的裸 TCP server 触发后约 500 ms 收到 `disconnected`。 |
 | 空 View、空配置、激活态与排序 | 通过 | 零 View 时 `All Channels` 正常显示;零通道 View 显示独立空态;激活 id 写入 `localStorage`,无效或已删除 id 回退全部通道;View 模式严格按持久化引用顺序渲染。 |
-| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 92.93%、分支 83.36%、函数 97.23%、行 92.95%;`apps/web`:语句 95.97%、分支 90.15%、函数 97.64%、行 95.71%。 |
-| 全量质量门 | 通过 | 在最终 HEAD 串行执行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。shared 29、test-utils 22、server 108、web 105,共 264 项测试通过;Vite 生产构建成功。 |
+| 覆盖率达标 | 通过 | `packages/shared`:语句/分支/函数/行 100%;`apps/server`:语句 92.93%、分支 83.36%、函数 97.23%、行 92.95%;`apps/web`:语句 95.98%、分支 90.50%、函数 97.66%、行 95.73%。 |
+| 全量质量门 | 通过 | 在最终 HEAD 串行执行 `pnpm lint && pnpm typecheck && pnpm test && pnpm build` 全绿。shared 29、test-utils 22、server 108、web 106,共 265 项测试通过;Vite 生产构建成功。 |
 | Mock Provider 端到端冒烟 | 通过 | Mock Provider 运行于 `127.0.0.1:9100`,`GET /api/v1/connection` 返回 `connected`;Playwright(预装 Chromium)在 1280×800 与 1920×1080 下验证 `/views` 无整页滚动条、混音页超过一屏仍可整页滚动、分组配置页与混音页组分区/`TYPE ROWS` 渲染正确;生产构建下 `GET /views` 返回 `index.html`,`GET /api/v1/nope` 返回 404 JSON。全过程未触碰 ON 或推子。 |
 | 本地真实 Fairlight 手动验收 | 移交用户 | 云端无真机访问能力。操作清单见第 4 节。 |
 
 ## 3. 实现摘要
 
-- **通道引用模型**:`viewChannelRefSchema` 输出 `{ kind, name, channelId?, groupId?, color? }`。`kind + name`(`name` 为通道 `name` 参数,与节点 `description` 相同)是匹配键,trim 后精确、大小写敏感;`channelId` 是勾选时的逻辑 id,只在多个实时通道同名时用于优先裁决。`z.preprocess` 只在输入同时含字符串 `channelId` 与 `lastKnownName` 且无 `name` 时迁移旧形状,其它输入原样交给对象 schema 报错;不提升配置 `version`。`viewObjectSchema` 是未加校验的对象形状,`viewSchema` 与 `viewWriteBodySchema`(`omit({ id })`)各自用同一个 `checkViewGroups` 做 `superRefine`,避免 zod 4 在 `.omit` 时丢失校验。
+- **通道引用模型**:`viewChannelRefSchema` 输出 `{ kind, name, channelId?, groupId?, color? }`。`kind + name`(`name` 为通道 `name` 参数,与节点 `description` 相同)是匹配键,trim 后精确、大小写敏感;`channelId` 是勾选时的逻辑 id,只在多个实时通道同名时用于优先裁决。`z.preprocess` 只在输入同时含字符串 `channelId` 与 `lastKnownName` 且无 `name` 时迁移旧形状,其它输入原样交给对象 schema 报错;旧引用名称为空时以 `channelId` 作为名称,避免一条旧记录让整份配置校验失败并被默认值覆盖;不提升配置 `version`。`viewObjectSchema` 是未加校验的对象形状,`viewSchema` 与 `viewWriteBodySchema`(`omit({ id })`)各自用同一个 `checkViewGroups` 做 `superRefine`,避免 zod 4 在 `.omit` 时丢失校验。
 - **解析器**(`apps/web/src/features/mixer/view-resolver.ts`,混音页与配置页共用):第一遍认领 `kind + name + channelId` 全同的通道,第二遍为剩余引用认领第一个未认领的同 `kind + name` 通道,每个实时通道至多被认领一次;名称不匹配时不回退到 id。`duplicateChannelNames` 供配置页标注 `DUPLICATE NAME`;`segmentViewChannels` 把解析结果按连续同组切成段。
 - **REST CRUD**:`GET/POST /api/v1/views` 与 `PUT/DELETE /api/v1/views/:id` 全部经 shared zod schema 校验。id 使用 Node `crypto.randomUUID()`,未知 id 返回 `NOT_FOUND`,非法负载(空名、非法颜色/类型、悬空 `groupId`、重复组 id)返回 `VALIDATION`;服务端不检查通道当前是否存在,不强制组成员连续,也不自动清理或改写 View。旧形状 body 被接受并以新形状回写。
 - **持久化**:复用 Phase 3 `ConfigStore.update()`,与 Ember endpoint 共存于 `data/config.json`,保持串行更新和临时文件 rename 原子写入;旧文件加载后回写即完成迁移。
 - **viewStore**:封装列表加载与 CRUD 状态,保存错误可见;激活 View 仅作为浏览器偏好保存于 `flwc.views.activeId.v1`,不会写入后端配置。
 - **配置工作台**:保持 01 VIEWS / 02 AVAILABLE CHANNELS / 03 CHANNEL ORDER & COLOR 三块结构。03 区新增 `NEW GROUP` 工具条;列表以块结构渲染:组块(可编辑名称、在场成员数、整块上下移动、单击 `UNGROUP` 解散且成员原位保留)与无组单行;每行新增 `GROUP` 下拉(`NO GROUP` | 各组),选定后移动到目标组块末尾;`UP`/`DN` 改为箭头图标按钮(`OrderButtons`),成员在组内移动、无组行跨过相邻块、空组块不可被越过;被移动的行或组块用 `data-moved` 播放一次 `translateY` 回位 + 琥珀底色的短动效。所有分组操作只改本地草稿,由 `SAVE VIEW` 统一保存,误操作不保存即可放弃。失配项显示引用名称,二次确认后才清理且清理不删组;同名实时通道标注 `DUPLICATE NAME`。窄列(容器查询 ≤ 44rem)把调色板换到第二行。
 - **混音页**:始终提供 `All Channels`。全部通道模式保留 Phase 4 类型分区和 `TYPE ROWS`;View 模式按连续段渲染:同组段复用 `mixer-section` 标记(竖排组名 + 在场计数,组头色取组内第一个在场成员的解析色),无组引用平铺;含分组的 View 显示 `TYPE ROWS`(文案 "Start each group on a new row"),横排模式下无组条带另起一行。推子、ON、meter、控制锁行为不变。
-- **失配占位**:解析不到实时通道的引用使用同尺寸条带、引用名称、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter;刚从清单消失的通道沿用退场动效。`channelInventoryLoaded` 仅由已连接快照首次置为有效,缓存清单穿越 status-only reconnect 与空的非 connected handshake 的规则不变。
+- **失配占位**:解析不到实时通道的引用使用同尺寸条带、引用名称、`MISSING` 与 `CHANNEL REFERENCE UNAVAILABLE`,不渲染 ON、推子或 meter;刚从清单消失的通道按类型 + 名称找到仍在退场的条带沿用动效,不依赖可能已重新编号的持久化 id。`channelInventoryLoaded` 仅由已连接快照首次置为有效,缓存清单穿越 status-only reconnect 与空的非 connected handshake 的规则不变。
 - **路由与页面壳**:`lib/router.ts` 用 history API 自绘(`useSyncExternalStore` + `popstate` + 内部监听器,因 `pushState` 不触发 `popstate`),`/` 混音页、`/views` 配置页,未知路径回退混音页;两页互斥挂载,路由变化时 `scrollTo(0, 0)`,`history.scrollRestoration = 'manual'`。Fastify 在托管静态产物时对非 `/api` 的 GET 未命中返回 `index.html`。配置页页头为 `[返回按钮][面包屑 eyebrow + 标题][连接状态]`,返回按钮是内联 SVG 左箭头 + `MIXER` 小字,可访问名仍为 `RETURN TO MIXER`。
 - **滚动根因与修复**:Playwright 实测两种视口下 `document.scrollHeight` 恒为 1116 px、`body` 却与视口等高,溢出来自 `.channel-checklist input { position: absolute }`——视觉隐藏的复选框没有定位祖先,逃出了清单的 `overflow: auto` 裁剪区并把文档滚动区撑大,通道越多越明显。修复为 `label { position: relative }`;同时把配置页改为视口内工作台(`height: 100vh; overflow: hidden`,两列各自滚动,清单以 flex 填满剩余高度并内部滚动),800px 以下恢复整页滚动。
 - **Ember+ keepalive**:`emberplus-connection@0.3.1` 的 `S101Client` 在 TCP 连上时 `startKeepAlive()`:每 10 s 发 KeepAliveRequest、自动应答 Provider 的请求、500 ms 无应答即 `handleClose()`,以 `disconnected` 进入 `EmberService` 的退避重连。间隔与窗口是库内部常量,没有公开配置项,因此后端不新增开关;在客户端工厂处加注释并用守护测试锁定该行为。
@@ -114,6 +114,7 @@ Phase 5 云端范围已全部完成,并在后续一批调整中收敛为当前�
 本批调整分支:`claude/custom-view-features-styling-2bpe04`。以下记录截至本报告落盘前,不包含承载报告与文档同步的提交。
 
 ```text
+3883676 fix: keep legacy views loadable and exit animations after renumbering
 ca0138a style(web): keep wrapped order rows inside the channel list
 ac7fc0f feat(web): route the view configuration page and rework its shell
 17a3035 feat(web): match view channels by name and add channel groups
