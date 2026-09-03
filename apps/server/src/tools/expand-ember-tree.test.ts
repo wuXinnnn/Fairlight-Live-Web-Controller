@@ -107,10 +107,7 @@ describe('expandEmberTree', () => {
       getDirectory: vi.fn(async (target): Promise<EmberDirectoryRequest> => {
         if (target === strip) {
           strip.children = {
-            1: node(
-              1,
-              new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6),
-            ),
+            1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
           };
         }
         return { response: Promise.resolve(target) };
