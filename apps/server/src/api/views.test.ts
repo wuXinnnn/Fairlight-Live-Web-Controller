@@ -50,13 +50,15 @@ describe('view routes', () => {
       url: '/api/v1/views',
       payload: {
         name: '  Broadcast  ',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS', color: 'lime' }],
+        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1', color: 'lime' }],
       },
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({
+    expect(created.json()).toEqual({
+      id: expect.any(String),
       name: 'Broadcast',
-      channels: [{ channelId: 'channel/1', lastKnownName: 'BASS', color: 'lime' }],
+      channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1', color: 'lime' }],
+      groups: [],
     });
     const id = created.json<{ id: string }>().id;
 
@@ -66,9 +68,10 @@ describe('view routes', () => {
       payload: {
         name: 'FOH',
         channels: [
-          { channelId: 'main/1', lastKnownName: 'Main' },
-          { channelId: 'missing/1', lastKnownName: 'Temporary' },
+          { kind: 'main', name: 'Main', channelId: 'main/1', groupId: 'buses' },
+          { kind: 'aux', name: 'Temporary' },
         ],
+        groups: [{ id: 'buses', name: 'Buses' }],
       },
     });
     expect(updated.statusCode).toBe(200);
@@ -76,9 +79,10 @@ describe('view routes', () => {
       id,
       name: 'FOH',
       channels: [
-        { channelId: 'main/1', lastKnownName: 'Main' },
-        { channelId: 'missing/1', lastKnownName: 'Temporary' },
+        { kind: 'main', name: 'Main', channelId: 'main/1', groupId: 'buses' },
+        { kind: 'aux', name: 'Temporary' },
       ],
+      groups: [{ id: 'buses', name: 'Buses' }],
     });
     expect(JSON.parse(await readFile(configPath, 'utf8')).views).toEqual([updated.json()]);
 
@@ -96,9 +100,19 @@ describe('view routes', () => {
       { name: ' ', channels: [] },
       {
         name: 'FOH',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS', color: 'orange' }],
+        channels: [{ kind: 'channel', name: 'BASS', color: 'orange' }],
       },
       { name: 'FOH', channels: [{ lastKnownName: 'BASS' }] },
+      { name: 'FOH', channels: [{ kind: 'strip', name: 'BASS' }] },
+      { name: 'FOH', channels: [{ kind: 'channel', name: 'BASS', groupId: 'ghost' }], groups: [] },
+      {
+        name: 'FOH',
+        channels: [],
+        groups: [
+          { id: 'g1', name: 'Rhythm' },
+          { id: 'g1', name: 'Vocals' },
+        ],
+      },
     ]) {
       const response = await app.inject({
         method: 'POST',
@@ -128,7 +142,7 @@ describe('view routes', () => {
     expect(remove.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
   });
 
-  it('loads legacy views and recovers empty views from corrupt config', async () => {
+  it('migrates legacy view references on load and on write', async () => {
     const legacy = await setup(
       JSON.stringify({
         version: 1,
@@ -137,19 +151,49 @@ describe('view routes', () => {
           {
             id: 'legacy',
             name: 'Legacy',
-            channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+            channels: [
+              { channelId: 'channel/1', lastKnownName: 'BASS' },
+              { channelId: 'aux/2', lastKnownName: 'FX', color: 'lime' },
+              { channelId: 'main/1', lastKnownName: '' },
+            ],
           },
         ],
       }),
     );
+    const migrated = {
+      id: 'legacy',
+      name: 'Legacy',
+      channels: [
+        { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+        { kind: 'aux', name: 'FX', channelId: 'aux/2', color: 'lime' },
+        { kind: 'main', name: 'main/1', channelId: 'main/1' },
+      ],
+      groups: [],
+    };
     expect((await legacy.app.inject({ method: 'GET', url: '/api/v1/views' })).json()).toEqual([
-      {
-        id: 'legacy',
-        name: 'Legacy',
-        channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
-      },
+      migrated,
     ]);
 
+    const written = await legacy.app.inject({
+      method: 'POST',
+      url: '/api/v1/views',
+      payload: {
+        name: 'Legacy client',
+        channels: [{ channelId: 'main/1', lastKnownName: 'Main' }],
+      },
+    });
+    expect(written.statusCode).toBe(201);
+    expect(written.json()).toMatchObject({
+      channels: [{ kind: 'main', name: 'Main', channelId: 'main/1' }],
+      groups: [],
+    });
+    expect(JSON.parse(await readFile(legacy.configPath, 'utf8')).views).toEqual([
+      migrated,
+      written.json(),
+    ]);
+  });
+
+  it('recovers empty views from corrupt config', async () => {
     const corrupt = await setup('{not json');
     expect((await corrupt.app.inject({ method: 'GET', url: '/api/v1/views' })).json()).toEqual([]);
   });

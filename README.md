@@ -14,8 +14,11 @@ level metering and loudness readouts, backed by an extensible Web API.
 - Channel ON switch (Yamaha-console style; inverse presentation of the mixer's mute)
 - Per-channel level meters with dB readout and channel names
 - Loudness section: integrated loudness (LUFS) and true-peak (dBTP) readouts with reset
-- Configurable views: pick which channels appear in each view, switch views on the main page
-- Ember+ host/port configurable from the web UI or the REST API
+- Configurable views: pick which channels appear in each view, order and color them, group
+  them under named sections, and switch views on the main page
+- Views reference channels by type and name, so inserting or reordering strips on the desk
+  does not break them (Fairlight Live exposes no stable channel id)
+- Ember+ host/port configurable through the REST API
 - Real-time updates over WebSocket (socket.io), meters at up to 50 ms resolution
 
 ## Tech Stack
@@ -32,7 +35,7 @@ level metering and loudness readouts, backed by an extensible Web API.
 
 ```
 apps/server          Fastify backend: REST API, socket.io gateway, Ember+ client
-apps/web             React frontend: mixer page, settings page
+apps/web             React frontend: mixer page (/), view configuration page (/views)
 packages/shared      Shared types and message contracts (zod schemas)
 packages/test-utils  Test fixtures (Mock Ember+ Provider)
 docs/                Project documentation (in Simplified Chinese)

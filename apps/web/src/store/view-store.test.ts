@@ -1,3 +1,4 @@
+import type { View } from '@flwc/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FakeViewsClient } from '../../tests/fake-views-client.js';
 import {
@@ -12,10 +13,11 @@ import {
   viewStore,
 } from './view-store.js';
 
-const view = {
+const view: View = {
   id: 'foh',
   name: 'FOH',
-  channels: [{ channelId: 'channel/1', lastKnownName: 'BASS' }],
+  channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
+  groups: [],
 };
 
 describe('viewStore', () => {
@@ -52,7 +54,7 @@ describe('viewStore', () => {
   it('creates, updates, and deletes views while preserving order', async () => {
     const client = new FakeViewsClient([view]);
     await loadViews(client);
-    const created = await createView(client, { name: 'Broadcast', channels: [] });
+    const created = await createView(client, { name: 'Broadcast', channels: [], groups: [] });
     expect(created?.name).toBe('Broadcast');
     expect(viewStore.getState().views.map((candidate) => candidate.name)).toEqual([
       'FOH',
@@ -61,7 +63,8 @@ describe('viewStore', () => {
 
     const updated = await updateView(client, 'foh', {
       name: 'Front of House',
-      channels: [{ channelId: 'main/1', lastKnownName: 'Main', color: 'red' }],
+      channels: [{ kind: 'main', name: 'Main', channelId: 'main/1', color: 'red' }],
+      groups: [],
     });
     expect(updated?.name).toBe('Front of House');
     setActiveView('foh');
@@ -74,8 +77,12 @@ describe('viewStore', () => {
     const client = new FakeViewsClient([view]);
     await loadViews(client);
     client.error = new Error('Service unavailable');
-    await expect(createView(client, { name: 'Failed', channels: [] })).resolves.toBeNull();
-    await expect(updateView(client, 'foh', { name: 'Failed', channels: [] })).resolves.toBeNull();
+    await expect(
+      createView(client, { name: 'Failed', channels: [], groups: [] }),
+    ).resolves.toBeNull();
+    await expect(
+      updateView(client, 'foh', { name: 'Failed', channels: [], groups: [] }),
+    ).resolves.toBeNull();
     await expect(deleteView(client, 'foh')).resolves.toBe(false);
     expect(viewStore.getState().views).toEqual([view]);
     expect(viewStore.getState().error).toBe('Service unavailable');

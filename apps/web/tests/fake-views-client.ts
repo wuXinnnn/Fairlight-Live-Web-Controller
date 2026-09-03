@@ -11,6 +11,7 @@ export class FakeViewsClient implements ViewsClient {
     this.views = views.map((view) => ({
       ...view,
       channels: view.channels.map((channel) => ({ ...channel })),
+      groups: view.groups.map((group) => ({ ...group })),
     }));
   }
 

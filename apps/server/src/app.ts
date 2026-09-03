@@ -39,6 +39,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     await app.register(fastifyStatic, {
       root: options.staticRoot,
     });
+    // The web app owns client-side routes such as /views; serve the SPA shell for any
+    // unmatched GET that is not an API call so a page reload or deep link keeps working.
+    app.setNotFoundHandler((request, reply) => {
+      if (request.method !== 'GET' || request.url.startsWith('/api/')) {
+        return reply.code(404).send({
+          error: { code: ERROR_CODES.NOT_FOUND, message: `Route ${request.url} not found` },
+        });
+      }
+      return reply.sendFile('index.html');
+    });
   }
 
   return app;

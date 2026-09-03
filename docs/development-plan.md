@@ -90,18 +90,18 @@
 
 交付物:
 
-- View 数据模型(`packages/shared`):view 含名称与通道引用列表(Ember 路径 + 最后已知名称)
-- REST API:views CRUD,持久化到 `data/`
-- 配置页:创建/重命名/删除 view,从当前树的通道清单中勾选通道,可排序
+- View 数据模型(`packages/shared`):view 含名称、通道引用列表与命名分组;通道引用以「类型 + 名称」匹配(Fairlight 不提供稳定通道 ID,插入/重排会重新编号),勾选时记录的逻辑 id 只用于同名裁决
+- REST API:views CRUD,持久化到 `data/`;旧的 `{ channelId, lastKnownName }` 引用在读取时自动迁移
+- 配置页(独立路由 `/views`,支持浏览器前进/后退):创建/重命名/删除 view,从当前树的通道清单中勾选通道,可排序;可创建命名分组、把通道编入分组、整组排序与解散,全部由 `SAVE VIEW` 统一保存
 - View 内每个通道可从前端统一 palette 选择颜色;未配置时使用 Input Green、Main Red、Sub Teal、Aux Navy、Mix Minus Lime、Matrix Purple 的类型默认色
-- 主页面 view 切换;无 view 时默认显示全部通道
-- 失配处理:树变化后 view 中缺失的通道渲染为占位(显示最后已知名称与缺失提示),配置页提供一键清理失效引用
+- 主页面 view 切换;无 view 时默认显示全部通道;分组在混音页以 `All Channels` 的类型分区样式展示,组名作为分区标题
+- 失配处理:树变化后 view 中解析不到的通道渲染为占位(显示引用名称与缺失提示),配置页提供一键清理失效引用
 
 验收标准:
 
-- [ ] 集成测试覆盖:views CRUD、通道颜色配置与默认回退、view 引用已删除通道、树变化后的失配标记与清理、空 view/空配置
+- [x] 集成测试覆盖:views CRUD、通道颜色配置与默认回退、view 引用已删除通道、树变化后的失配标记与清理、空 view/空配置、按名称匹配与分组
 - [ ] 本地手动验收:view 切换流畅,失配占位展示正确
-- [ ] 覆盖率达标
+- [x] 覆盖率达标
 
 ## Phase 6 — UX 打磨与健壮性
 

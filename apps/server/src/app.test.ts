@@ -34,6 +34,30 @@ describe('createApp', () => {
     }
   });
 
+  it('serves the SPA shell for client routes and keeps API misses as 404', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'flwc-static-'));
+    await writeFile(path.join(dir, 'index.html'), '<html>shell</html>');
+    try {
+      const app = await createApp({ staticRoot: dir });
+      apps.push(app);
+      const clientRoute = await app.inject({ method: 'GET', url: '/views' });
+      expect(clientRoute.statusCode).toBe(200);
+      expect(clientRoute.body).toContain('shell');
+
+      const apiMiss = await app.inject({ method: 'GET', url: '/api/v1/nope' });
+      expect(apiMiss.statusCode).toBe(404);
+      expect(apiMiss.json()).toEqual({
+        error: { code: 'NOT_FOUND', message: 'Route /api/v1/nope not found' },
+      });
+
+      const postMiss = await app.inject({ method: 'POST', url: '/views' });
+      expect(postMiss.statusCode).toBe(404);
+      expect(postMiss.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('does not serve static files when staticRoot is omitted', async () => {
     const app = await createApp();
     apps.push(app);
