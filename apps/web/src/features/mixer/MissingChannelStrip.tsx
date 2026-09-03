@@ -5,12 +5,13 @@ import { channelColor } from './channel-colors.js';
 interface MissingChannelStripProps {
   reference: ViewChannelRef;
   index: number;
+  className?: string;
 }
 
-export function MissingChannelStrip({ reference, index }: MissingChannelStripProps) {
+export function MissingChannelStrip({ reference, index, className }: MissingChannelStripProps) {
   return (
     <article
-      className="channel-strip missing-channel-strip"
+      className={`channel-strip missing-channel-strip${className === undefined ? '' : ` ${className}`}`}
       aria-label={`${reference.name} missing channel`}
       style={
         {

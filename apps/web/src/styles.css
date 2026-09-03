@@ -477,7 +477,7 @@ button {
   margin-left: 0.85rem;
 }
 
-.mixer-bays.is-view-mode .mixer-section + .channel-strip {
+.mixer-bays.is-view-mode:not(.is-type-rows) .channel-strip.is-after-group {
   margin-left: 0.85rem;
 }
 
