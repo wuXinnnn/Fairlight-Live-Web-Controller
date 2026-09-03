@@ -3,7 +3,7 @@ import { silentLogger } from '../logger.js';
 import { EmberProtocolError } from './errors.js';
 import { EmberService } from './ember-service.js';
 import { FakeEmberClient } from './fake-ember-client.js';
-import { emberNode, parameterNode, stripNode } from './tree-helpers.js';
+import { emberNode, parameterNode, requiredTree, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
 import { Model } from 'emberplus-connection';
 
@@ -27,6 +27,7 @@ describe('EmberService', () => {
       reconnectInitialMs: 20,
       reconnectMaxMs: 40,
       treeRefreshDebounceMs: 10,
+      busDirectoryPollMs: 0,
       createClient: () => client,
       ...extra,
     });
@@ -63,6 +64,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 20,
       reconnectInitialMs: 15,
       reconnectMaxMs: 15,
+      busDirectoryPollMs: 0,
       createClient: () => {
         created += 1;
         return created === 1 ? failing : ok;
@@ -98,6 +100,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 20,
       reconnectInitialMs: 10,
       reconnectMaxMs: 10,
+      busDirectoryPollMs: 0,
       createClient: () => {
         created += 1;
         return created === 1 ? hanging : ok;
@@ -146,6 +149,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 20,
       reconnectInitialMs: 10,
       reconnectMaxMs: 10,
+      busDirectoryPollMs: 0,
       createClient: () => {
         created += 1;
         return created === 1 ? first : second;
@@ -168,6 +172,7 @@ describe('EmberService', () => {
       disconnectTimeoutMs: 20,
       reconnectInitialMs: 10,
       reconnectMaxMs: 10,
+      busDirectoryPollMs: 0,
       createClient: (host, port) => {
         const client = new FakeEmberClient(undefined, host, port);
         clients.push(client);
@@ -260,6 +265,7 @@ describe('EmberService', () => {
       reconnectInitialMs: 10,
       reconnectMaxMs: 10,
       treeRefreshDebounceMs: 10,
+      busDirectoryPollMs: 0,
       createClient: () => {
         created += 1;
         return created === 1 ? first : second;
@@ -336,6 +342,72 @@ describe('EmberService', () => {
     client.emitNodeUpdate(channelRoot);
     await expect.poll(() => trees.length).toBeGreaterThan(1);
     expect(client.tree[1]?.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
+  });
+
+  it('probes for mixer strips that never arrived on the live tree', async () => {
+    const primary = new FakeEmberClient();
+    const probeTree = requiredTree();
+    const channelRoot = probeTree[1];
+    if (channelRoot?.children !== undefined) {
+      channelRoot.children[2] = stripNode('channel', 2, 'PC');
+    }
+    const probe = new FakeEmberClient(probeTree);
+    let created = 0;
+    const service = new EmberService({
+      host: '127.0.0.1',
+      port: 1,
+      logger: silentLogger(),
+      timeoutMs: 40,
+      disconnectTimeoutMs: 30,
+      treeRefreshDebounceMs: 10,
+      busDirectoryPollMs: 20,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? primary : probe;
+      },
+    });
+    services.push(service);
+    await service.start();
+    await expect
+      .poll(() => primary.tree[1]?.children?.[2]?.contents)
+      .toMatchObject({
+        identifier: 'channel2',
+      });
+  });
+
+  it('reclaims a ghost occupant when the probe finds a new strip', async () => {
+    const primary = new FakeEmberClient();
+    const primaryChannel = primary.tree[1];
+    if (primaryChannel?.children !== undefined) {
+      primaryChannel.children[2] = emberNode(2, new Model.EmberNodeImpl(), {});
+    }
+    const probeTree = requiredTree();
+    const probeChannel = probeTree[1];
+    if (probeChannel?.children !== undefined) {
+      probeChannel.children[2] = stripNode('channel', 2, 'PC');
+    }
+    const probe = new FakeEmberClient(probeTree);
+    let created = 0;
+    const service = new EmberService({
+      host: '127.0.0.1',
+      port: 1,
+      logger: silentLogger(),
+      timeoutMs: 40,
+      disconnectTimeoutMs: 30,
+      treeRefreshDebounceMs: 10,
+      busDirectoryPollMs: 20,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? primary : probe;
+      },
+    });
+    services.push(service);
+    await service.start();
+    await expect
+      .poll(() => primary.tree[1]?.children?.[2]?.contents)
+      .toMatchObject({
+        identifier: 'channel2',
+      });
   });
 
   it('resolves invoke after send when the provider never returns a result', async () => {

@@ -1,9 +1,13 @@
 import { Model } from 'emberplus-connection';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  attachMissingMixerStrips,
+  discoverMixerStripRefs,
   expandEmberTree,
   hasIncompleteMixerStrips,
   incompleteMixerStripKeys,
+  listMixerStripRefs,
+  STRIP_STUB_DIRECTORY_TIMEOUT_MS,
   withTimeout,
 } from './expand-ember-tree.js';
 import type { EmberDirectoryRequest, EmberTreeClient } from './expand-ember-tree.js';
@@ -137,6 +141,38 @@ describe('expandEmberTree', () => {
     expect(seenChildren).toBeUndefined();
   });
 
+  it('getDirectory an unidentified empty child under a mixer bus', async () => {
+    const ghost = node(2, new Model.EmberNodeImpl(), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 2: ghost });
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(async () => ({ response: Promise.resolve(undefined) })),
+    };
+
+    await expandEmberTree(client);
+    expect(client.getDirectory).toHaveBeenCalledWith(ghost);
+  });
+
+  it('times out unidentified mixer-bus ghosts as stubs and restores empty children', async () => {
+    const ghost = node(2, new Model.EmberNodeImpl(), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 2: ghost });
+    const client: EmberTreeClient = {
+      tree: { 1: root },
+      getDirectory: vi.fn(() => new Promise<EmberDirectoryRequest>(() => undefined)),
+    };
+
+    const started = Date.now();
+    const { errors } = await expandEmberTree(client, { timeoutMs: 2_000 });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(errors).toEqual([
+      {
+        path: 'channel/2',
+        message: `Timeout after ${STRIP_STUB_DIRECTORY_TIMEOUT_MS}ms: getDirectory channel/2`,
+      },
+    ]);
+    expect(ghost.children).toEqual({});
+  });
+
   it('does not getDirectory on an already expanded bus root', async () => {
     const strip = node(1, new Model.EmberNodeImpl('channel1'), {
       1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
@@ -186,5 +222,67 @@ describe('incomplete mixer strips', () => {
     const offline = node(2, new Model.EmberNodeImpl('channel2', undefined, true, false), {});
     const root = node(1, new Model.EmberNodeImpl('channel'), { 1: complete, 2: offline });
     expect(hasIncompleteMixerStrips({ 1: root })).toBe(false);
+  });
+});
+
+describe('mixer strip discovery', () => {
+  it('lists strip refs from an already expanded tree', () => {
+    const root = node(1, new Model.EmberNodeImpl('channel'), {
+      1: node(1, new Model.EmberNodeImpl('channel1')),
+      2: node(2, new Model.EmberNodeImpl('channel2')),
+    });
+    expect(listMixerStripRefs({ 1: root })).toEqual([
+      { bus: 'channel', number: 1, identifier: 'channel1' },
+      { bus: 'channel', number: 2, identifier: 'channel2' },
+    ]);
+  });
+
+  it('getDirectory mixer bus roots on a fresh tree and lists the strips', async () => {
+    const strip = node(2, new Model.EmberNodeImpl('channel2'));
+    const root = node(1, new Model.EmberNodeImpl('channel'));
+    const tree: EmberTreeClient['tree'] = {};
+    const client: EmberTreeClient = {
+      tree,
+      getDirectory: vi.fn(async (target): Promise<EmberDirectoryRequest> => {
+        if (target === tree) {
+          Object.assign(tree, { 1: root });
+        }
+        if (target === root) {
+          root.children = { 2: strip };
+        }
+        return { response: Promise.resolve(target) };
+      }),
+    };
+    const { refs, errors } = await discoverMixerStripRefs(client);
+    expect(errors).toEqual([]);
+    expect(refs).toEqual([{ bus: 'channel', number: 2, identifier: 'channel2' }]);
+    expect(client.getDirectory).toHaveBeenCalledTimes(2);
+  });
+
+  it('attaches missing strip stubs without replacing existing children', () => {
+    const existing = node(1, new Model.EmberNodeImpl('channel1'));
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: existing });
+    const tree = { 1: root };
+    const added = attachMissingMixerStrips(tree, [
+      { bus: 'channel', number: 1, identifier: 'channel1' },
+      { bus: 'channel', number: 2, identifier: 'channel2' },
+    ]);
+    expect(added).toEqual([{ bus: 'channel', number: 2, identifier: 'channel2' }]);
+    expect(root.children?.[1]).toBe(existing);
+    expect(root.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
+  });
+
+  it('replaces an unidentified ghost occupant at the new strip number', () => {
+    const existing = node(1, new Model.EmberNodeImpl('channel1'));
+    const ghost = node(2, new Model.EmberNodeImpl(), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: existing, 2: ghost });
+    const tree = { 1: root };
+    const added = attachMissingMixerStrips(tree, [
+      { bus: 'channel', number: 2, identifier: 'channel2' },
+    ]);
+    expect(added).toEqual([{ bus: 'channel', number: 2, identifier: 'channel2' }]);
+    expect(root.children?.[2]).not.toBe(ghost);
+    expect(root.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
+    expect(root.children?.[2]?.children).toBeUndefined();
   });
 });

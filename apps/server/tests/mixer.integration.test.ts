@@ -100,6 +100,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       reconnectMaxMs: 100,
       treeRefreshDebounceMs: 20,
       incompleteStripRetryMs: extra.incompleteStripRetryMs,
+      busDirectoryPollMs: 0,
     });
     servers.push(server);
     const url = `http://127.0.0.1:${httpPort}`;
@@ -249,6 +250,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       disconnectTimeoutMs: 500,
       reconnectInitialMs: 40,
       reconnectMaxMs: 80,
+      busDirectoryPollMs: 0,
     });
     servers.push(server);
     await connectClient(`http://127.0.0.1:${httpPort}`);
@@ -282,6 +284,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       configDir: dir,
       silent: true,
       timeoutMs: 3000,
+      busDirectoryPollMs: 0,
     });
     servers.push(server);
     const { socket } = await connectClient(`http://127.0.0.1:${httpPort}`);
