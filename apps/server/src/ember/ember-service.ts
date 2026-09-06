@@ -15,6 +15,7 @@ import {
 import { EmberProtocolError } from './errors.js';
 import { childNodes, isFunctionNode, isParameterNode } from './node-utils.js';
 import { patchEmberClientTreeMerge } from './patch-ember-client.js';
+import { captureEmberTransport, retireEmberTransport } from './retire-ember-client.js';
 import type {
   EmberClientFactory,
   EmberClientHandle,
@@ -454,11 +455,13 @@ export class EmberService extends EventEmitter {
       }
       this.logger.warn({ layer: 'protocol' }, 'ember socket disconnected');
       this.client = undefined;
+      const transport = captureEmberTransport(client);
       try {
         client.discard();
       } catch (error) {
         this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'discard failed');
       }
+      retireEmberTransport(transport);
       if (this.started) {
         this.setStatus('reconnecting', this.lastErrorValue);
         this.scheduleReconnect();
@@ -557,6 +560,7 @@ export class EmberService extends EventEmitter {
     if (client === undefined) {
       return;
     }
+    const transport = captureEmberTransport(client);
     try {
       await withTimeout(client.disconnect(), this.disconnectTimeoutMs, 'disconnect');
     } catch (error) {
@@ -567,6 +571,8 @@ export class EmberService extends EventEmitter {
     } catch (error) {
       this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'discard failed');
     }
+    // The library would otherwise keep this client dialling in the background.
+    retireEmberTransport(transport);
   }
 
   private isActiveClient(client: EmberClientHandle): boolean {
