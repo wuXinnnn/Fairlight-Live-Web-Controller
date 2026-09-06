@@ -88,6 +88,40 @@ describe('EmberService', () => {
     expect(created).toBeGreaterThan(1);
   });
 
+  it('ignores the outcome of a dialling attempt that a reconfigure replaced', async () => {
+    const slowFailure = new FakeEmberClient();
+    slowFailure.connectDelayMs = 60;
+    slowFailure.failConnect = new Error('Could not connect to 127.0.0.1:1 after a timeout');
+    const ok = new FakeEmberClient();
+    let created = 0;
+    const service = createService(slowFailure, {
+      timeoutMs: 500,
+      reconnectInitialMs: 10_000,
+      reconnectMaxMs: 10_000,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? slowFailure : ok;
+      },
+    });
+    const statuses: Array<[string, string | undefined]> = [];
+    service.on('status', (status: string, lastError?: string) => {
+      statuses.push([status, lastError]);
+    });
+    const starting = service.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(service.status).toBe('connecting');
+    await service.configure('127.0.0.1', 2);
+    expect(service.status).toBe('connected');
+    statuses.length = 0;
+
+    await starting;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(service.status).toBe('connected');
+    expect(service.lastError).toBeUndefined();
+    expect(statuses).toEqual([]);
+    expect(ok.connected).toBe(true);
+  });
+
   it('keeps the last error while retrying and clears it when reconfigured', async () => {
     const failing = new FakeEmberClient();
     failing.failConnect = new Error('connect ECONNREFUSED 127.0.0.1:1');

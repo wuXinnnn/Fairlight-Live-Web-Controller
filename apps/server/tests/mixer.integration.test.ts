@@ -233,6 +233,8 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
     });
 
+    // The tree is unchanged after the restore, yet clients still get a connected snapshot.
+    const restoredSnapshot = waitFor<MixerSnapshot>(socket, SOCKET_EVENTS.MIXER_SNAPSHOT);
     const restore = await fetch(`${url}/api/v1/connection`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -240,6 +242,8 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     });
     expect(restore.status).toBe(200);
     await expect.poll(() => server.runtime.store.connection).toBe('connected');
+    expect(await restoredSnapshot).toMatchObject({ connection: 'connected' });
+    expect((await restoredSnapshot).channels).toHaveLength(3);
     expect(server.runtime.store.connectionError).toBeUndefined();
     expect(await (await fetch(`${url}/api/v1/connection`)).json()).toEqual({
       host: '127.0.0.1',

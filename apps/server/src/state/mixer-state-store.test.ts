@@ -110,6 +110,41 @@ describe('MixerStateStore', () => {
     ]);
   });
 
+  it('publishes a snapshot on the first sync after reconnecting even when the tree is unchanged', () => {
+    const store = new MixerStateStore();
+    const snapshots = vi.fn();
+    const patches = vi.fn();
+    store.on('snapshot', snapshots);
+    store.on('patch', patches);
+    const unchanged = {
+      added: [],
+      updated: [],
+      removedIds: [],
+      loudness: undefined,
+      structureChanged: false,
+    };
+    store.setConnection('connected');
+    store.applySync({ ...unchanged, added: [bass], structureChanged: true });
+    expect(snapshots).toHaveBeenCalledTimes(1);
+
+    store.setConnection('reconnecting', 'Timeout after 5000ms: connect');
+    store.applySync(unchanged);
+    expect(snapshots).toHaveBeenCalledTimes(1);
+
+    store.setConnection('connected');
+    store.applySync({ ...unchanged, updated: [{ ...bass, levelDb: -1 }] });
+    expect(snapshots).toHaveBeenCalledTimes(2);
+    expect(snapshots.mock.lastCall?.[0]).toMatchObject({
+      connection: 'connected',
+      channels: [{ id: bass.id, levelDb: -1 }],
+    });
+    expect(patches).not.toHaveBeenCalled();
+
+    store.applySync({ ...unchanged, updated: [{ ...bass, levelDb: -2 }] });
+    expect(snapshots).toHaveBeenCalledTimes(2);
+    expect(patches).toHaveBeenCalledTimes(1);
+  });
+
   it('removes channels on a structural sync', () => {
     const store = new MixerStateStore();
     store.applySync({

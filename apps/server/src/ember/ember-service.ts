@@ -243,13 +243,20 @@ export class EmberService extends EventEmitter {
         this.enqueueMixerStripReconcile();
       }
     } catch (error) {
+      if (this.client !== client) {
+        // A newer attempt (reconfigure or reconnect) replaced this one while it was dialling;
+        // its outcome must not touch the status the newer attempt owns.
+        this.logger.debug(
+          { err: errorMessage(error), layer: 'protocol' },
+          'stale ember connect attempt failed',
+        );
+        return;
+      }
       this.logger.error(
         { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
         'ember connect failed',
       );
-      if (this.client === client) {
-        await this.safeClose();
-      }
+      await this.safeClose();
       if (this.started) {
         this.setStatus(
           this.hasConnected ? 'reconnecting' : 'connecting',
