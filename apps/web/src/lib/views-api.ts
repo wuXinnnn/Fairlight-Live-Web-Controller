@@ -1,10 +1,5 @@
-import {
-  apiErrorSchema,
-  viewSchema,
-  viewsListResponseSchema,
-  type View,
-  type ViewWriteBody,
-} from '@flwc/shared';
+import { viewSchema, viewsListResponseSchema, type View, type ViewWriteBody } from '@flwc/shared';
+import { createApiRequest, type Fetcher } from './api-request.js';
 
 export interface ViewsClient {
   list(): Promise<View[]>;
@@ -13,31 +8,8 @@ export interface ViewsClient {
   remove(id: string): Promise<void>;
 }
 
-type Fetcher = typeof fetch;
-
-async function readError(response: Response): Promise<Error> {
-  try {
-    const parsed = apiErrorSchema.safeParse(await response.json());
-    if (parsed.success) {
-      return new Error(parsed.data.error.message);
-    }
-  } catch {
-    // The status remains useful when an upstream returns a non-JSON error.
-  }
-  return new Error(`Views request failed with status ${response.status}.`);
-}
-
 export function createViewsClient(fetcher: Fetcher = fetch): ViewsClient {
-  const request = async (path: string, init?: RequestInit): Promise<Response> => {
-    const response = await fetcher(path, {
-      ...init,
-      headers: init?.body === undefined ? init?.headers : { 'content-type': 'application/json' },
-    });
-    if (!response.ok) {
-      throw await readError(response);
-    }
-    return response;
-  };
+  const request = createApiRequest(fetcher, 'Views');
 
   return {
     async list() {
