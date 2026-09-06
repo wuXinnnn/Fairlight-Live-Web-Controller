@@ -63,18 +63,63 @@ shared 中的 View 模型(channelId + lastKnownName)、REST CRUD 与持久化、
 集成测试覆盖 CRUD、失配、空配置场景,覆盖率达标。
 ```
 
-## Phase 6 — UX 打磨
+## Phase 6 — UX 打磨与健壮性
+
+Phase 6 拆成五个 PR,每个 PR 一条提示词,按顺序执行;每个 PR 单独达标覆盖率后再开下一个。
+
+### 6.1 连接配置与错误态
 
 ```
-按 docs/development-plan.md 的 Phase 6 打磨:暗色主题、触屏推子体验、错误态/空态、
-断线重连端到端恢复、电平帧渲染性能。长时间运行验证无泄漏、无断连不恢复。
+按 docs/development-plan.md 的 Phase 6.1:前端 connection-api 客户端(复用 shared zod schema)、
+两个页面头部可点击的连接状态灯与 CONNECTION 面板(host/port/状态/APPLY,已连接时二次确认)、
+混音页空态按 socket 离线 / Ember 未连接 / 树为空三种原因分流并提供 CONFIGURE CONNECTION 入口。
+不改后端;环境变量种子值的实现留到 Phase 7。集成测试覆盖 6.1 验收清单,覆盖率达标。
+```
+
+### 6.2 配置页 UX
+
+```
+按 docs/development-plan.md 的 Phase 6.2:引入 @dnd-kit/core + @dnd-kit/sortable(确认 MIT)实现
+通道行/分组/可用通道的拖放(pointer、touch、keyboard 传感器),数据模型不变,新增纯函数
+moveChannelTo 与 insertChannelAt,箭头按钮保留;自写 FLIP hook 让所有受影响的行平滑位移,
+兼容 reduced-motion,删除 data-moved 动画;isViewDirty 脏检测、三处脏态提示、应用内确认对话框、
+router 导航守卫(后退被拒时 history.forward())与 beforeunload。
+拖放集成测试用键盘传感器;纯函数全覆盖;覆盖率达标。
+```
+
+### 6.3 混音页分页
+
+```
+按 docs/development-plan.md 的 Phase 6.3:显式分页布局(ResizeObserver 算每页数量,分组允许跨页,
+TYPE ROWS 改为每组一页起),通道条撑满 100dvh,页头压缩为单行,pageIndex + transform 翻页,
+实体质感翻页按钮与页码、PageUp/PageDown、右侧安全区(粗指针常驻,区内无声音控件)。
+严格按文档的"Fader 滚轮与翻页滚轮共存规则"实现两个纯函数 reducer、wheel-gesture 手势归属模块与原生非 passive 监听,
+覆盖文档列出的全部归属边界情形。阈值与时间窗口按文档初值实现,不自行调整。
+在 Mock Provider 下以 40 通道 20 Hz 实测电平表开销。单测与集成测试覆盖 6.3 验收清单,覆盖率达标。
+```
+
+### 6.4 触屏审计
+
+```
+按 docs/development-plan.md 的 Phase 6.4:全局防误触样式(overscroll-behavior、touch-action、
+user-select、touch-callout、hover 媒体查询、100dvh)、Fader pointerId 过滤与多指并行、44px 命中区、
+只在安全区与非控制表面识别的滑动翻页手势(纯函数 reducer)、dnd-kit touch 传感器延迟与容差、
+Screen Wake Lock 与 Fullscreen 渐进增强。单测覆盖 6.4 验收清单,覆盖率达标;真机触屏验收由本地执行。
+```
+
+### 6.5 健壮性
+
+```
+按 docs/development-plan.md 的 Phase 6.5:socket 断线重连 / Ember 断线重连 / 两者叠加的
+Mock Provider 集成用例,验证 UI 恢复到断线前状态;soak 脚本让 Mock Provider 持续推电平帧
+不少于 1 小时并采样前端堆内存输出报告。真机 1 小时运行验收由本地执行。覆盖率达标。
 ```
 
 ## Phase 7 — 打包交付
 
 ```
 按 docs/development-plan.md 的 Phase 7:多阶段 Dockerfile(node:22-alpine,data/ 挂卷)、
-docker-compose 示例、Windows 启动脚本,补全 README 快速开始,全量核对文档与实际行为一致。
+docker-compose 示例、Windows 启动脚本、EMBER_HOST/EMBER_PORT 环境变量仅在首次启动且无配置文件时作为种子值,补全 README 快速开始,全量核对文档与实际行为一致。
 ```
 
 ## 缺陷修复(通用)
