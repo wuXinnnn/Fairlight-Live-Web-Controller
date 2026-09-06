@@ -62,6 +62,7 @@ const PALETTE_LABELS: Record<ChannelPaletteKey, string> = {
 interface SettingsPageProps {
   viewsClient: ViewsClient;
   onBack(): void;
+  onOpenConnection(): void;
 }
 
 /** Marks the row (channel reference or group) that just moved so it can animate once. */
@@ -97,7 +98,7 @@ function pad(value: number): string {
   return value.toString().padStart(2, '0');
 }
 
-export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
+export function SettingsPage({ viewsClient, onBack, onOpenConnection }: SettingsPageProps) {
   const { views, saving, error } = useStore(
     viewStore,
     useShallow((state) => ({
@@ -492,7 +493,7 @@ export function SettingsPage({ viewsClient, onBack }: SettingsPageProps) {
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE / CONTROL DESK</span>
           <h1>VIEW CONFIGURATION</h1>
         </div>
-        <ConnectionStatus />
+        <ConnectionStatus onOpen={onOpenConnection} />
       </header>
 
       {(error ?? localError) !== null && (

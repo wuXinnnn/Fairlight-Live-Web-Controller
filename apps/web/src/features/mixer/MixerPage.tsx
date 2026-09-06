@@ -37,6 +37,7 @@ const EMPTY_RESOLVED: ResolvedViewChannel[] = [];
 interface MixerPageProps {
   controlClient: ControlClient;
   onOpenSettings(): void;
+  onOpenConnection(): void;
 }
 
 function segmentAccent(segment: ViewSegment): string {
@@ -48,7 +49,7 @@ function segmentAccent(segment: ViewSegment): string {
   return channelColor(lead.channel?.kind ?? lead.reference.kind, lead.reference.color);
 }
 
-export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
+export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: MixerPageProps) {
   const channels = useStore(
     mixerStore,
     useShallow((state) =>
@@ -208,7 +209,7 @@ export function MixerPage({ controlClient, onOpenSettings }: MixerPageProps) {
             CONFIGURE VIEWS
           </button>
         </div>
-        <ConnectionStatus />
+        <ConnectionStatus onOpen={onOpenConnection} />
         <div className="console-preferences">
           <ViewSelector />
           {(activeView === null || viewHasGroups) && (
