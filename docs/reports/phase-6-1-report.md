@@ -125,3 +125,13 @@ bf20b02 feat(web): add the connection REST client
 9a24355 feat(server): expose the last Ember connect failure
 ed4d340 feat(shared): add optional lastError to connection contracts
 ```
+
+## 10. 评审与真机反馈后的修订
+
+PR #13 的 Bugbot 评审与用户真机验收反馈后追加了以下修订(均已补测试并通过 CI):
+
+- **Bugbot**:提交前清除过期的 `loadError`(否则 GET 失败的提示会盖住后续 PUT 的结果);提交期间把焦点停在对话框容器上,禁用 APPLY 不再让 Tab 逃出模态框。
+- **真机反馈 1**:`Settings applied. Watching the mixer reconnect.` 改为琥珀 warning 样式——应用配置只是开始重连,结果未定,不再用绿色暗示成功。
+- **真机反馈 2**:前端 host 校验加严(`isValidHost`):接受完整的 IPv4(每段 0–255)、IPv6 或 DNS 主机名(需含字母,标签只允许字母数字与连字符),`192.168.1`、`256.1.1.1` 之类直接就地报 `Enter a valid IP address or host name.`;端口仍须为 1–65535 的整数。服务端与 shared 契约保持 `host` 非空字符串,以免既有 `data/config.json` 因新规则加载失败回退默认值。
+- **真机反馈 3(错误 IP 后改回正确 IP,首次 apply 停在重连、第二次才成功)**:云端用 Mock Provider + SYN 黑洞端口按同一序列(API 与浏览器面板两条路径)都能一次连上,未复现;但代码审读发现 `emberplus-connection@0.3.1` 对被 `discard()` 的客户端不会停止拨号:连接超时回调与 5 s 自动重连定时器都会再次调用 `connect()`,`disconnect()` 只 `end()` 不 `destroy()`,拨号中的 socket 完全不动。切换地址后,旧客户端会在后台继续拨真机,可能先于当前客户端占住 Fairlight 的连接并继续应答 keepalive,当前客户端的拨号因此挂起超时,直到旧连接被真机丢弃后的下一次尝试(或用户再点一次 apply)才成功。修订:`safeClose()` 与断线处理在 `discard()` 前捕获 S101 传输层,之后关闭其自动重连、把 `connect()` 置为空操作并 `destroy()` socket(`ember/retire-ember-client.ts`)。请用户在真机上重复该场景验证;若仍复现,请提供服务端日志中 `ember connect failed` 的 `err` 字段与两次 apply 的时间间隔。
+
