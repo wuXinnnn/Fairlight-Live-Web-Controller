@@ -117,7 +117,11 @@ function ConnectionDialog({ client, onClose }: ConnectionDialogProps) {
       setConfirming(true);
       return;
     }
+    // The pressed button is about to be disabled, which would drop focus to the body and let
+    // Tab leave the dialog; park focus on the dialog itself for the duration of the request.
+    dialogRef.current?.focus();
     setSubmitting(true);
+    setLoadError(null);
     setSubmitError(null);
     setApplied(false);
     try {
@@ -134,11 +138,9 @@ function ConnectionDialog({ client, onClose }: ConnectionDialogProps) {
   };
 
   useEffect(() => {
-    // The pressed APPLY button is disabled while the request runs, which drops focus to the
-    // body; take it back so Tab and Escape keep working inside the dialog.
-    if (!submitting) {
-      reclaimFocus();
-    }
+    // Safety net for either edge of a request: if a browser dropped focus to the body when the
+    // pressed button was disabled, take it back so Tab and Escape keep working inside the dialog.
+    reclaimFocus();
   }, [submitting, reclaimFocus]);
 
   const busy = submitting || loading;

@@ -82,6 +82,25 @@ describe('ConnectionPanel', () => {
     );
     expect(screen.getByLabelText('HOST')).toBeEnabled();
     expect(screen.getByRole('button', { name: 'APPLY' })).toBeEnabled();
+
+    // A later submit replaces the stale load error with its own outcome.
+    client.updateError = new Error('Port is out of range.');
+    fireEvent.change(screen.getByLabelText('HOST'), { target: { value: '10.0.0.8' } });
+    fireEvent.change(screen.getByLabelText('PORT'), { target: { value: '9000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Port is out of range.');
+    });
+    expect(
+      screen.queryByText('Connection request failed with status 502.'),
+    ).not.toBeInTheDocument();
+
+    client.updateError = null;
+    fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
+    expect(
+      await screen.findByText('Settings applied. Watching the mixer reconnect.'),
+    ).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('validates the fields before sending anything', async () => {
@@ -137,11 +156,16 @@ describe('ConnectionPanel', () => {
     client.deferUpdate = true;
     const { onClose } = renderPanel(client);
     const host = await loaded();
+    screen.getByRole('button', { name: 'APPLY' }).focus();
     fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
     const applying = await screen.findByRole('button', { name: 'APPLYING' });
     expect(applying).toBeDisabled();
     expect(screen.getByRole('button', { name: 'CANCEL' })).toBeDisabled();
     expect(host).toBeDisabled();
+    // Focus is parked on the dialog before the pressed button is disabled, so Tab stays trapped.
+    expect(screen.getByRole('dialog')).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Close connection settings' })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
     // Disabling the pressed button drops focus to the body; Escape must still reach the dialog.
