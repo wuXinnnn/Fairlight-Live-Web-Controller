@@ -10,6 +10,8 @@ import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
 import { channelColor, channelTypeColor } from './channel-colors.js';
 import { ChannelStrip } from './ChannelStrip.js';
 import { ControlLock } from './ControlLock.js';
+import { EmptyConsole } from './EmptyConsole.js';
+import { resolveMixerEmptyState } from './empty-state.js';
 import { MissingChannelStrip } from './MissingChannelStrip.js';
 import { TypeRowToggle } from './TypeRowToggle.js';
 import { useChannelPresence, type PresenceChannel } from './use-channel-presence.js';
@@ -56,7 +58,15 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       state.channelOrder.map((id) => state.channels[id]).filter((channel) => channel !== undefined),
     ),
   );
-  const channelInventoryLoaded = useStore(mixerStore, (state) => state.channelInventoryLoaded);
+  const { channelInventoryLoaded, socketConnected, emberStatus, emberLastError } = useStore(
+    mixerStore,
+    useShallow((state) => ({
+      channelInventoryLoaded: state.channelInventoryLoaded,
+      socketConnected: state.socketConnected,
+      emberStatus: state.emberStatus,
+      emberLastError: state.emberLastError,
+    })),
+  );
   const { views, activeViewId } = useStore(
     viewStore,
     useShallow((state) => ({ views: state.views, activeViewId: state.activeViewId })),
@@ -81,10 +91,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const viewHasGroups = activeView !== null && activeView.groups.length > 0;
-  const emptyMessage =
-    channelInventoryLoaded && activeView !== null && activeView.channels.length === 0
-      ? 'THIS VIEW HAS NO CHANNELS'
-      : 'WAITING FOR MIXER SNAPSHOT';
+  const emptyState = resolveMixerEmptyState({
+    socketConnected,
+    emberStatus,
+    emberLastError,
+    channelInventoryLoaded,
+    channelCount: renderedChannels.length,
+    viewChannelCount: activeView === null ? null : activeView.channels.length,
+  });
 
   const renderViewStrip = (
     entry: ResolvedViewChannel,
@@ -228,13 +242,8 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         <LoudnessPanel controlClient={controlClient} />
       </header>
 
-      {!channelInventoryLoaded ||
-      (activeView === null && renderedChannels.length === 0) ||
-      (activeView !== null && activeView.channels.length === 0) ? (
-        <section className="empty-console" aria-live="polite">
-          <span className="empty-console__pulse" aria-hidden="true" />
-          <p>{emptyMessage}</p>
-        </section>
+      {emptyState !== null ? (
+        <EmptyConsole state={emptyState} onOpenConnection={onOpenConnection} />
       ) : activeView !== null ? (
         <div
           className={`mixer-bays is-view-mode ${typeRows && viewHasGroups ? 'is-type-rows' : ''}`}

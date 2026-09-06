@@ -21,6 +21,7 @@ import {
   viewStore,
 } from '../../store/view-store.js';
 import { CHANNEL_PALETTE, channelColor, channelTypeColor } from '../mixer/channel-colors.js';
+import { emptyStateDetail, emptyStateTitle, resolveMixerEmptyState } from '../mixer/empty-state.js';
 import {
   channelNameKey,
   duplicateChannelNames,
@@ -107,7 +108,14 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       error: state.error,
     })),
   );
-  const { channels, channelOrder, channelInventoryLoaded, socketConnected, emberStatus } = useStore(
+  const {
+    channels,
+    channelOrder,
+    channelInventoryLoaded,
+    socketConnected,
+    emberStatus,
+    emberLastError,
+  } = useStore(
     mixerStore,
     useShallow((state) => ({
       channels: state.channels,
@@ -115,6 +123,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       channelInventoryLoaded: state.channelInventoryLoaded,
       socketConnected: state.socketConnected,
       emberStatus: state.emberStatus,
+      emberLastError: state.emberLastError,
     })),
   );
   const availableChannels = useMemo(
@@ -152,6 +161,16 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     ? resolved.filter((entry) => entry.channel === undefined)
     : [];
   const canCleanMissing = channelInventoryLoaded && socketConnected && emberStatus === 'connected';
+  // With no channels to list this never resolves to "render strips", so the fallback is unused.
+  const channelsEmptyState = resolveMixerEmptyState({
+    socketConnected,
+    emberStatus,
+    emberLastError,
+    channelInventoryLoaded,
+    channelCount: 0,
+    viewChannelCount: null,
+  }) ?? { kind: 'waiting' };
+  const channelsEmptyDetail = emptyStateDetail(channelsEmptyState);
 
   const selectView = (view: View) => {
     setSelectedId(view.id);
@@ -594,7 +613,19 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                     <h2 id="available-channel-heading">AVAILABLE CHANNELS</h2>
                   </div>
                   {availableChannels.length === 0 ? (
-                    <p className="panel-empty">WAITING FOR MIXER SNAPSHOT</p>
+                    <div className="panel-empty" aria-live="polite">
+                      <p>{emptyStateTitle(channelsEmptyState)}</p>
+                      {channelsEmptyDetail !== null && <p>{channelsEmptyDetail}</p>}
+                      {channelsEmptyState.kind === 'ember-offline' &&
+                        channelsEmptyState.lastError !== null && (
+                          <p className="panel-empty__error">{channelsEmptyState.lastError}</p>
+                        )}
+                      {channelsEmptyState.kind === 'ember-offline' && (
+                        <button type="button" className="utility-button" onClick={onOpenConnection}>
+                          CONFIGURE CONNECTION
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <div className="channel-checklist">
                       {availableChannels.map((channel) => {

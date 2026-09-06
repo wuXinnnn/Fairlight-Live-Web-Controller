@@ -140,4 +140,41 @@ describe('connection panel integration', () => {
     });
     expect(screen.queryByRole('button', { name: 'CONFIRM RECONNECT' })).not.toBeInTheDocument();
   });
+
+  it('splits the configuration page channel list empty state and offers the panel', async () => {
+    const { socket } = renderApp();
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    await screen.findByRole('heading', { name: 'VIEW CONFIGURATION' });
+    fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
+    fireEvent.change(screen.getByPlaceholderText('Broadcast'), { target: { value: 'Stage' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ADD' }));
+    await screen.findByRole('textbox', { name: 'View name' });
+
+    const panel = screen.getByText('MIXER NOT CONNECTED').closest('.panel-empty');
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveTextContent('EMBER DISCONNECTED');
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, {
+      ember: 'reconnecting',
+      lastError: 'Timeout after 5000ms: connect',
+    });
+    expect(await screen.findByText('Timeout after 5000ms: connect')).toHaveClass(
+      'panel-empty__error',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE CONNECTION' }));
+    expect(await screen.findByRole('dialog', { name: 'CONNECTION' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'CANCEL' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    socket.disconnect();
+    expect(await screen.findByText('BACKEND OFFLINE')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CONFIGURE CONNECTION' })).not.toBeInTheDocument();
+
+    socket.connect();
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, { ...snapshot, channels: [] });
+    expect(await screen.findByText('NO CHANNELS ON THE MIXER')).toBeInTheDocument();
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    expect(await screen.findByRole('checkbox', { name: 'BASSINPUT' })).toBeInTheDocument();
+  });
 });
