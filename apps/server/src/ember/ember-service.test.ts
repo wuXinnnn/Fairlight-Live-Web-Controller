@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { silentLogger } from '../logger.js';
 import { EmberProtocolError } from './errors.js';
-import { EmberService } from './ember-service.js';
+import { connectFailureReason, EmberService } from './ember-service.js';
 import { FakeEmberClient } from './fake-ember-client.js';
 import { emberNode, parameterNode, requiredTree, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
@@ -71,10 +71,45 @@ describe('EmberService', () => {
       },
     });
     services.push(service);
+    const statuses: Array<[string, string | undefined]> = [];
+    service.on('status', (status: string, lastError?: string) => {
+      statuses.push([status, lastError]);
+    });
     await service.start();
     expect(service.status).toBe('connecting');
+    expect(service.lastError).toBe('refused');
+    expect(statuses).toEqual([
+      ['connecting', undefined],
+      ['connecting', 'refused'],
+    ]);
     await expect.poll(() => service.status).toBe('connected');
+    expect(service.lastError).toBeUndefined();
+    expect(statuses.at(-1)).toEqual(['connected', undefined]);
     expect(created).toBeGreaterThan(1);
+  });
+
+  it('keeps the last error while retrying and clears it when reconfigured', async () => {
+    const failing = new FakeEmberClient();
+    failing.failConnect = new Error('connect ECONNREFUSED 127.0.0.1:1');
+    const service = createService(failing, { reconnectInitialMs: 10_000, reconnectMaxMs: 10_000 });
+    const statuses: Array<[string, string | undefined]> = [];
+    service.on('status', (status: string, lastError?: string) => {
+      statuses.push([status, lastError]);
+    });
+    await service.start();
+    expect(service.lastError).toBe('connect ECONNREFUSED 127.0.0.1:1');
+
+    failing.failConnect = new Error('connect ECONNREFUSED 10.0.0.8:9000');
+    statuses.length = 0;
+    await service.configure('10.0.0.8', 9000);
+    // The stale reason is cleared before the new endpoint dials, then the new failure lands.
+    expect(statuses).toEqual([
+      ['connecting', undefined],
+      ['connecting', 'connect ECONNREFUSED 10.0.0.8:9000'],
+    ]);
+    expect(service.lastError).toBe('connect ECONNREFUSED 10.0.0.8:9000');
+    await service.stop();
+    expect(service.lastError).toBeUndefined();
   });
 
   it('discards the client when disconnect hangs', async () => {
@@ -108,7 +143,9 @@ describe('EmberService', () => {
     });
     services.push(service);
     await service.start();
+    expect(service.lastError).toMatch(/^Timeout after \d+ms: connect$/);
     await expect.poll(() => service.status).toBe('connected');
+    expect(service.lastError).toBeUndefined();
   });
 
   it('serializes concurrent writes', async () => {
@@ -440,5 +477,29 @@ describe('EmberService', () => {
     await service.start();
     await service.start();
     expect(service.status).toBe('connected');
+  });
+});
+
+describe('connectFailureReason', () => {
+  it('condenses errors into one short line', () => {
+    expect(connectFailureReason(new Error('connect ECONNREFUSED 10.0.0.8:9000'))).toBe(
+      'connect ECONNREFUSED 10.0.0.8:9000',
+    );
+    expect(connectFailureReason(new Error('  multi\n line   message '))).toBe('multi line message');
+    expect(connectFailureReason('socket hang up')).toBe('socket hang up');
+  });
+
+  it('unwraps aggregate errors and falls back for empty messages', () => {
+    expect(
+      connectFailureReason(new AggregateError([new Error('first'), new Error('second')], '')),
+    ).toBe('first');
+    expect(connectFailureReason(new AggregateError([], ''))).toBe('Connection failed');
+    expect(connectFailureReason(new Error(''))).toBe('Connection failed');
+  });
+
+  it('truncates very long messages', () => {
+    const reason = connectFailureReason(new Error('x'.repeat(500)));
+    expect(reason).toHaveLength(200);
+    expect(reason.endsWith('…')).toBe(true);
   });
 });

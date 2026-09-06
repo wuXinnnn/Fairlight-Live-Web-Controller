@@ -13,9 +13,15 @@ export class MixerStateStore extends EventEmitter {
   private readonly channels = new Map<string, ChannelState>();
   private loudnessState: LoudnessState = defaultLoudnessState();
   private connectionStatus: ConnectionStatus = 'disconnected';
+  private connectionErrorValue: string | undefined;
 
   get connection(): ConnectionStatus {
     return this.connectionStatus;
+  }
+
+  /** Reason of the most recent failed Ember+ connect attempt; undefined while connected. */
+  get connectionError(): string | undefined {
+    return this.connectionErrorValue;
   }
 
   get loudness(): LoudnessState {
@@ -60,12 +66,13 @@ export class MixerStateStore extends EventEmitter {
     }
   }
 
-  setConnection(status: ConnectionStatus): void {
-    if (this.connectionStatus === status) {
+  setConnection(status: ConnectionStatus, lastError?: string): void {
+    if (this.connectionStatus === status && this.connectionErrorValue === lastError) {
       return;
     }
     this.connectionStatus = status;
-    this.emit('status', status);
+    this.connectionErrorValue = lastError;
+    this.emit('status', status, lastError);
   }
 
   setLevel(id: string, levelDb: number): void {

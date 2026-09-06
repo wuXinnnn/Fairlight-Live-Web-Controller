@@ -94,12 +94,20 @@ describe('MixerStateStore', () => {
     expect(store.getChannel('channel/1')?.meterDb).toBe(-12);
     expect(store.loudness.integratedLufs).toBe(-18);
 
-    const statuses: string[] = [];
-    store.on('status', (status) => statuses.push(status));
+    const statuses: Array<[string, string | undefined]> = [];
+    store.on('status', (status: string, lastError?: string) => statuses.push([status, lastError]));
     store.setConnection('connecting');
     store.setConnection('connecting');
+    store.setConnection('connecting', 'connect ECONNREFUSED 127.0.0.1:1');
+    store.setConnection('connecting', 'connect ECONNREFUSED 127.0.0.1:1');
+    expect(store.connectionError).toBe('connect ECONNREFUSED 127.0.0.1:1');
     store.setConnection('connected');
-    expect(statuses).toEqual(['connecting', 'connected']);
+    expect(store.connectionError).toBeUndefined();
+    expect(statuses).toEqual([
+      ['connecting', undefined],
+      ['connecting', 'connect ECONNREFUSED 127.0.0.1:1'],
+      ['connected', undefined],
+    ]);
   });
 
   it('removes channels on a structural sync', () => {

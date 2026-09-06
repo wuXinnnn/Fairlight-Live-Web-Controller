@@ -49,6 +49,7 @@ describe('attachGateway', () => {
     const socket = new FakeSocket();
     io.emit('connection', socket);
     expect(socket.emitted[0]?.[0]).toBe(SOCKET_EVENTS.MIXER_SNAPSHOT);
+    expect(socket.emitted[1]).toEqual([SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'disconnected' }]);
 
     runtime.store.applySync({
       added: [
@@ -71,6 +72,17 @@ describe('attachGateway', () => {
     expect(io.emitted.some(([event]) => event === SOCKET_EVENTS.MIXER_PATCH)).toBe(true);
     runtime.store.setConnection('connected');
     expect(io.emitted.some(([event]) => event === SOCKET_EVENTS.SYSTEM_STATUS)).toBe(true);
+    runtime.store.setConnection('reconnecting', 'connect ECONNREFUSED 127.0.0.1:1');
+    expect(io.emitted.at(-1)).toEqual([
+      SOCKET_EVENTS.SYSTEM_STATUS,
+      { ember: 'reconnecting', lastError: 'connect ECONNREFUSED 127.0.0.1:1' },
+    ]);
+    const lateSocket = new FakeSocket();
+    io.emit('connection', lateSocket);
+    expect(lateSocket.emitted[1]).toEqual([
+      SOCKET_EVENTS.SYSTEM_STATUS,
+      { ember: 'reconnecting', lastError: 'connect ECONNREFUSED 127.0.0.1:1' },
+    ]);
     runtime.meters.ingestMeter('channel/1', -5);
     runtime.meters.flush();
     expect(io.volatile.emit).toHaveBeenCalled();

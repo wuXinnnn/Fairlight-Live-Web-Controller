@@ -7,7 +7,13 @@ import {
   findFreePort,
   MockEmberProvider,
 } from '@flwc/test-utils';
-import { SOCKET_EVENTS, type ControlAck, type MixerPatch, type MixerSnapshot } from '@flwc/shared';
+import {
+  SOCKET_EVENTS,
+  type ControlAck,
+  type MixerPatch,
+  type MixerSnapshot,
+  type SystemStatus,
+} from '@flwc/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
 import type { DumpTree } from '@flwc/test-utils';
@@ -187,6 +193,10 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       )
       .toBe(true);
 
+    const statuses: SystemStatus[] = [];
+    socket.on(SOCKET_EVENTS.SYSTEM_STATUS, (status: SystemStatus) => {
+      statuses.push(status);
+    });
     const deadPort = await findFreePort('127.0.0.1');
     const disconnect = await fetch(`${url}/api/v1/connection`, {
       method: 'PUT',
@@ -194,7 +204,49 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       body: JSON.stringify({ host: '127.0.0.1', port: deadPort }),
     });
     expect(disconnect.status).toBe(200);
+    // The PUT awaits the first attempt, so its response already names the failure. The Sofie
+    // client swallows ECONNREFUSED and keeps dialling, so a dead port surfaces as our timeout.
+    expect(await disconnect.json()).toEqual({
+      host: '127.0.0.1',
+      port: deadPort,
+      status: 'reconnecting',
+      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+    });
     await expect.poll(() => server.runtime.store.connection).toBe('reconnecting');
+    expect(server.runtime.store.connectionError).toMatch(/^Timeout after \d+ms: connect$/);
+    await expect
+      .poll(() => statuses.some((status) => status.lastError?.startsWith('Timeout after')))
+      .toBe(true);
+    const read = await fetch(`${url}/api/v1/connection`);
+    expect(await read.json()).toMatchObject({
+      status: 'reconnecting',
+      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+    });
+
+    // A client that connects while the mixer is unreachable learns the reason right away.
+    const late = io(url, { transports: ['websocket'], autoConnect: false });
+    sockets.push(late);
+    const lateStatus = waitFor<SystemStatus>(late, SOCKET_EVENTS.SYSTEM_STATUS);
+    late.connect();
+    expect(await lateStatus).toMatchObject({
+      ember: 'reconnecting',
+      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+    });
+
+    const restore = await fetch(`${url}/api/v1/connection`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host: '127.0.0.1', port: provider.port }),
+    });
+    expect(restore.status).toBe(200);
+    await expect.poll(() => server.runtime.store.connection).toBe('connected');
+    expect(server.runtime.store.connectionError).toBeUndefined();
+    expect(await (await fetch(`${url}/api/v1/connection`)).json()).toEqual({
+      host: '127.0.0.1',
+      port: provider.port,
+      status: 'connected',
+    });
+    expect(statuses.at(-1)).toEqual({ ember: 'connected' });
   });
 
   it('emits a snapshot when the provider adds and offlines a channel', async () => {

@@ -9,12 +9,13 @@ import {
   type ControlAck,
   type MixerPatch,
   type MixerSnapshot,
-  type ConnectionStatus,
+  type SystemStatus,
 } from '@flwc/shared';
 import { ChannelNotFoundError, EmberProtocolError } from '../ember/errors.js';
 import type { AppLogger } from '../logger.js';
 import { errorMessage } from '../logger.js';
 import type { MixerRuntime } from '../runtime.js';
+import type { MixerStateStore } from '../state/mixer-state-store.js';
 
 type AckFn = (ack: ControlAck) => void;
 
@@ -25,8 +26,8 @@ export function attachGateway(io: Server, runtime: MixerRuntime, logger: AppLogg
   runtime.store.on('patch', (patch: MixerPatch) => {
     io.emit(SOCKET_EVENTS.MIXER_PATCH, patch);
   });
-  runtime.store.on('status', (status: ConnectionStatus) => {
-    io.emit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: status });
+  runtime.store.on('status', () => {
+    io.emit(SOCKET_EVENTS.SYSTEM_STATUS, systemStatusPayload(runtime.store));
   });
   runtime.meters.setListener((frame) => {
     io.volatile.emit(SOCKET_EVENTS.METERS_FRAME, frame);
@@ -34,6 +35,9 @@ export function attachGateway(io: Server, runtime: MixerRuntime, logger: AppLogg
 
   io.on('connection', (socket: Socket) => {
     socket.emit(SOCKET_EVENTS.MIXER_SNAPSHOT, runtime.store.snapshot());
+    // The snapshot carries the status but not the failure reason; a client that loads while the
+    // mixer is unreachable would otherwise never learn why until the reason changes.
+    socket.emit(SOCKET_EVENTS.SYSTEM_STATUS, systemStatusPayload(runtime.store));
     bindControl(socket, SOCKET_EVENTS.CONTROL_SET_LEVEL, async (payload) => {
       const parsed = setLevelCommandSchema.safeParse(payload);
       if (!parsed.success) {
@@ -62,6 +66,13 @@ export function attachGateway(io: Server, runtime: MixerRuntime, logger: AppLogg
       return { ok: true };
     });
   });
+}
+
+function systemStatusPayload(store: MixerStateStore): SystemStatus {
+  const lastError = store.connectionError;
+  return lastError === undefined
+    ? { ember: store.connection }
+    : { ember: store.connection, lastError };
 }
 
 function bindControl(

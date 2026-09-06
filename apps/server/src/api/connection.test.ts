@@ -16,7 +16,7 @@ describe('connection routes', () => {
     await Promise.all(runtimes.splice(0).map((runtime) => runtime.stop()));
   });
 
-  async function setup(): Promise<{
+  async function setup(shouldFail: (host: string) => boolean = () => false): Promise<{
     app: Awaited<ReturnType<typeof createApp>>;
     runtime: MixerRuntime;
   }> {
@@ -33,7 +33,15 @@ describe('connection routes', () => {
     const runtime = new MixerRuntime({
       configPath: path.join(dir, 'config.json'),
       logger: silentLogger(),
-      createClient: () => new FakeEmberClient(),
+      reconnectInitialMs: 10,
+      reconnectMaxMs: 10,
+      createClient: (host, port) => {
+        const client = new FakeEmberClient();
+        if (shouldFail(host)) {
+          client.failConnect = new Error(`connect ECONNREFUSED ${host}:${port}`);
+        }
+        return client;
+      },
     });
     await runtime.start();
     runtimes.push(runtime);
@@ -50,6 +58,42 @@ describe('connection routes', () => {
       host: '127.0.0.1',
       port: 1,
       status: 'connected',
+    });
+  });
+
+  it('reports the last connect failure until the mixer connects', async () => {
+    let refusing = true;
+    const { app } = await setup(() => refusing);
+    const failing = await app.inject({ method: 'GET', url: '/api/v1/connection' });
+    expect(failing.json()).toEqual({
+      host: '127.0.0.1',
+      port: 1,
+      status: 'connecting',
+      lastError: 'connect ECONNREFUSED 127.0.0.1:1',
+    });
+    refusing = false;
+    await expect
+      .poll(async () => {
+        const response = await app.inject({ method: 'GET', url: '/api/v1/connection' });
+        return response.json() as { status: string };
+      })
+      .toEqual({ host: '127.0.0.1', port: 1, status: 'connected' });
+  });
+
+  it('returns the failure of the new endpoint from PUT', async () => {
+    const { app, runtime } = await setup((host) => host !== '127.0.0.1');
+    expect(runtime.store.connection).toBe('connected');
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/connection',
+      payload: { host: '10.0.0.8', port: 9001 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      host: '10.0.0.8',
+      port: 9001,
+      status: 'reconnecting',
+      lastError: 'connect ECONNREFUSED 10.0.0.8:9001',
     });
   });
 

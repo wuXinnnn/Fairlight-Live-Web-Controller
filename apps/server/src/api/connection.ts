@@ -9,6 +9,7 @@ export function registerConnectionRoutes(app: FastifyInstance, runtime: MixerRun
       host,
       port,
       status: runtime.store.connection,
+      lastError: runtime.store.connectionError,
     });
   });
 
@@ -28,6 +29,7 @@ export function registerConnectionRoutes(app: FastifyInstance, runtime: MixerRun
       host: parsed.data.host,
       port: parsed.data.port,
       status: runtime.store.connection,
+      lastError: runtime.store.connectionError,
     });
   });
 }

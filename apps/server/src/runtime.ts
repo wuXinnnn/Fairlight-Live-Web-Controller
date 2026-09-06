@@ -67,8 +67,8 @@ export class MixerRuntime {
       createClient: options.createClient,
     });
     this.meters = new MeterHub(options.onMeterFrame ?? (() => undefined), options.meterIntervalMs);
-    this.ember.on('status', (status: ConnectionStatus) => {
-      this.store.setConnection(status);
+    this.ember.on('status', (status: ConnectionStatus, lastError?: string) => {
+      this.store.setConnection(status, lastError);
     });
     this.ember.on('tree', (tree: EmberCollection) => {
       this.treeReady = this.treeReady.then(
