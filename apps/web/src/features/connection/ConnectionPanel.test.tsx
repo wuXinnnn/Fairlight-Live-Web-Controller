@@ -42,7 +42,9 @@ describe('ConnectionPanel', () => {
       expect(screen.getByLabelText('HOST')).toHaveValue('10.0.0.8');
     });
     expect(screen.getByLabelText('PORT')).toHaveValue('9001');
-    expect(screen.getByLabelText('HOST')).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByLabelText('HOST')).toHaveFocus();
+    });
     expect(screen.getByRole('button', { name: 'APPLY' })).toBeEnabled();
     expect(client.calls).toEqual([{ method: 'get' }]);
   });
@@ -112,16 +114,16 @@ describe('ConnectionPanel', () => {
     fireEvent.change(host, { target: { value: '   ' } });
     fireEvent.change(port, { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
-    expect(screen.getByText('Enter a host name or IP address.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a valid IP address or host name.')).toBeInTheDocument();
     expect(
       screen.getByText('Port must be a whole number between 1 and 65535.'),
     ).toBeInTheDocument();
     expect(host).toHaveAttribute('aria-invalid', 'true');
-    expect(host).toHaveAccessibleDescription('Enter a host name or IP address.');
+    expect(host).toHaveAccessibleDescription('Enter a valid IP address or host name.');
     expect(client.updateCalls).toEqual([]);
 
     fireEvent.change(host, { target: { value: '10.0.0.8' } });
-    expect(screen.queryByText('Enter a host name or IP address.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Enter a valid IP address or host name.')).not.toBeInTheDocument();
     for (const value of ['70000', '1.5', 'abc']) {
       fireEvent.change(port, { target: { value } });
       fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));

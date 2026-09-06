@@ -525,10 +525,11 @@ body.is-modal-open {
   animation: notice-in var(--motion-medium) ease both;
 }
 
+/* Applying only starts a reconnect; the amber warning tone says the outcome is still pending. */
 .connection-dialog__applied {
-  border-color: rgb(102 201 135 / 45%);
-  background: rgb(102 201 135 / 6%);
-  color: #ccebd5;
+  border-color: #99732e;
+  background: #292318;
+  color: var(--amber-pale);
 }
 
 .connection-dialog__footer {
