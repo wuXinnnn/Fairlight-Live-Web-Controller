@@ -73,7 +73,8 @@ Phase 6 拆成五个 PR,每个 PR 一条提示词,按顺序执行;每个 PR 单�
 按 docs/development-plan.md 的 Phase 6.1:前端 connection-api 客户端(复用 shared zod schema)、
 两个页面头部可点击的连接状态灯与 CONNECTION 面板(host/port/状态/APPLY,已连接时二次确认)、
 混音页空态按 socket 离线 / Ember 未连接 / 树为空三种原因分流并提供 CONFIGURE CONNECTION 入口。
-不改后端;环境变量种子值的实现留到 Phase 7。集成测试覆盖 6.1 验收清单,覆盖率达标。
+后端只允许一项最小扩展:连接响应与 system:status 增加可选的 lastError 字段;环境变量种子值留到 Phase 7。
+详细执行提示词见 docs/prompts/phase-6-1.md。集成测试覆盖 6.1 验收清单,覆盖率达标。
 ```
 
 ### 6.2 配置页 UX
