@@ -43,6 +43,16 @@ describe('mixer message schemas', () => {
     expect(systemStatusSchema.parse({ ember: 'reconnecting' })).toEqual({ ember: 'reconnecting' });
   });
 
+  it('carries an optional last error in the system status', () => {
+    const status = {
+      ember: 'connecting' as const,
+      lastError: 'connect ECONNREFUSED 10.0.0.8:9000',
+    };
+    expect(systemStatusSchema.parse(status)).toEqual(status);
+    expect(systemStatusSchema.parse({ ember: 'connected' })).not.toHaveProperty('lastError');
+    expect(() => systemStatusSchema.parse({ ember: 'connected', lastError: 42 })).toThrow();
+  });
+
   it('rejects an invalid meter entry', () => {
     expect(() => metersFrameSchema.parse({ meters: [[123, -1]] })).toThrow();
     expect(() =>
