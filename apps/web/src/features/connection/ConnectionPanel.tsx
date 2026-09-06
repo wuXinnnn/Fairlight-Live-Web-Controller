@@ -37,7 +37,7 @@ function ConnectionDialog({ client, onClose }: ConnectionDialogProps) {
       emberLastError: state.emberLastError,
     })),
   );
-  const { dialogRef, onKeyDown } = useModalDialog<HTMLFormElement>({ onClose });
+  const { dialogRef, onKeyDown, reclaimFocus } = useModalDialog<HTMLFormElement>({ onClose });
   const hostRef = useRef<HTMLInputElement>(null);
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
@@ -132,6 +132,14 @@ function ConnectionDialog({ client, onClose }: ConnectionDialogProps) {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    // The pressed APPLY button is disabled while the request runs, which drops focus to the
+    // body; take it back so Tab and Escape keep working inside the dialog.
+    if (!submitting) {
+      reclaimFocus();
+    }
+  }, [submitting, reclaimFocus]);
 
   const busy = submitting || loading;
   const statusText = socketConnected ? emberStatus.toUpperCase() : 'SOCKET OFFLINE';

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
@@ -18,6 +18,8 @@ interface ModalDialogOptions {
 interface ModalDialogHandle<T extends HTMLElement> {
   dialogRef: RefObject<T | null>;
   onKeyDown(event: KeyboardEvent<T>): void;
+  /** Brings focus back into the dialog when a disabled control let it fall out to the body. */
+  reclaimFocus(): void;
 }
 
 function focusableElements(container: HTMLElement): HTMLElement[] {
@@ -46,12 +48,29 @@ export function useModalDialog<T extends HTMLElement>({
     };
   }, []);
 
-  const onKeyDown = (event: KeyboardEvent<T>): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      onClose();
-      return;
+  useEffect(() => {
+    // Escape must work even when focus fell out of the dialog, e.g. after the pressed APPLY
+    // button became disabled while its request was in flight.
+    const onDocumentKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onDocumentKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onDocumentKeyDown);
+    };
+  }, [onClose]);
+
+  const reclaimFocus = useCallback((): void => {
+    const dialog = dialogRef.current;
+    if (dialog !== null && !dialog.contains(document.activeElement)) {
+      dialog.focus();
     }
+  }, []);
+
+  const onKeyDown = (event: KeyboardEvent<T>): void => {
     if (event.key !== 'Tab' || dialogRef.current === null) {
       return;
     }
@@ -72,5 +91,5 @@ export function useModalDialog<T extends HTMLElement>({
     }
   };
 
-  return { dialogRef, onKeyDown };
+  return { dialogRef, onKeyDown, reclaimFocus };
 }

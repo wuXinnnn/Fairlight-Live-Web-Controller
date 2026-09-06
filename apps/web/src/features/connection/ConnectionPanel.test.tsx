@@ -144,12 +144,17 @@ describe('ConnectionPanel', () => {
     expect(host).toBeDisabled();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+    // Disabling the pressed button drops focus to the body; Escape must still reach the dialog.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       client.resolveUpdate();
     });
     expect(await screen.findByRole('button', { name: 'APPLY' })).toBeEnabled();
     expect(host).toBeEnabled();
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
   });
 
   it('asks for confirmation while the mixer is connected', async () => {
