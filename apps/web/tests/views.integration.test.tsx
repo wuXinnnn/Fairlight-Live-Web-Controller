@@ -63,7 +63,7 @@ describe('views integration', () => {
     await waitFor(() => {
       expect(screen.getByRole('combobox', { name: 'Mixer view' })).toHaveValue('startup');
     });
-    expect(screen.getByText('WAITING FOR MIXER SNAPSHOT')).toBeInTheDocument();
+    expect(screen.getByText('MIXER NOT CONNECTED')).toBeInTheDocument();
     expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
@@ -114,7 +114,7 @@ describe('views integration', () => {
         'true',
       );
     });
-    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
 
     socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
     await waitFor(() => {
@@ -123,7 +123,7 @@ describe('views integration', () => {
         'false',
       );
     });
-    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
   });
 
   it('retains cached inventory through an empty reconnect handshake', async () => {
@@ -159,7 +159,7 @@ describe('views integration', () => {
       );
     });
     expect(screen.queryByLabelText('BASS missing channel')).not.toBeInTheDocument();
-    expect(screen.queryByText('WAITING FOR MIXER SNAPSHOT')).not.toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
     expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();

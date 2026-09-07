@@ -24,6 +24,8 @@ export interface MixerStoreState {
   loudness: ReturnType<typeof defaultLoudnessState>;
   socketConnected: boolean;
   emberStatus: ConnectionStatus;
+  /** Reason of the most recent failed Ember+ connect attempt reported by the server. */
+  emberLastError: string | null;
   channelInventoryLoaded: boolean;
   pendingLevels: Record<string, PendingLevel>;
   pendingOns: Record<string, PendingOn>;
@@ -36,6 +38,7 @@ const INITIAL_STATE: MixerStoreState = {
   loudness: defaultLoudnessState(),
   socketConnected: false,
   emberStatus: 'disconnected',
+  emberLastError: null,
   channelInventoryLoaded: false,
   pendingLevels: {},
   pendingOns: {},
@@ -56,8 +59,8 @@ export function setSocketConnected(connected: boolean): void {
   mixerStore.setState({ socketConnected: connected });
 }
 
-export function setEmberStatus(status: ConnectionStatus): void {
-  mixerStore.setState({ emberStatus: status });
+export function setEmberStatus(status: ConnectionStatus, lastError?: string): void {
+  mixerStore.setState({ emberStatus: status, emberLastError: lastError ?? null });
 }
 
 function shouldRetainCachedInventory(state: MixerStoreState, snapshot: MixerSnapshot): boolean {
@@ -70,8 +73,10 @@ function shouldRetainCachedInventory(state: MixerStoreState, snapshot: MixerSnap
 
 export function replaceMixerSnapshot(snapshot: MixerSnapshot): boolean {
   const state = mixerStore.getState();
+  // A snapshot carries no failure reason; only a connected one proves the last error is stale.
+  const emberLastError = snapshot.connection === 'connected' ? null : state.emberLastError;
   if (shouldRetainCachedInventory(state, snapshot)) {
-    mixerStore.setState({ emberStatus: snapshot.connection });
+    mixerStore.setState({ emberStatus: snapshot.connection, emberLastError });
     return false;
   }
 
@@ -80,6 +85,7 @@ export function replaceMixerSnapshot(snapshot: MixerSnapshot): boolean {
     channelOrder: snapshot.channels.map((channel) => channel.id),
     loudness: snapshot.loudness,
     emberStatus: snapshot.connection,
+    emberLastError,
     channelInventoryLoaded: state.channelInventoryLoaded || snapshot.connection === 'connected',
     pendingLevels: {},
     pendingOns: {},

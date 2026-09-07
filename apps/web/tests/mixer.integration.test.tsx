@@ -7,6 +7,7 @@ import { CONTROL_LOCK_STORAGE_KEY } from '../src/features/mixer/use-control-lock
 import { TYPE_ROWS_STORAGE_KEY } from '../src/features/mixer/use-type-row-preference.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
+import { FakeConnectionClient } from './fake-connection-client.js';
 import { FakeSocket } from './fake-socket.js';
 
 const bassChannel = {
@@ -43,7 +44,7 @@ describe('mixer socket integration', () => {
   it('recovers from a disconnected empty state with a fresh snapshot', async () => {
     const socket = new FakeSocket();
     render(<App socket={socket} />);
-    expect(screen.getByText('WAITING FOR MIXER SNAPSHOT')).toBeInTheDocument();
+    expect(screen.getByText('MIXER NOT CONNECTED')).toBeInTheDocument();
 
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     expect(await screen.findByRole('heading', { name: 'BASS' })).toBeInTheDocument();
@@ -139,6 +140,81 @@ describe('mixer socket integration', () => {
     });
   });
 
+  it('splits the empty state by cause and offers the connection panel when Ember is down', async () => {
+    const socket = new FakeSocket();
+    const connectionClient = new FakeConnectionClient();
+    render(<App socket={socket} connectionClient={connectionClient} />);
+    // The fake socket connects synchronously, so the first state is "Ember not connected".
+    const notConnected = screen.getByText('MIXER NOT CONNECTED');
+    expect(notConnected).toBeInTheDocument();
+    expect(
+      screen.getByText('EMBER DISCONNECTED', { selector: '.empty-console__detail' }),
+    ).toBeVisible();
+    const cta = screen.getByRole('button', { name: 'CONFIGURE CONNECTION' });
+
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, {
+      ember: 'connecting',
+      lastError: 'Timeout after 5000ms: connect',
+    });
+    expect(
+      await screen.findByText('EMBER CONNECTING', { selector: '.empty-console__detail' }),
+    ).toBeVisible();
+    expect(screen.getByText('Timeout after 5000ms: connect')).toHaveClass('empty-console__error');
+
+    fireEvent.click(cta);
+    expect(await screen.findByRole('dialog', { name: 'CONNECTION' })).toBeInTheDocument();
+    expect(screen.getByTestId('connection-last-error')).toHaveTextContent(
+      'Timeout after 5000ms: connect',
+    );
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    socket.disconnect();
+    expect(await screen.findByText('BACKEND OFFLINE')).toBeInTheDocument();
+    expect(screen.getByText(/control server is unreachable/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'CONFIGURE CONNECTION' })).not.toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
+
+    socket.connect();
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, { ...snapshot, channels: [] });
+    expect(await screen.findByText('NO CHANNELS ON THE MIXER')).toBeInTheDocument();
+    expect(screen.getByText(/no recognizable channels/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'CONFIGURE CONNECTION' })).not.toBeInTheDocument();
+    expect(screen.getByText('MIXER ONLINE')).toBeInTheDocument();
+  });
+
+  it('keeps the loaded strips through a reconnect instead of falling back to an empty state', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, {
+      ember: 'reconnecting',
+      lastError: 'Timeout after 5000ms: connect',
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('slider', { name: 'BASS level' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+    expect(screen.getByRole('heading', { name: 'BASS' })).toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeout after 5000ms: connect')).not.toBeInTheDocument();
+    expect(screen.getByText('EMBER RECONNECTING')).toBeInTheDocument();
+
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, {
+      ...snapshot,
+      channels: [],
+      connection: 'reconnecting',
+    });
+    expect(screen.getByRole('heading', { name: 'BASS' })).toBeInTheDocument();
+    expect(screen.queryByText('MIXER NOT CONNECTED')).not.toBeInTheDocument();
+  });
+
   it('rejects malformed server events without corrupting the surface', async () => {
     const socket = new FakeSocket();
     render(<App socket={socket} />);
@@ -146,7 +222,7 @@ describe('mixer socket integration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Received invalid data from the server.',
     );
-    expect(screen.getByText('WAITING FOR MIXER SNAPSHOT')).toBeInTheDocument();
+    expect(screen.getByText('MIXER NOT CONNECTED')).toBeInTheDocument();
   });
 
   it('places ON above the fader and persists the optional type-row layout', async () => {

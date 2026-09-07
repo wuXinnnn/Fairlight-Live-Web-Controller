@@ -94,12 +94,55 @@ describe('MixerStateStore', () => {
     expect(store.getChannel('channel/1')?.meterDb).toBe(-12);
     expect(store.loudness.integratedLufs).toBe(-18);
 
-    const statuses: string[] = [];
-    store.on('status', (status) => statuses.push(status));
+    const statuses: Array<[string, string | undefined]> = [];
+    store.on('status', (status: string, lastError?: string) => statuses.push([status, lastError]));
     store.setConnection('connecting');
     store.setConnection('connecting');
+    store.setConnection('connecting', 'connect ECONNREFUSED 127.0.0.1:1');
+    store.setConnection('connecting', 'connect ECONNREFUSED 127.0.0.1:1');
+    expect(store.connectionError).toBe('connect ECONNREFUSED 127.0.0.1:1');
     store.setConnection('connected');
-    expect(statuses).toEqual(['connecting', 'connected']);
+    expect(store.connectionError).toBeUndefined();
+    expect(statuses).toEqual([
+      ['connecting', undefined],
+      ['connecting', 'connect ECONNREFUSED 127.0.0.1:1'],
+      ['connected', undefined],
+    ]);
+  });
+
+  it('publishes a snapshot on the first sync after reconnecting even when the tree is unchanged', () => {
+    const store = new MixerStateStore();
+    const snapshots = vi.fn();
+    const patches = vi.fn();
+    store.on('snapshot', snapshots);
+    store.on('patch', patches);
+    const unchanged = {
+      added: [],
+      updated: [],
+      removedIds: [],
+      loudness: undefined,
+      structureChanged: false,
+    };
+    store.setConnection('connected');
+    store.applySync({ ...unchanged, added: [bass], structureChanged: true });
+    expect(snapshots).toHaveBeenCalledTimes(1);
+
+    store.setConnection('reconnecting', 'Timeout after 5000ms: connect');
+    store.applySync(unchanged);
+    expect(snapshots).toHaveBeenCalledTimes(1);
+
+    store.setConnection('connected');
+    store.applySync({ ...unchanged, updated: [{ ...bass, levelDb: -1 }] });
+    expect(snapshots).toHaveBeenCalledTimes(2);
+    expect(snapshots.mock.lastCall?.[0]).toMatchObject({
+      connection: 'connected',
+      channels: [{ id: bass.id, levelDb: -1 }],
+    });
+    expect(patches).not.toHaveBeenCalled();
+
+    store.applySync({ ...unchanged, updated: [{ ...bass, levelDb: -2 }] });
+    expect(snapshots).toHaveBeenCalledTimes(2);
+    expect(patches).toHaveBeenCalledTimes(1);
   });
 
   it('removes channels on a structural sync', () => {

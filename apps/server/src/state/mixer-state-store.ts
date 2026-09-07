@@ -13,9 +13,16 @@ export class MixerStateStore extends EventEmitter {
   private readonly channels = new Map<string, ChannelState>();
   private loudnessState: LoudnessState = defaultLoudnessState();
   private connectionStatus: ConnectionStatus = 'disconnected';
+  private connectionErrorValue: string | undefined;
+  private snapshotDueAfterConnect = false;
 
   get connection(): ConnectionStatus {
     return this.connectionStatus;
+  }
+
+  /** Reason of the most recent failed Ember+ connect attempt; undefined while connected. */
+  get connectionError(): string | undefined {
+    return this.connectionErrorValue;
   }
 
   get loudness(): LoudnessState {
@@ -44,7 +51,11 @@ export class MixerStateStore extends EventEmitter {
     if (result.loudness !== undefined) {
       this.loudnessState = result.loudness;
     }
-    if (result.structureChanged) {
+    // The first sync after (re)connecting always publishes a snapshot, even when the tree is
+    // unchanged: a client that joined while the mixer was unreachable only holds a snapshot
+    // tagged with a non-connected status and needs a connected one to trust the inventory.
+    if (result.structureChanged || this.snapshotDueAfterConnect) {
+      this.snapshotDueAfterConnect = false;
       this.emit('snapshot', this.snapshot());
       return;
     }
@@ -60,12 +71,16 @@ export class MixerStateStore extends EventEmitter {
     }
   }
 
-  setConnection(status: ConnectionStatus): void {
-    if (this.connectionStatus === status) {
+  setConnection(status: ConnectionStatus, lastError?: string): void {
+    if (this.connectionStatus === status && this.connectionErrorValue === lastError) {
       return;
     }
+    if (this.connectionStatus !== status) {
+      this.snapshotDueAfterConnect = status === 'connected';
+    }
     this.connectionStatus = status;
-    this.emit('status', status);
+    this.connectionErrorValue = lastError;
+    this.emit('status', status, lastError);
   }
 
   setLevel(id: string, levelDb: number): void {

@@ -82,9 +82,15 @@ describe('socket client', () => {
   it('binds status events and removes all listeners during cleanup', () => {
     const socket = new FakeSocket();
     const cleanup = bindMixerSocket(socket);
-    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'reconnecting' });
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, {
+      ember: 'reconnecting',
+      lastError: 'Timeout after 5000ms: connect',
+    });
     expect(mixerStore.getState().emberStatus).toBe('reconnecting');
+    expect(mixerStore.getState().emberLastError).toBe('Timeout after 5000ms: connect');
     expect(mixerStore.getState().socketConnected).toBe(true);
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'reconnecting' });
+    expect(mixerStore.getState().emberLastError).toBeNull();
 
     cleanup();
     expect(mixerStore.getState().socketConnected).toBe(false);

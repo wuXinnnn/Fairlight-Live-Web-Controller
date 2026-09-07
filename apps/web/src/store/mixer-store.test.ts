@@ -52,6 +52,27 @@ describe('mixer store', () => {
     expect(controlsAvailable(mixerStore.getState())).toBe(false);
   });
 
+  it('tracks the last Ember error alongside the status', () => {
+    setEmberStatus('connecting', 'Timeout after 5000ms: connect');
+    expect(mixerStore.getState().emberLastError).toBe('Timeout after 5000ms: connect');
+    setEmberStatus('connecting');
+    expect(mixerStore.getState().emberLastError).toBeNull();
+
+    setEmberStatus('reconnecting', 'connect ECONNREFUSED 10.0.0.8:9000');
+    replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' });
+    expect(mixerStore.getState().emberLastError).toBe('connect ECONNREFUSED 10.0.0.8:9000');
+    replaceMixerSnapshot(snapshot);
+    expect(mixerStore.getState().emberLastError).toBeNull();
+
+    setEmberStatus('reconnecting', 'connect ECONNREFUSED 10.0.0.8:9000');
+    expect(replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'reconnecting' })).toBe(
+      false,
+    );
+    expect(mixerStore.getState().emberLastError).toBe('connect ECONNREFUSED 10.0.0.8:9000');
+    expect(replaceMixerSnapshot({ ...snapshot, channels: [] })).toBe(true);
+    expect(mixerStore.getState().emberLastError).toBeNull();
+  });
+
   it('distinguishes an initial disconnected snapshot from a reconnect', () => {
     replaceMixerSnapshot({ ...snapshot, channels: [], connection: 'disconnected' });
     expect(mixerStore.getState().channelInventoryLoaded).toBe(false);

@@ -10,6 +10,6 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'CONTROL DESK' })).toBeInTheDocument();
     expect(screen.getByRole('main')).toHaveAttribute('data-theme', 'dark');
     expect(screen.queryByRole('button', { name: /theme/i })).not.toBeInTheDocument();
-    expect(screen.getByText('EMBER DISCONNECTED')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('EMBER DISCONNECTED');
   });
 });

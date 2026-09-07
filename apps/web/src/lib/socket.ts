@@ -90,8 +90,8 @@ export function bindMixerSocket(socket: MixerSocket): () => void {
     parseIncoming(metersFrameSchema, payload, applyMetersFrame);
   };
   const onStatus: SocketListener = (payload) => {
-    parseIncoming(systemStatusSchema, payload, ({ ember }) => {
-      setEmberStatus(ember);
+    parseIncoming(systemStatusSchema, payload, ({ ember, lastError }) => {
+      setEmberStatus(ember, lastError);
     });
   };
 

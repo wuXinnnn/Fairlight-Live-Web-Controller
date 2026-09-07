@@ -15,6 +15,7 @@ import {
 import { EmberProtocolError } from './errors.js';
 import { childNodes, isFunctionNode, isParameterNode } from './node-utils.js';
 import { patchEmberClientTreeMerge } from './patch-ember-client.js';
+import { captureEmberTransport, retireEmberTransport } from './retire-ember-client.js';
 import type {
   EmberClientFactory,
   EmberClientHandle,
@@ -33,6 +34,7 @@ const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
 const DEFAULT_INCOMPLETE_STRIP_RETRY_MS = 300;
 const DEFAULT_BUS_DIRECTORY_POLL_MS = 2_000;
 const SKIP_IDENTIFIERS = ['sends'] as const;
+const MAX_LAST_ERROR_LENGTH = 200;
 
 export interface EmberServiceOptions {
   host: string;
@@ -49,7 +51,7 @@ export interface EmberServiceOptions {
 }
 
 export interface EmberServiceEvents {
-  status: [status: ConnectionStatus];
+  status: [status: ConnectionStatus, lastError?: string];
   tree: [tree: EmberCollection];
 }
 
@@ -69,6 +71,7 @@ export class EmberService extends EventEmitter {
   private started = false;
   private hasConnected = false;
   private statusValue: ConnectionStatus = 'disconnected';
+  private lastErrorValue: string | undefined;
   private backoffMs: number;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -101,6 +104,11 @@ export class EmberService extends EventEmitter {
     return this.statusValue;
   }
 
+  /** Reason of the most recent failed connect attempt; undefined once connected or reconfigured. */
+  get lastError(): string | undefined {
+    return this.lastErrorValue;
+  }
+
   get endpoint(): { host: string; port: number } {
     return { host: this.host, port: this.port };
   }
@@ -124,12 +132,14 @@ export class EmberService extends EventEmitter {
     this.clearIncompleteStripRetryTimer();
     this.clearBusDirectoryPollTimer();
     await this.safeClose();
-    this.setStatus('disconnected');
+    this.setStatus('disconnected', undefined);
   }
 
   async configure(host: string, port: number): Promise<void> {
     this.host = host;
     this.port = port;
+    // A failure recorded against the previous endpoint must not be shown while the new one dials.
+    this.setStatus(this.statusValue, undefined);
     if (this.started) {
       await this.connectOnce();
     }
@@ -203,7 +213,8 @@ export class EmberService extends EventEmitter {
       return;
     }
     this.clearReconnectTimer();
-    this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting');
+    // Keep the previous failure visible while the retry is in flight.
+    this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting', this.lastErrorValue);
     await this.safeClose();
     const client = this.createBoundClient();
     this.client = client;
@@ -226,22 +237,32 @@ export class EmberService extends EventEmitter {
       }
       this.hasConnected = true;
       this.backoffMs = this.reconnectInitialMs;
-      this.setStatus('connected');
+      this.setStatus('connected', undefined);
       this.publishTree(client);
       this.startBusDirectoryPoll();
       if (this.busDirectoryPollMs > 0) {
         this.enqueueMixerStripReconcile();
       }
     } catch (error) {
+      if (this.client !== client) {
+        // A newer attempt (reconfigure or reconnect) replaced this one while it was dialling;
+        // its outcome must not touch the status the newer attempt owns.
+        this.logger.debug(
+          { err: errorMessage(error), layer: 'protocol' },
+          'stale ember connect attempt failed',
+        );
+        return;
+      }
       this.logger.error(
         { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
         'ember connect failed',
       );
-      if (this.client === client) {
-        await this.safeClose();
-      }
+      await this.safeClose();
       if (this.started) {
-        this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting');
+        this.setStatus(
+          this.hasConnected ? 'reconnecting' : 'connecting',
+          connectFailureReason(error),
+        );
         this.scheduleReconnect();
       }
     }
@@ -434,17 +455,19 @@ export class EmberService extends EventEmitter {
       }
       this.logger.warn({ layer: 'protocol' }, 'ember socket disconnected');
       this.client = undefined;
+      const transport = captureEmberTransport(client);
       try {
         client.discard();
       } catch (error) {
         this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'discard failed');
       }
+      retireEmberTransport(transport);
       if (this.started) {
-        this.setStatus('reconnecting');
+        this.setStatus('reconnecting', this.lastErrorValue);
         this.scheduleReconnect();
         return;
       }
-      this.setStatus('disconnected');
+      this.setStatus('disconnected', this.lastErrorValue);
     };
     const onError = (error?: Error): void => {
       this.logger.error(
@@ -537,6 +560,7 @@ export class EmberService extends EventEmitter {
     if (client === undefined) {
       return;
     }
+    const transport = captureEmberTransport(client);
     try {
       await withTimeout(client.disconnect(), this.disconnectTimeoutMs, 'disconnect');
     } catch (error) {
@@ -547,6 +571,8 @@ export class EmberService extends EventEmitter {
     } catch (error) {
       this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'discard failed');
     }
+    // The library would otherwise keep this client dialling in the background.
+    retireEmberTransport(transport);
   }
 
   private isActiveClient(client: EmberClientHandle): boolean {
@@ -569,13 +595,30 @@ export class EmberService extends EventEmitter {
     return run;
   }
 
-  private setStatus(status: ConnectionStatus): void {
-    if (this.statusValue === status) {
+  private setStatus(status: ConnectionStatus, lastError: string | undefined): void {
+    if (this.statusValue === status && this.lastErrorValue === lastError) {
       return;
     }
     this.statusValue = status;
-    this.emit('status', status);
+    this.lastErrorValue = lastError;
+    this.emit('status', status, lastError);
   }
+}
+
+/**
+ * Condenses a connect failure into one short line for the connection panel, e.g.
+ * `connect ECONNREFUSED 10.0.0.8:9000` or `Timeout after 5000ms: connect`.
+ */
+export function connectFailureReason(error: unknown): string {
+  const cause =
+    error instanceof AggregateError && error.errors.length > 0 ? error.errors[0] : error;
+  const message = errorMessage(cause).replace(/\s+/g, ' ').trim();
+  if (message.length === 0) {
+    return 'Connection failed';
+  }
+  return message.length > MAX_LAST_ERROR_LENGTH
+    ? `${message.slice(0, MAX_LAST_ERROR_LENGTH - 1)}…`
+    : message;
 }
 
 function defaultEmberClientFactory(

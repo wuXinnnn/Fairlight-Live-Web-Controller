@@ -26,5 +26,7 @@ export type MetersFrame = z.infer<typeof metersFrameSchema>;
 
 export const systemStatusSchema = z.object({
   ember: connectionStatusSchema,
+  // Most recent Ember+ connect failure, absent while connected. Optional for compatibility.
+  lastError: z.string().optional(),
 });
 export type SystemStatus = z.infer<typeof systemStatusSchema>;
