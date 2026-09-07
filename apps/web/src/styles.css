@@ -1807,6 +1807,61 @@ html.fader-cap-dragging * {
   padding: 0.6rem 0.8rem;
 }
 
+/* Unsaved edits: the save button turns amber, a badge sits beside it, and the view gets a dot. */
+.primary-button.is-dirty {
+  border-color: var(--amber);
+  background: #33281a;
+  color: var(--amber-pale);
+  box-shadow: inset 0 0 0 1px rgb(239 169 40 / 40%);
+}
+
+.unsaved-badge {
+  align-self: center;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.view-list > button[data-dirty='true'] {
+  position: relative;
+}
+
+.view-list > button[data-dirty='true']::after {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0.4rem var(--amber);
+  content: '';
+}
+
+.visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.discard-dialog {
+  width: min(24rem, 100%);
+}
+
+.discard-dialog__message {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 .view-editor__grid {
   display: grid;
   min-width: 0;

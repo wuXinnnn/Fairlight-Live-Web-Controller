@@ -344,7 +344,10 @@ describe('views integration', () => {
     expect(screen.queryByText('1 MISSING')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CONFIRM CLEAR' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Cleanup/ }));
+    // Leaving the page discards the draft; re-opening it shows the saved view again.
+    fireEvent.click(screen.getByRole('button', { name: 'RETURN TO MIXER' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DISCARD' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'CONFIGURE VIEWS' }));
     expect(screen.getByText('1 MISSING')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));
@@ -640,13 +643,18 @@ describe('views integration', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'GHOST group' }), {
       target: { value: '' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Grouped/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'RETURN TO MIXER' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DISCARD' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'CONFIGURE VIEWS' }));
+    expect(screen.getByRole('combobox', { name: 'GHOST group' })).toHaveValue('g1');
     fireEvent.click(screen.getByRole('button', { name: 'Ungroup Rhythm' }));
     expect(screen.queryByRole('textbox', { name: 'Group 1 name' })).not.toBeInTheDocument();
     expect(container.querySelectorAll('.view-channel-list > .channel-order-row')).toHaveLength(2);
     expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('button', { name: /Grouped/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'RETURN TO MIXER' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DISCARD' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'CONFIGURE VIEWS' }));
     expect(screen.getByRole('textbox', { name: 'Group 1 name' })).toHaveValue('Rhythm');
 
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR INVALID' }));

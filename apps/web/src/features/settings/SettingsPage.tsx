@@ -1,9 +1,10 @@
 import { type ChannelPaletteKey, type View, type ViewChannelRef } from '@flwc/shared';
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
 import { createLocalId } from '../../lib/ids.js';
+import { navigate, setNavigationGuard } from '../../lib/router.js';
 import type { ViewsClient } from '../../lib/views-api.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import {
@@ -22,7 +23,9 @@ import {
 import { AvailableChannelList } from './AvailableChannelList.js';
 import { ChannelOrderList } from './ChannelOrderList.js';
 import { pad } from './channel-labels.js';
+import { DiscardChangesDialog, type PendingAction } from './DiscardChangesDialog.js';
 import { useFlipList } from './use-flip-list.js';
+import { isViewDirty } from './view-dirty.js';
 import { ViewDndContext } from './ViewDndContext.js';
 import {
   addGroup,
@@ -107,6 +110,44 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
   const flip = useFlipList(listRef, activeDraft);
+  const dirty = useMemo(
+    () =>
+      draft !== null &&
+      selected !== null &&
+      draft.id === selected.id &&
+      isViewDirty(selected, draft),
+    [draft, selected],
+  );
+  // The navigation guard runs outside React's render cycle, so it reads the latest value here.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+
+  useEffect(() => {
+    setNavigationGuard((route) => {
+      if (!dirtyRef.current) {
+        return true;
+      }
+      setPendingAction({ kind: 'navigate', route });
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) {
+      return undefined;
+    }
+    const warn = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Legacy browsers only show the prompt when returnValue is set.
+      event.returnValue = true;
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const resolved = useMemo(
     () => (activeDraft === null ? [] : resolveViewChannels(activeDraft, availableChannels)),
@@ -152,7 +193,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     });
   };
 
-  const handleCreate = async (event: FormEvent) => {
+  const performCreate = async (name: string) => {
+    const created = await createView(viewsClient, { name, channels: [], groups: [] });
+    if (created !== null) {
+      setNewName('');
+      selectView(created);
+    }
+  };
+
+  const handleCreate = (event: FormEvent) => {
     event.preventDefault();
     const name = newName.trim();
     if (name.length === 0) {
@@ -160,11 +209,11 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       return;
     }
     setLocalError(null);
-    const created = await createView(viewsClient, { name, channels: [], groups: [] });
-    if (created !== null) {
-      setNewName('');
-      selectView(created);
+    if (dirty) {
+      setPendingAction({ kind: 'create', name });
+      return;
     }
+    void performCreate(name);
   };
 
   const handleSave = async () => {
@@ -191,7 +240,16 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     }
   };
 
-  const handleDelete = async () => {
+  const performDelete = async (id: string) => {
+    const deleted = await deleteView(viewsClient, id);
+    if (deleted) {
+      setSelectedId(null);
+      setDraft(null);
+      setConfirmDelete(false);
+    }
+  };
+
+  const handleDelete = () => {
     if (activeDraft === null) {
       return;
     }
@@ -199,13 +257,55 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       setConfirmDelete(true);
       return;
     }
-    const deleted = await deleteView(viewsClient, activeDraft.id);
-    if (deleted) {
-      setSelectedId(null);
-      setDraft(null);
-      setConfirmDelete(false);
+    if (dirty) {
+      setPendingAction({ kind: 'delete' });
+      return;
+    }
+    void performDelete(activeDraft.id);
+  };
+
+  const handleSelectView = (view: View) => {
+    if (view.id === selected?.id) {
+      return;
+    }
+    if (dirty) {
+      setPendingAction({ kind: 'select', view });
+      return;
+    }
+    selectView(view);
+  };
+
+  /** DISCARD: drops the draft first so the guard and the action see a clean view. */
+  const discardPending = () => {
+    if (pendingAction === null || selected === null) {
+      return;
+    }
+    const action = pendingAction;
+    const targetId = selected.id;
+    setPendingAction(null);
+    setDraft(null);
+    setConfirmDelete(false);
+    dirtyRef.current = false;
+    switch (action.kind) {
+      case 'navigate':
+        navigate(action.route);
+        break;
+      case 'select':
+        selectView(action.view);
+        break;
+      case 'delete':
+        void performDelete(targetId);
+        break;
+      case 'create':
+        void performCreate(action.name);
+        break;
     }
   };
+
+  const keepEditing = useCallback(() => {
+    setPendingAction(null);
+    setConfirmDelete(false);
+  }, []);
 
   const toggleChannel = (channelId: string) => {
     const channel = channels[channelId];
@@ -339,11 +439,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                   type="button"
                   className={view.id === selected?.id ? 'is-selected' : ''}
                   key={view.id}
-                  onClick={() => selectView(view)}
+                  data-dirty={view.id === selected?.id && dirty ? 'true' : undefined}
+                  onClick={() => handleSelectView(view)}
                 >
                   <span>{pad(index + 1)}</span>
                   <strong>{view.name}</strong>
                   <small>{pad(view.channels.length)} CH</small>
+                  {view.id === selected?.id && dirty && (
+                    <span className="visually-hidden">Unsaved changes</span>
+                  )}
                 </button>
               ))
             )}
@@ -380,12 +484,13 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                   </button>
                   <button
                     type="button"
-                    className="primary-button"
+                    className={`primary-button ${dirty ? 'is-dirty' : ''}`}
                     onClick={handleSave}
                     disabled={saving}
                   >
                     {saving ? 'SAVING' : 'SAVE VIEW'}
                   </button>
+                  {dirty && <span className="unsaved-badge">UNSAVED</span>}
                 </div>
               </header>
 
@@ -504,6 +609,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
         <span>ORDERED SIGNAL SURFACE</span>
         <span>NAME-MATCHED REFERENCES</span>
       </footer>
+
+      {pendingAction !== null && selected !== null && (
+        <DiscardChangesDialog
+          viewName={selected.name}
+          action={pendingAction}
+          onDiscard={discardPending}
+          onKeepEditing={keepEditing}
+        />
+      )}
     </main>
   );
 }
