@@ -243,7 +243,8 @@ function ConnectionDialog({ client, onClose }: ConnectionDialogProps) {
               {host.trim()}:{port.trim()}.
             </p>
           )}
-          {applied && (
+          {/* The notice only makes sense while the reconnect outcome is still pending. */}
+          {applied && !online && (
             <p className="connection-dialog__applied" role="status">
               Settings applied. Watching the mixer reconnect.
             </p>

@@ -103,6 +103,18 @@ describe('ConnectionPanel', () => {
       await screen.findByText('Settings applied. Watching the mixer reconnect.'),
     ).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // The notice disappears once the mixer is connected and returns if it drops again.
+    act(() => {
+      setEmberStatus('connected');
+    });
+    expect(
+      screen.queryByText('Settings applied. Watching the mixer reconnect.'),
+    ).not.toBeInTheDocument();
+    act(() => {
+      setEmberStatus('reconnecting', 'Timeout after 5000ms: connect');
+    });
+    expect(screen.getByText('Settings applied. Watching the mixer reconnect.')).toBeVisible();
   });
 
   it('validates the fields before sending anything', async () => {
@@ -212,9 +224,14 @@ describe('ConnectionPanel', () => {
     await waitFor(() => {
       expect(client.updateCalls).toEqual([{ host: '10.0.0.10', port: 9000 }]);
     });
+    // Still connected until the server reports the reconnect, so the notice waits for it.
     expect(
-      await screen.findByText('Settings applied. Watching the mixer reconnect.'),
-    ).toBeVisible();
+      screen.queryByText('Settings applied. Watching the mixer reconnect.'),
+    ).not.toBeInTheDocument();
+    act(() => {
+      setEmberStatus('reconnecting');
+    });
+    expect(screen.getByText('Settings applied. Watching the mixer reconnect.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'APPLY' })).toBeInTheDocument();
   });
 

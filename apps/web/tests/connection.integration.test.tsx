@@ -98,14 +98,16 @@ describe('connection panel integration', () => {
     await waitFor(() => {
       expect(client.updateCalls).toEqual([{ host: '127.0.0.1', port: 9100 }]);
     });
+    // Still connected until the server reports the reconnect, so no pending notice yet.
     expect(
-      await screen.findByText('Settings applied. Watching the mixer reconnect.'),
-    ).toBeVisible();
+      screen.queryByText('Settings applied. Watching the mixer reconnect.'),
+    ).not.toBeInTheDocument();
 
     act(() => {
       socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'reconnecting' });
     });
     expect(screen.getByTestId('connection-ember-status')).toHaveTextContent('RECONNECTING');
+    expect(screen.getByText('Settings applied. Watching the mixer reconnect.')).toBeVisible();
     act(() => {
       socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, {
         ember: 'reconnecting',
@@ -120,6 +122,9 @@ describe('connection panel integration', () => {
     });
     expect(screen.getByTestId('connection-ember-status')).toHaveTextContent('CONNECTED');
     expect(screen.queryByTestId('connection-last-error')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Settings applied. Watching the mixer reconnect.'),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
