@@ -5,6 +5,7 @@ import {
   type CollisionDetection,
   type DroppableContainer,
   type KeyboardCoordinateGetter,
+  type UniqueIdentifier,
 } from '@dnd-kit/core';
 import { readItemData, type DndItemData, type DndItemKind } from './dnd-ids.js';
 
@@ -31,8 +32,14 @@ export function isEligibleTarget(source: DndItemKind, candidate: DndItemData): b
 function eligibleContainers(
   source: DndItemKind,
   containers: DroppableContainer[],
+  activeId?: UniqueIdentifier,
 ): DroppableContainer[] {
   return containers.filter((container) => {
+    // The dragged item's own droppable stays eligible: the sortable strategy needs `over` to
+    // fall back to the active item while it hovers over its own placeholder.
+    if (container.id === activeId) {
+      return true;
+    }
     const data = readItemData(container);
     return data !== undefined && isEligibleTarget(source, data);
   });
@@ -56,7 +63,7 @@ export const viewCollisionDetection: CollisionDetection = (args) => {
   if (source === undefined) {
     return [];
   }
-  const eligible = eligibleContainers(source, args.droppableContainers);
+  const eligible = eligibleContainers(source, args.droppableContainers, args.active.id);
   if (args.pointerCoordinates !== null) {
     const within = pointerWithin({ ...args, droppableContainers: eligible });
     const rows = within.filter(

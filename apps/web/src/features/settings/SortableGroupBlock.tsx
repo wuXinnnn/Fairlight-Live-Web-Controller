@@ -6,7 +6,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { channelColor, channelTypeColor } from '../mixer/channel-colors.js';
 import type { ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { pad } from './channel-labels.js';
-import { channelDndId, groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
+import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { groupRowKey } from './row-keys.js';
@@ -23,6 +23,8 @@ interface GroupBlockProps extends GroupBlockHandlers {
   entries: ResolvedViewChannel[];
   /** Row keys of the entries, in the same order. */
   rowKeys: string[];
+  /** Sortable ids of the entries, in the same order (a placeholder uses the drag's own id). */
+  itemIds: string[];
   view: View;
   groupNumber: number;
   saving: boolean;
@@ -37,7 +39,6 @@ function useIsDropTarget(groupId: string): boolean {
   return (
     (source === 'channel' || source === 'available') &&
     target !== undefined &&
-    target.kind !== 'available' &&
     target.groupId === groupId
   );
 }
@@ -59,7 +60,7 @@ function GroupHeader({
   onMoveGroup,
   onRenameGroup,
   onRemoveGroup,
-}: Omit<GroupBlockProps, 'renderRow' | 'rowKeys'> & { handle: ReactNode }) {
+}: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'> & { handle: ReactNode }) {
   const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
   return (
     <div className="view-group__header">
@@ -94,7 +95,7 @@ function GroupHeader({
 
 /** A group with members: a sortable block in the root list and a drop container for channels. */
 export function SortableGroupBlock(props: GroupBlockProps) {
-  const { group, entries, rowKeys, saving, renderRow } = props;
+  const { group, entries, rowKeys, itemIds, saving, renderRow } = props;
   const {
     attributes,
     listeners,
@@ -143,7 +144,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
           />
         }
       />
-      <SortableContext items={rowKeys.map(channelDndId)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
         <ol className="view-group__members">
           {entries.map((entry, position) => renderRow(entry, rowKeys[position] ?? ''))}
         </ol>
@@ -153,7 +154,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
 }
 
 /** A group without members: only a drop container, always listed after the ordered blocks. */
-export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowKeys'>) {
+export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'>) {
   const { group, saving } = props;
   const { setNodeRef } = useDroppable({
     id: groupZoneDndId(group.id),

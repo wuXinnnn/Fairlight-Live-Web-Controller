@@ -495,8 +495,10 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
               </header>
 
               <ViewDndContext
+                view={activeDraft}
                 channels={channels}
                 assignedChannelIds={assignedChannelIds}
+                listRef={listRef}
                 onDrop={editDraft}
                 onBeforeDrop={flip.capture}
               >
@@ -580,7 +582,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       <ChannelOrderList
                         listRef={listRef}
                         view={activeDraft}
-                        resolved={resolved}
+                        channels={availableChannels}
                         duplicateNames={duplicateNames}
                         channelInventoryLoaded={channelInventoryLoaded}
                         saving={saving}

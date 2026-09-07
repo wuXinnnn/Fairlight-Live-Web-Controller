@@ -1888,7 +1888,12 @@ html.fader-cap-dragging * {
   min-height: 14rem;
   flex: 1;
   align-content: start;
-  overflow: auto;
+  overflow: hidden auto;
+}
+
+/* While a drag is in progress the checklist holds still; only the order list auto-scrolls. */
+.channel-checklist.is-drag-locked {
+  overflow-y: hidden;
 }
 
 .channel-checklist label {
@@ -2010,7 +2015,7 @@ html.fader-cap-dragging * {
   flex-direction: column;
   margin: 0;
   padding: 0;
-  overflow: auto;
+  overflow: hidden auto;
   list-style: none;
 }
 
@@ -2286,12 +2291,86 @@ html.fader-cap-dragging * {
   visibility: hidden;
 }
 
+/* The dragged item stays in the list as a placeholder while its clone follows the pointer. */
 .channel-order-row.is-dragging,
 .view-group.is-dragging,
 .channel-checklist label.is-dragging {
-  z-index: 5;
-  opacity: 0.6;
-  box-shadow: 0 0.6rem 1.6rem rgb(0 0 0 / 55%);
+  opacity: 0.38;
+  outline: 1px dashed var(--amber);
+  outline-offset: -1px;
+  background: #171610;
+}
+
+.channel-order-row.is-placeholder {
+  grid-template-columns: auto auto auto minmax(7rem, 1fr);
+}
+
+/* The clone that follows the pointer, drawn in dnd-kit's overlay portal above everything. */
+.drag-overlay {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #9b742d;
+  background: #1d2027;
+  color: var(--text);
+  box-shadow: 0 0.8rem 2rem rgb(0 0 0 / 60%);
+  cursor: grabbing;
+  pointer-events: none;
+}
+
+.drag-overlay__grip {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
+  background:
+    radial-gradient(circle, #9b742d 1px, transparent 1.4px) 0 0 / 50% 33.3%,
+    transparent;
+}
+
+.drag-overlay > strong {
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.drag-overlay > small {
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.drag-overlay--group {
+  border-left: 3px solid var(--channel-row-accent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--channel-row-accent) 16%, transparent),
+      transparent 38%
+    ),
+    var(--surface-2);
+}
+
+.drag-overlay.is-removing {
+  border-color: var(--red);
+  background: #2a1716;
+  box-shadow:
+    0 0 0 1px rgb(255 93 85 / 45%),
+    0 0.8rem 2rem rgb(0 0 0 / 60%);
+}
+
+.drag-overlay.is-removing > small {
+  color: var(--red);
+  font-weight: 600;
 }
 
 .view-group.is-drop-target {

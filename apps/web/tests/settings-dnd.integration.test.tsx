@@ -110,8 +110,12 @@ describe('settings drag and drop (keyboard sensor)', () => {
     });
     await pickUp(page.handle('BASS'));
     await press('ArrowDown');
+    // The placeholder already sits inside the group before the drop.
     expect(page.container.querySelector('[data-view-group-id="g1"]')).toHaveClass('is-drop-target');
-    await press('ArrowDown');
+    expect(page.memberNames('g1')).toEqual(['BASS', 'MAIN', 'FX']);
+    expect(
+      page.container.querySelector('[data-view-group-id="g1"] [data-ordered-channel-name="BASS"]'),
+    ).toHaveClass('is-dragging');
     await press('Space');
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS', 'FX']));
     expect(screen.getByRole('combobox', { name: 'BASS group' })).toHaveValue('g1');
@@ -220,10 +224,18 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.availableHandle('aux/1')).toBeDisabled();
 
     await pickUp(page.availableHandle('sub/1'));
-    await press('ArrowDown');
+    // Picked up level with MAIN's row, the placeholder appears inside the group right away.
+    const placeholder = page.container.querySelector('[data-placeholder="true"]');
+    expect(placeholder).toHaveAttribute('data-ordered-channel-name', 'SUB');
+    expect(page.container.querySelector('[data-view-group-id="g1"]')).toContainElement(
+      placeholder as HTMLElement,
+    );
     expect(page.container.querySelector('[data-view-group-id="g1"]')).toHaveClass('is-drop-target');
+    expect(page.container.querySelector('.channel-checklist')).toHaveClass('is-drag-locked');
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'BASS', 'SUB', 'MAIN']));
+    expect(page.container.querySelector('[data-placeholder="true"]')).not.toBeInTheDocument();
+    expect(page.container.querySelector('.channel-checklist')).not.toHaveClass('is-drag-locked');
     expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('g1');
     expect(await page.savedChannels()).toEqual([
       FX,

@@ -55,11 +55,40 @@ function layoutRects(): Map<Element, DOMRect> {
   return rects;
 }
 
+/**
+ * dnd-kit positions its DragOverlay wrapper with inline `top/left/width/height` plus a
+ * `translate3d` transform; jsdom does no layout, so the rect is rebuilt from those styles.
+ */
+function overlayRect(element: Element): DOMRect | undefined {
+  if (!(element instanceof HTMLElement) || element.style.position !== 'fixed') {
+    return undefined;
+  }
+  const { top, left, width, height, transform } = element.style;
+  if (top === '' || left === '') {
+    return undefined;
+  }
+  const shift = /translate3d\((-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(transform);
+  const dx = shift === null ? 0 : Number(shift[1]);
+  const dy = shift === null ? 0 : Number(shift[2]);
+  return rect(
+    parseFloat(left) + dx,
+    parseFloat(top) + dy,
+    parseFloat(width) || 0,
+    parseFloat(height) || 0,
+  );
+}
+
 /** Installs the layout stub and returns a function that restores the original method. */
 export function stubListLayout(): () => void {
   const original = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
-    return layoutRects().get(this) ?? rect(0, 0, 0, 0);
+    return (
+      layoutRects().get(this) ??
+      overlayRect(this) ??
+      // dnd-kit measures the overlay's only child rather than the positioned wrapper itself.
+      (this.parentElement === null ? undefined : overlayRect(this.parentElement)) ??
+      rect(0, 0, 0, 0)
+    );
   };
   return () => {
     Element.prototype.getBoundingClientRect = original;
