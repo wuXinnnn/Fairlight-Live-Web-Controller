@@ -56,11 +56,15 @@ const noDialog = () => expect(screen.queryByRole('dialog')).not.toBeInTheDocumen
 const makeDirty = () => fireEvent.click(screen.getByRole('button', { name: 'Move MAIN up' }));
 const rename = (name: string) =>
   fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: name } });
-const goBack = () =>
+/** Simulates a traversal to an entry the router stamped with `routeIndex`. */
+const traverseTo = (routeIndex: number, path = '/') =>
   act(() => {
-    window.history.pushState(null, '', '/');
+    window.history.pushState({ routeIndex }, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
   });
+// The app mounts on entry 0 (the mixer); CONFIGURE VIEWS pushes entry 1.
+const goBack = () => traverseTo(0);
+const goForward = () => traverseTo(2);
 const beforeUnloadPrevented = () => {
   const event = new Event('beforeunload', { cancelable: true });
   window.dispatchEvent(event);
@@ -203,20 +207,28 @@ describe('settings unsaved changes', () => {
     expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(0);
   });
 
-  it('holds the page on browser back until the operator decides', async () => {
+  it('holds the page on browser back and forward until the operator decides', async () => {
     const { container } = await openSettings();
-    const forward = vi.spyOn(window.history, 'forward').mockImplementation(() => undefined);
+    const go = vi.spyOn(window.history, 'go').mockImplementation(() => undefined);
     makeDirty();
 
     goBack();
     expect(dialog()).toBeInTheDocument();
-    expect(forward).toHaveBeenCalledTimes(1);
+    expect(go).toHaveBeenLastCalledWith(1);
     expect(screen.getByRole('heading', { name: 'VIEW CONFIGURATION' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'CONTROL DESK' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'KEEP EDITING' }));
     noDialog();
     expect(memberNames(container)).toEqual(['MAIN', 'BASS']);
+    expect(screen.getByRole('heading', { name: 'VIEW CONFIGURATION' })).toBeInTheDocument();
+
+    // Forward (settings -> mixer -> back -> forward) is undone in the other direction.
+    goForward();
+    expect(dialog()).toBeInTheDocument();
+    expect(go).toHaveBeenLastCalledWith(-1);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    noDialog();
     expect(screen.getByRole('heading', { name: 'VIEW CONFIGURATION' })).toBeInTheDocument();
 
     goBack();

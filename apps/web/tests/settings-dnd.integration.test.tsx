@@ -206,6 +206,11 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.availableHandle('channel/1')).toBeDisabled();
     expect(page.availableHandle('aux/1')).toBeEnabled();
 
+    // A plain click on the handle is not a click on the label: the checkbox stays as it is.
+    fireEvent.click(page.availableHandle('aux/1'));
+    expect(screen.getByRole('checkbox', { name: 'FXAUX' })).not.toBeChecked();
+    expect(page.orderedNames()).toEqual(['BASS', 'MAIN']);
+
     await pickUp(page.availableHandle('aux/1'));
     await press('ArrowUp');
     await press('Space');

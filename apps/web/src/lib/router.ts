@@ -23,6 +23,30 @@ const listeners = new Set<() => void>();
 let guard: NavigationGuard | null = null;
 /** The route the app currently shows: the last one the guard allowed, not the raw URL. */
 let currentRoute: Route = routeFromPath(window.location.pathname);
+/**
+ * Position of the current entry in the session history, stored in `history.state` so a rejected
+ * traversal can be undone in the direction it came from (`history.go(current - target)`).
+ */
+let currentIndex = 0;
+
+function readIndex(state: unknown): number | null {
+  if (typeof state !== 'object' || state === null) {
+    return null;
+  }
+  const index = (state as { routeIndex?: unknown }).routeIndex;
+  return typeof index === 'number' ? index : null;
+}
+
+/** Gives the current entry an index when it has none, e.g. the entry the app was opened on. */
+function stampCurrentEntry(): void {
+  const index = readIndex(window.history.state);
+  if (index === null) {
+    currentIndex = 0;
+    window.history.replaceState({ routeIndex: 0 }, '');
+  } else {
+    currentIndex = index;
+  }
+}
 
 function notify(): void {
   for (const listener of listeners) {
@@ -56,35 +80,46 @@ export function navigate(route: Route, mode: 'push' | 'replace' = 'push'): void 
   }
   const path = ROUTE_PATHS[route];
   if (mode === 'replace') {
-    window.history.replaceState(null, '', path);
+    window.history.replaceState({ routeIndex: currentIndex }, '', path);
   } else {
-    window.history.pushState(null, '', path);
+    currentIndex += 1;
+    window.history.pushState({ routeIndex: currentIndex }, '', path);
   }
   currentRoute = route;
   notify();
 }
 
 /**
- * Browser back and forward. A rejected entry is undone with `history.forward()`, which lands
- * back on the current route; that second popstate matches the cache and only notifies.
+ * Browser back and forward. A rejected entry is undone by travelling back to the current entry
+ * (its index tells the direction and distance; an entry without an index can only have come
+ * from Back, so `forward()` undoes it). The popstate that traversal fires matches the cache and
+ * only notifies.
  */
 function onPopState(): void {
   const next = routeFromPath(window.location.pathname);
+  const index = readIndex(window.history.state);
   if (next === currentRoute) {
+    currentIndex = index ?? currentIndex;
     notify();
     return;
   }
   if (guard !== null && !guard(next)) {
-    window.history.forward();
+    if (index === null) {
+      window.history.forward();
+    } else {
+      window.history.go(currentIndex - index);
+    }
     return;
   }
   currentRoute = next;
+  currentIndex = index ?? currentIndex;
   notify();
 }
 
 function subscribe(listener: () => void): () => void {
   if (listeners.size === 0) {
     currentRoute = routeFromPath(window.location.pathname);
+    stampCurrentEntry();
     window.addEventListener('popstate', onPopState);
   }
   listeners.add(listener);

@@ -63,6 +63,8 @@ function AvailableChannel({
         attributes={attributes}
         listeners={listeners}
         disabled={disabled}
+        // A click that never became a drag must not act as a click on the label around it.
+        onClick={(event) => event.preventDefault()}
       />
     </label>
   );

@@ -1,5 +1,5 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
-import type { Ref } from 'react';
+import type { MouseEventHandler, Ref } from 'react';
 
 interface DragHandleProps {
   /** Accessible name, e.g. "Drag BASS" or "Drag group Rhythm". */
@@ -8,10 +8,18 @@ interface DragHandleProps {
   attributes: DraggableAttributes;
   listeners: DraggableSyntheticListeners;
   disabled: boolean;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
 /** The only element of a row that starts a drag; other row controls keep their own behaviour. */
-export function DragHandle({ label, handleRef, attributes, listeners, disabled }: DragHandleProps) {
+export function DragHandle({
+  label,
+  handleRef,
+  attributes,
+  listeners,
+  disabled,
+  onClick,
+}: DragHandleProps) {
   return (
     <button
       type="button"
@@ -21,6 +29,7 @@ export function DragHandle({ label, handleRef, attributes, listeners, disabled }
       ref={handleRef}
       {...attributes}
       {...listeners}
+      onClick={onClick}
       disabled={disabled}
     >
       <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
