@@ -86,6 +86,7 @@ moveChannelTo 与 insertChannelAt,箭头按钮保留;自写 FLIP hook 让所有�
 兼容 reduced-motion,删除 data-moved 动画;isViewDirty 脏检测、三处脏态提示、应用内确认对话框、
 router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 拖放集成测试用键盘传感器;纯函数全覆盖;覆盖率达标。
+详细执行提示词见 docs/prompts/phase-6-2.md。
 ```
 
 ### 6.3 混音页分页
