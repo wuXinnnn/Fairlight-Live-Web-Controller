@@ -66,6 +66,7 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 | `AUTO_SCROLL_EDGE_PX` | 48 | 同上 | 列表可见区域上下边缘多宽(CSS px)进入自动滚动区 |
 | `AUTO_SCROLL_MAX_STEP_PX` | 12 | 同上 | 贴边时每帧最大滚动量(CSS px/帧,约 60 帧/秒) |
 | `AUTO_SCROLL_REMEASURE_MS` | 50 | 同上 | 自动滚动中重测各行矩形的最小间隔 |
+| `ROOT_SLOT_HEIGHT_PX` | 16 | 同上 | 拖动通道时分组边界处根级落槽(首个分组之前、相邻两组之间、末个分组之后)的命中带高度,覆盖在下方块的顶部 |
 | 键盘方向判定阈值 | 0.5 | `apps/web/src/features/settings/dnd-collision.ts`(`viewKeyboardCoordinates`) | 目标中心需比被拖项中心至少高/低 0.5px 才算在该方向上 |
 | `STUB_ROW_HEIGHT` / `STUB_ROW_WIDTH` | 40 / 400 | `apps/web/tests/stub-layout.ts` | 仅测试用的 jsdom 布局 stub |
 
@@ -84,6 +85,7 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 5. 把组内某成员拖到组外的根行上松开。预期:脱组,`GROUP` 下拉回到 `NO GROUP`,`UNGROUP` 与箭头按钮仍可用。
 6. 按住组头把手把整组拖到列表顶部。预期:整组连同成员一起移动,不能落进另一个组(如有第二个组,拖过去时不应高亮)。
 7. 从左侧 AVAILABLE CHANNELS 拖一个未勾选通道的把手到右侧任意位置或组内松开。预期:拖动中右侧列表里出现一条虚线描边的占位行,随指针在行间/组内移动并标出落点,拖进组时组块琥珀高亮;左侧对应条目变暗且 AVAILABLE 列表不再滚动;松手后占位行原地变为正常行,左侧勾选框同步勾选,该条目把手变灰不可拖;拖回左栏松手则无变化(占位消失)。
+7a. 让列表以分组开头并放两个相邻的分组。拖动任意通道行(或 AVAILABLE 条目)时,首个分组上方、两组之间与末个分组下方各出现一条琥珀虚线;把指针移到虚线下方约 16px 的带内。预期:占位行出现在该分组边界处(不进组),虚线移到占位行下方;继续停留不抖动;松手后通道以无组行落在该位置。拖动组头时不出现虚线。
 7b. 把右侧任意通道行的把手拖到列表外(例如拖到左栏上方)超过约 64px。预期:跟随指针的克隆变红并显示 `DROP TO REMOVE`,松手后该通道从 view 移除、左侧勾选框取消;拖回列表内克隆恢复正常。组头同样操作会移除整组及其成员。拖动过程中两个列表都不应出现横向滚动条。
 8. 点箭头按钮上移/下移某行、用 `GROUP` 下拉编组/脱组、点 `UNGROUP`。预期:目标行与因它位移的行都平滑过渡(约 200ms),无闪烁。
 9. 任一编辑后:`SAVE VIEW` 变琥珀描边、旁边出现 `UNSAVED`、左侧当前 view 右上角出现琥珀圆点。点页头 `MIXER`。预期:弹出 `UNSAVED CHANGES`,正文 `Return to the mixer without saving changes to "DnD Check"?`,焦点在 `KEEP EDITING`;点 `KEEP EDITING` 留在配置页且草稿不变。
@@ -209,3 +211,8 @@ Cursor Bugbot 对 `a26548e` 又给出两条 finding,均在 `ViewDndContext.tsx`,
 
 - **Medium:通道被预览进组后,若在组容器(组头/内边距,即 `groupzone`)上松手会忽略占位位置**。成立:`onDragOver` 对同容器不再更新预览(这正是占位保持的机制),但 `onDragEnd` 对预览视图再调 `resolveDropTarget`,`groupzone` 的语义是「追加到组尾」,与占位展示的位置不一致。修复:`drag-preview.ts` 新增纯函数 `settlePreview(preview, activeId, overId, hint)`,当 `over` 是占位所在组的 `groupzone`(或 `over === active`)时直接提交预览视图,`over` 为某一行时仍按该行槽位结算;`finalViewFor` 的预览分支改为调用它。`drag-preview.test.ts` 覆盖四种 over(自身、所在组容器、同组另一行、另一组容器)。Chromium 冒烟:通道从根跳到组中间(占位在位置 1)后移到组头松手,落点 = 占位位置(修复前落到组尾)。
 - **Low:落下动画从不播放**。成立:`onDragEnd` 与 dnd-kit 清空 `active` 在同一批更新里清掉拖动态,`DragOverlay` 的 `dropAnimation` prop 同帧变 null,dnd-kit 克隆上一帧 overlay 时 `useDropAnimation` 读到 null 直接返回;且 `DragOverlayContent` 从 `useDndContext().active` 取标签,`active` 为 null 时渲染 null,克隆里无可测量节点。修复:`dropAnimation` 独立为 state,由纯函数 `dropAnimationFor(source, removing)` 决定(通道行/组头 → `defaultDropAnimation`,AVAILABLE 与移除 → null),`onDragEnd` / `onDragCancel` 在清空拖动态前按最终状态写入;`DragOverlayContent` 改为纯 props(`variant`、`label`、`accent`、`detail`),克隆带上一帧 props 渲染。与 FLIP 的配合:dnd-kit 用 `getTransformAgnosticClientRect` 测量目标行,忽略 FLIP 的内联 transform,克隆飞向行的最终位置,动画期间目标行 `opacity: 0`。集成测试在 Space 落下后同步断言 `.drag-overlay` 仍带通道名并随后消失;Chromium 冒烟:同列表落下、进组落下与 Esc 取消时 overlay 容器均有运行中的 `Animation`,约 300ms 后卸载;AVAILABLE 落下与拖出移除无动画。
+
+用户本机验证第三轮提出两项:列表首块是分组时无法把通道条拖到首位;无法精准拖到两个相邻分组之间。根因:通道来源的可落目标只有通道行与组容器,组块本身对通道来源不可落,分组边界处没有任何 droppable 能解析为根级位置,只能借相邻根级单行的上下半区表达。处理:
+
+- **根级落槽(root slot)**。拖动通道行或 AVAILABLE 条目时,在「首块是分组 / 两分组相邻 / 末块是分组」的块边界渲染 `RootSlot`(`slot:<position>` droppable,`ROOT_SLOT_HEIGHT_PX = 16`),命中即经既有预览机制把占位行放到该根级位置(`resolveDropTarget` 对 `slot` 返回 `{ kind: 'root', position }`,`onDragOver` 对落槽不走「同容器不更新预览」的短路)。落槽位置按**去掉被拖通道后的块序列**计算(`rootSlotPositionsFor`),并绘制在它所在块的正前方(占位行之下):首版按渲染视图计算且在流内占位,冒烟暴露两种问题——落槽出现/消失会把列表在静止指针下推移(拾起即误入相邻组);从上方拖来时占位落在指针上方、指针随即落到下方组头而被追加进组,来回震荡。现方案落槽 `li` 零高度、命中带绝对定位覆盖在下方块顶部,不改变布局;占位放入后同一位置的落槽仍画在占位行之下,悬停即解析为同一位置(`moveChannelTo` 返回 null,预览不变),稳定。键盘路径跳过「被拖行已在此」的落槽(`current`),指针路径保留它;组拖动不渲染落槽。
+- 验证:单测 `rootSlotPositions`(五种布局与空组)、`slot:` 标识解析、`resolveDropTarget` 的落槽解析、碰撞规则(落槽对通道/AVAILABLE 可落、对组不可落;指针在带内时落槽优先于其覆盖的组头;键盘跳过 current 落槽);集成测试新增「两组之间与首位」用例(键盘:成员 ArrowDown 到两组之间落槽脱组;根行 ArrowUp 进组再 ArrowUp 到首位落槽;AVAILABLE 拾起即落到两组之间的落槽),既有「组内只能重排」用例改为第三次 ArrowUp 到首位落槽脱组。Chromium 冒烟(`[g1(BASS, Anagram-Wet)] [g2(Anagram-Dry)] MIC`):MIC 到首位、到两组之间,组内成员到末组之后,根行到两组之间,AVAILABLE 到首位,均落在落槽处;在落槽与相邻行边界反复采样 DOM 顺序稳定;既有桌面/手机冒烟无回归。
