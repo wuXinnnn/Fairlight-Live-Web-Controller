@@ -15,7 +15,7 @@ export type DndItemData =
   | { kind: 'channel'; label: string; groupId?: string }
   | { kind: 'group'; label: string; groupId: string }
   | { kind: 'groupzone'; label: string; groupId: string; empty: boolean }
-  | { kind: 'available'; label: string; channelId: string };
+  | { kind: 'available'; label: string; channelId: string; groupId?: string };
 
 export type DndItemKind = DndItemData['kind'];
 

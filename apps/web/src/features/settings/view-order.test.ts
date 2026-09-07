@@ -10,7 +10,9 @@ import {
   moveGroup,
   moveGroupTo,
   nonEmptyBlocks,
+  removeChannel,
   removeGroup,
+  removeGroupWithMembers,
   renameGroup,
   viewBlocks,
 } from './view-order.js';
@@ -344,5 +346,21 @@ describe('moveGroupTo', () => {
     expect(moveGroupTo(view, 'nope', 0)).toBeNull();
     expect(moveGroupTo(view, 'g1', -1)).toBeNull();
     expect(moveGroupTo(view, 'g1', 4)).toBeNull();
+  });
+});
+
+describe('removeChannel and removeGroupWithMembers', () => {
+  it('removes one reference or a whole group, and rejects unknown targets', () => {
+    expect(names(removeChannel(view, 1))).toEqual(['A', 'C', 'D', 'E']);
+    expect(removeChannel(view, 9)).toBeNull();
+    expect(removeChannel(view, -1)).toBeNull();
+    const withoutRhythm = expectContiguousGroups(removeGroupWithMembers(view, 'g1'));
+    expect(names(withoutRhythm)).toEqual(['A', 'D', 'E']);
+    expect(withoutRhythm.groups.map((group) => group.id)).toEqual(['g2', 'g3']);
+    expect(names(removeGroupWithMembers(view, 'g3'))).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(removeGroupWithMembers(view, 'nope')).toBeNull();
+    const snapshot = structuredClone(view);
+    removeGroupWithMembers(view, 'g1');
+    expect(view).toEqual(snapshot);
   });
 });

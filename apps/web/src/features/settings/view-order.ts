@@ -294,3 +294,23 @@ export function moveGroupTo(view: View, groupId: string, position: number): View
   const moved = blocks[from] as ViewBlock;
   return flatten(view, [...rest.slice(0, position), moved, ...rest.slice(position)]);
 }
+
+/** Removes the reference at `index`; null when the index is out of range. */
+export function removeChannel(view: View, index: number): View | null {
+  if (view.channels[index] === undefined) {
+    return null;
+  }
+  return { ...view, channels: view.channels.filter((_, candidate) => candidate !== index) };
+}
+
+/** Deletes a group together with every reference that belongs to it; null for unknown groups. */
+export function removeGroupWithMembers(view: View, groupId: string): View | null {
+  if (!view.groups.some((group) => group.id === groupId)) {
+    return null;
+  }
+  return {
+    ...view,
+    groups: view.groups.filter((group) => group.id !== groupId),
+    channels: view.channels.filter((reference) => reference.groupId !== groupId),
+  };
+}
