@@ -1497,11 +1497,11 @@ html.fader-cap-dragging * {
 /* Narrow order column: move the palette onto its own line instead of overflowing sideways. */
 @container (max-width: 44rem) {
   .channel-order .channel-order-row {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto;
   }
 
   .channel-order .channel-order-row .palette-control {
-    grid-column: 3 / 6;
+    grid-column: 4 / 7;
     justify-content: flex-start;
   }
 }
@@ -1839,7 +1839,7 @@ html.fader-cap-dragging * {
 .channel-checklist label {
   position: relative;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 2.7rem;
@@ -1965,7 +1965,7 @@ html.fader-cap-dragging * {
 
 .channel-order-row {
   display: grid;
-  grid-template-columns: auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
   align-items: center;
   gap: 0.65rem;
   min-height: 3.35rem;
@@ -2096,7 +2096,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto minmax(7rem, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2183,50 +2183,66 @@ html.fader-cap-dragging * {
   letter-spacing: 0.1em;
 }
 
-/* Moved rows and groups slide back into place under a short amber flash drawn above their content. */
+/* Rows and groups are positioned so drag transforms and drop highlights stack above neighbours. */
 .channel-order-row,
 .view-group {
   position: relative;
 }
 
-.channel-order-row[data-moved='up'],
-.view-group[data-moved='up'] {
-  animation: order-shift-up calc(var(--motion-medium) * 1.6) ease-out;
+/* Drag handles: the only control that starts a drag; touch-action keeps the page from scrolling. */
+.drag-handle {
+  display: grid;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
 }
 
-.channel-order-row[data-moved='down'],
-.view-group[data-moved='down'] {
-  animation: order-shift-down calc(var(--motion-medium) * 1.6) ease-out;
+.drag-handle svg {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
-.channel-order-row[data-moved]::after,
-.view-group[data-moved]::after {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  border: 1px solid rgb(239 169 40 / 75%);
-  background: rgb(239 169 40 / 16%);
-  animation: order-flash calc(var(--motion-medium) * 1.6) ease-out forwards;
-  content: '';
-  pointer-events: none;
+.drag-handle:hover:not(:disabled),
+.drag-handle[aria-pressed='true'] {
+  border-color: #9b742d;
+  color: var(--amber-pale);
 }
 
-@keyframes order-flash {
-  to {
-    opacity: 0;
-  }
+.drag-handle[aria-pressed='true'] {
+  cursor: grabbing;
 }
 
-@keyframes order-shift-up {
-  from {
-    transform: translateY(0.55rem);
-  }
+.drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
 }
 
-@keyframes order-shift-down {
-  from {
-    transform: translateY(-0.55rem);
-  }
+.drag-handle.is-placeholder {
+  visibility: hidden;
+}
+
+.channel-order-row.is-dragging,
+.view-group.is-dragging,
+.channel-checklist label.is-dragging {
+  z-index: 5;
+  opacity: 0.6;
+  box-shadow: 0 0.6rem 1.6rem rgb(0 0 0 / 55%);
+}
+
+.view-group.is-drop-target {
+  outline: 1px solid var(--amber);
+  outline-offset: -1px;
+  background: #171610;
 }
 
 .channel-order__index {
@@ -2439,29 +2455,29 @@ html.fader-cap-dragging * {
   }
 
   .channel-order-row {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
   }
 
   .group-control {
-    grid-column: 1 / 3;
+    grid-column: 1 / 4;
   }
 
   .palette-control {
-    grid-column: 3 / 5;
+    grid-column: 4 / 6;
     justify-content: flex-start;
   }
 
   .view-group__header {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
   }
 
   .view-group__header .order-buttons {
-    grid-column: 3 / 4;
+    grid-column: 4 / 5;
     justify-self: start;
   }
 
   .view-group__header .utility-button {
-    grid-column: 4 / 5;
+    grid-column: 5 / 6;
   }
 
   .group-toolbar {

@@ -1,0 +1,67 @@
+/**
+ * jsdom reports a zero rectangle for every element, which leaves dnd-kit without geometry for
+ * collision detection and keyboard navigation. This stub lays the configuration page out as a
+ * vertical stack: AVAILABLE CHANNELS entries at x = 0, CHANNEL ORDER blocks at x = 500, each row
+ * `STUB_ROW_HEIGHT` tall and group blocks spanning their header and members. Rectangles are
+ * recomputed on every call, so they follow the DOM.
+ */
+
+export const STUB_ROW_HEIGHT = 40;
+export const STUB_ROW_WIDTH = 400;
+const LIST_LEFT = 500;
+
+function rect(x: number, y: number, width: number, height: number): DOMRect {
+  return {
+    x,
+    y,
+    left: x,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+    width,
+    height,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+function layoutRects(): Map<Element, DOMRect> {
+  const rects = new Map<Element, DOMRect>();
+  document.querySelectorAll('[data-available-channel-id]').forEach((label, index) => {
+    rects.set(label, rect(0, index * STUB_ROW_HEIGHT, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
+  });
+  const list = document.querySelector('.view-channel-list');
+  let y = 0;
+  for (const block of list?.children ?? []) {
+    if (block.classList.contains('view-group')) {
+      const start = y;
+      y += STUB_ROW_HEIGHT;
+      const members = block.querySelectorAll(':scope > .view-group__members > li');
+      members.forEach((row) => {
+        rects.set(row, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
+        y += STUB_ROW_HEIGHT;
+      });
+      if (members.length === 0) {
+        y += STUB_ROW_HEIGHT;
+      }
+      rects.set(block, rect(LIST_LEFT, start, STUB_ROW_WIDTH, y - start));
+    } else {
+      rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
+      y += STUB_ROW_HEIGHT;
+    }
+  }
+  if (list !== null) {
+    rects.set(list, rect(LIST_LEFT, 0, STUB_ROW_WIDTH, y));
+  }
+  return rects;
+}
+
+/** Installs the layout stub and returns a function that restores the original method. */
+export function stubListLayout(): () => void {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
+    return layoutRects().get(this) ?? rect(0, 0, 0, 0);
+  };
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+  };
+}
