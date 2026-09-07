@@ -1,4 +1,5 @@
 import type { View, ViewChannelRef, ViewGroup } from '@flwc/shared';
+import { sameChannelReference } from './view-dirty.js';
 
 export type MoveDirection = -1 | 1;
 
@@ -159,4 +160,137 @@ export function removeGroup(view: View, groupId: string): View {
       return ungrouped;
     }),
   };
+}
+
+/** Where a dragged channel lands. `position` counts members of the group, or top-level blocks. */
+export type DropTarget =
+  { kind: 'group'; groupId: string; position: number } | { kind: 'root'; position: number };
+
+/** Blocks that take part in top-level ordering: singles and groups that have members. */
+export function nonEmptyBlocks(view: View): ViewBlock[] {
+  return viewBlocks(view).filter((block) => block.kind === 'single' || block.indices.length > 0);
+}
+
+/** Indices of the references that belong to `groupId`, in channel order. */
+export function memberIndices(view: View, groupId: string): number[] {
+  return view.channels.flatMap((reference, index) =>
+    reference.groupId === groupId ? [index] : [],
+  );
+}
+
+function firstIndexOf(block: ViewBlock): number {
+  return block.kind === 'single' ? block.index : (block.indices[0] ?? 0);
+}
+
+function withoutGroup(reference: ViewChannelRef): ViewChannelRef {
+  const copy = { ...reference };
+  delete copy.groupId;
+  return copy;
+}
+
+/**
+ * Inserts `moved` into `base` (which must not contain it) at `target`. Root positions count the
+ * non-empty blocks of `base`, group positions count that group's members, so the reference only
+ * ever lands on a block boundary or inside its own group's run and runs stay contiguous.
+ */
+function placeReference(base: View, moved: ViewChannelRef, target: DropTarget): View | null {
+  let reference: ViewChannelRef;
+  let at: number;
+  if (target.kind === 'group') {
+    const group = groupById(base, target.groupId);
+    if (group === undefined) {
+      return null;
+    }
+    const members = memberIndices(base, group.id);
+    if (target.position < 0 || target.position > members.length) {
+      return null;
+    }
+    reference = { ...moved, groupId: group.id };
+    const last = members[members.length - 1];
+    const slot = members[target.position];
+    at =
+      last === undefined
+        ? base.channels.length
+        : target.position === members.length
+          ? last + 1
+          : (slot ?? base.channels.length);
+  } else {
+    const blocks = nonEmptyBlocks(base);
+    if (target.position < 0 || target.position > blocks.length) {
+      return null;
+    }
+    reference = withoutGroup(moved);
+    const block = blocks[target.position];
+    at = block === undefined ? base.channels.length : firstIndexOf(block);
+  }
+  const channels = [...base.channels.slice(0, at), reference, ...base.channels.slice(at)];
+  return { ...base, channels };
+}
+
+function sameChannels(a: View, b: View): boolean {
+  return (
+    a.channels.length === b.channels.length &&
+    a.channels.every((reference, index) => {
+      const other = b.channels[index];
+      return other !== undefined && sameChannelReference(reference, other);
+    })
+  );
+}
+
+/**
+ * Moves `view.channels[index]` to `target`, joining or leaving a group as the target implies.
+ * The source is removed before the target position is interpreted. Returns null when the target
+ * is invalid or the move changes nothing.
+ */
+export function moveChannelTo(view: View, index: number, target: DropTarget): View | null {
+  const reference = view.channels[index];
+  if (reference === undefined) {
+    return null;
+  }
+  const base = { ...view, channels: view.channels.filter((_, candidate) => candidate !== index) };
+  const next = placeReference(base, reference, target);
+  if (next === null || sameChannels(next, view)) {
+    return null;
+  }
+  return next;
+}
+
+/**
+ * Inserts a reference that is not yet in the view at `target`. Returns null when a reference
+ * with the same kind, name and channel id already exists.
+ */
+export function insertChannelAt(
+  view: View,
+  reference: ViewChannelRef,
+  target: DropTarget,
+): View | null {
+  const exists = view.channels.some(
+    (candidate) =>
+      candidate.kind === reference.kind &&
+      candidate.name === reference.name &&
+      candidate.channelId === reference.channelId,
+  );
+  if (exists) {
+    return null;
+  }
+  return placeReference(view, reference, target);
+}
+
+/**
+ * Moves a non-empty group block to `position` among the top-level blocks, counted with the
+ * group's own block removed. Returns null for empty or unknown groups, out-of-range positions
+ * and drops in place.
+ */
+export function moveGroupTo(view: View, groupId: string, position: number): View | null {
+  const blocks = nonEmptyBlocks(view);
+  const from = blocks.findIndex((block) => block.kind === 'group' && block.group.id === groupId);
+  if (from < 0) {
+    return null;
+  }
+  const rest = blocks.filter((_, candidate) => candidate !== from);
+  if (position < 0 || position > rest.length || position === from) {
+    return null;
+  }
+  const moved = blocks[from] as ViewBlock;
+  return flatten(view, [...rest.slice(0, position), moved, ...rest.slice(position)]);
 }
