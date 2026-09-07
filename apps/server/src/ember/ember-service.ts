@@ -561,10 +561,14 @@ export class EmberService extends EventEmitter {
       return;
     }
     const transport = captureEmberTransport(client);
-    try {
-      await withTimeout(client.disconnect(), this.disconnectTimeoutMs, 'disconnect');
-    } catch (error) {
-      this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'disconnect timed out');
+    // A client that never reached the mixer has no session to close, and disconnecting a
+    // dialling socket only resolves once the dial gives up; retiring the transport is enough.
+    if (client.connected) {
+      try {
+        await withTimeout(client.disconnect(), this.disconnectTimeoutMs, 'disconnect');
+      } catch (error) {
+        this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'disconnect timed out');
+      }
     }
     try {
       client.discard();

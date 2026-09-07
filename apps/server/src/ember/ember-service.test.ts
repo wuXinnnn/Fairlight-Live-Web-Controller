@@ -122,6 +122,36 @@ describe('EmberService', () => {
     expect(ok.connected).toBe(true);
   });
 
+  it('retires a client that never connected without waiting for its disconnect', async () => {
+    const dialling = new FakeEmberClient();
+    dialling.connectDelayMs = 300;
+    dialling.failConnect = new Error('Could not connect to 127.0.0.1:1 after a timeout');
+    dialling.hangDisconnect = true;
+    const ok = new FakeEmberClient();
+    let created = 0;
+    const service = createService(dialling, {
+      timeoutMs: 5_000,
+      disconnectTimeoutMs: 1_000,
+      reconnectInitialMs: 10_000,
+      reconnectMaxMs: 10_000,
+      createClient: () => {
+        created += 1;
+        return created === 1 ? dialling : ok;
+      },
+    });
+    const starting = service.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(service.status).toBe('connecting');
+    const began = performance.now();
+    await service.configure('127.0.0.1', 2);
+    // A dialling client has nothing to disconnect; the switch must not wait for the timeout.
+    expect(performance.now() - began).toBeLessThan(500);
+    expect(service.status).toBe('connected');
+    expect(dialling.discarded).toBe(true);
+    expect(ok.connected).toBe(true);
+    await starting;
+  });
+
   it('keeps the last error while retrying and clears it when reconfigured', async () => {
     const failing = new FakeEmberClient();
     failing.failConnect = new Error('connect ECONNREFUSED 127.0.0.1:1');
