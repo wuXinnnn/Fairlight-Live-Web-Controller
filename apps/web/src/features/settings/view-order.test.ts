@@ -14,6 +14,7 @@ import {
   removeGroup,
   removeGroupWithMembers,
   renameGroup,
+  rootSlotPositions,
   viewBlocks,
 } from './view-order.js';
 
@@ -150,6 +151,35 @@ describe('nonEmptyBlocks and memberIndices', () => {
     ]);
     expect(memberIndices(view, 'g1')).toEqual([1, 2]);
     expect(memberIndices(view, 'g3')).toEqual([]);
+  });
+});
+
+describe('rootSlotPositions', () => {
+  const groups = [
+    { id: 'g1', name: 'One' },
+    { id: 'g2', name: 'Two' },
+    { id: 'g3', name: 'Empty' },
+  ];
+  const layout = (channels: ReturnType<typeof ref>[]): View => ({
+    id: 'v',
+    name: 'V',
+    channels,
+    groups,
+  });
+
+  it('marks the boundaries where a group starts or ends the list or two groups touch', () => {
+    expect(rootSlotPositions(layout([ref('A', 'g1'), ref('B', 'g2')]))).toEqual([0, 1, 2]);
+    expect(rootSlotPositions(layout([ref('A'), ref('B', 'g1'), ref('C')]))).toEqual([]);
+    expect(rootSlotPositions(layout([ref('A', 'g1'), ref('B')]))).toEqual([0]);
+    expect(rootSlotPositions(layout([ref('A'), ref('B', 'g1')]))).toEqual([2]);
+    expect(rootSlotPositions(layout([ref('A', 'g1')]))).toEqual([0, 1]);
+  });
+
+  it('ignores empty groups and lists without groups', () => {
+    expect(rootSlotPositions(layout([ref('A'), ref('B')]))).toEqual([]);
+    expect(rootSlotPositions(layout([]))).toEqual([]);
+    // g3 has no members: it trails the list as a container only.
+    expect(rootSlotPositions(layout([ref('A'), ref('B', 'g1')]))).toEqual([2]);
   });
 });
 

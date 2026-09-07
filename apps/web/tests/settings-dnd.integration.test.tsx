@@ -134,14 +134,94 @@ describe('settings drag and drop (keyboard sensor)', () => {
       { ...FX, groupId: 'g1' },
     ]);
 
-    // With no ungrouped row left, the keyboard path can only reorder inside the group.
+    // With no ungrouped row left, the group starts the list, so a root slot above it lets a
+    // member leave the group to the top: two steps reorder inside the group, the third reaches
+    // the slot.
     await pickUp(page.handle('FX'));
     await press('ArrowUp');
     await press('ArrowUp');
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS', 'FX']);
+    expect(page.container.querySelector('[data-root-slot="0"]')).toBeInTheDocument();
     await press('ArrowUp');
+    // The placeholder now sits above the group; the slot stays drawn right below it, so
+    // hovering on is a no-op rather than a jump back into the group.
+    expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']);
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS']);
+    const items = [...page.list().children];
+    expect(items[0]).toHaveAttribute('data-ordered-channel-name', 'FX');
+    expect(items[1]).toHaveClass('root-slot');
     await press('Space');
-    await waitFor(() => expect(page.memberNames('g1')).toEqual(['FX', 'MAIN', 'BASS']));
-    expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue('g1');
+    await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']));
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS']);
+    expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue('');
+    expect(page.container.querySelector('.root-slot')).not.toBeInTheDocument();
+  });
+
+  it('drops channels between two groups and before the first one through root slots', async () => {
+    const VOCALS = { id: 'g2', name: 'Vocals' };
+    const page = await openSettings({
+      id: 'stacked',
+      name: 'Stacked',
+      channels: [
+        { ...MAIN, groupId: 'g1' },
+        { ...FX, groupId: 'g1' },
+        { ...BASS, groupId: 'g2' },
+      ],
+      groups: [RHYTHM, VOCALS],
+    });
+    expect(page.container.querySelector('.root-slot')).not.toBeInTheDocument();
+
+    // FX steps down onto the slot between Rhythm and Vocals and leaves its group there.
+    await pickUp(page.handle('FX'));
+    expect(
+      [...page.container.querySelectorAll('[data-root-slot]')].map((slot) =>
+        slot.getAttribute('data-root-slot'),
+      ),
+    ).toEqual(['0', '1', '2']);
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']);
+    expect(page.memberNames('g1')).toEqual(['MAIN']);
+    expect(page.memberNames('g2')).toEqual(['BASS']);
+    await press('Space');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue(''));
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']);
+    expect(await page.savedChannels()).toEqual([
+      { ...MAIN, groupId: 'g1' },
+      FX,
+      { ...BASS, groupId: 'g2' },
+    ]);
+
+    // Up once joins Rhythm above MAIN, up again reaches the slot above the first group.
+    await pickUp(page.handle('FX'));
+    await press('ArrowUp');
+    expect(page.memberNames('g1')).toEqual(['FX', 'MAIN']);
+    await press('ArrowUp');
+    expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']);
+    expect(page.memberNames('g1')).toEqual(['MAIN']);
+    await press('Space');
+    await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']));
+    expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue('');
+    expect(await page.savedChannels()).toEqual([
+      FX,
+      { ...MAIN, groupId: 'g1' },
+      { ...BASS, groupId: 'g2' },
+    ]);
+
+    // An AVAILABLE channel lands on slots too: picked up level with the boundary between the
+    // groups, the nearest target is the slot band, so the placeholder appears between them.
+    await pickUp(page.availableHandle('sub/1'));
+    expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'SUB', 'BASS']);
+    expect(page.memberNames('g1')).toEqual(['MAIN']);
+    expect(page.memberNames('g2')).toEqual(['BASS']);
+    await press('Space');
+    await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'SUB', 'BASS']));
+    expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('');
+    expect(await page.savedChannels()).toEqual([
+      FX,
+      { ...MAIN, groupId: 'g1' },
+      SUB,
+      { ...BASS, groupId: 'g2' },
+    ]);
   });
 
   it('moves a member above the group so it leaves the group', async () => {

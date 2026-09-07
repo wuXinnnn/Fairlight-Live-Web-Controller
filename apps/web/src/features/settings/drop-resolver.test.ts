@@ -124,6 +124,23 @@ describe('resolveDropTarget', () => {
     });
   });
 
+  it('places channels at the root slot they are dropped on', () => {
+    // Blocks: A | g1(B, C) | D | g2(E). Slot positions count the blocks without the dragged
+    // channel, so they pass through unchanged as long as they exist in that view.
+    const a = { kind: 'channel', index: 0 } as const;
+    const c = { kind: 'channel', index: 2 } as const;
+    const fx = { kind: 'available', channelId: 'aux/1' } as const;
+    expect(resolveDropTarget(view, a, 'slot:0', before)).toEqual({ kind: 'root', position: 0 });
+    expect(resolveDropTarget(view, a, 'slot:3', before)).toEqual({ kind: 'root', position: 3 });
+    // Without A there are three blocks, so position 4 does not exist.
+    expect(resolveDropTarget(view, a, 'slot:4', before)).toBeNull();
+    expect(resolveDropTarget(view, c, 'slot:4', after)).toEqual({ kind: 'root', position: 4 });
+    expect(resolveDropTarget(view, fx, 'slot:0', before)).toEqual({ kind: 'root', position: 0 });
+    expect(resolveDropTarget(view, fx, 'slot:4', before)).toEqual({ kind: 'root', position: 4 });
+    expect(resolveDropTarget(view, fx, 'slot:5', before)).toBeNull();
+    expect(resolveDropTarget(view, { kind: 'group', groupId: 'g1' }, 'slot:0', before)).toBeNull();
+  });
+
   it('moves groups over root rows and other groups only', () => {
     const g1 = { kind: 'group', groupId: 'g1' } as const;
     expect(resolveDropTarget(view, g1, row('D'), before)).toEqual({ kind: 'root', position: 2 });

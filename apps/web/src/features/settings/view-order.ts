@@ -171,6 +171,32 @@ export function nonEmptyBlocks(view: View): ViewBlock[] {
   return viewBlocks(view).filter((block) => block.kind === 'single' || block.indices.length > 0);
 }
 
+/**
+ * Root positions that need an explicit drop slot while a channel is dragged: the boundaries
+ * where a group starts the list, two groups touch, or a group ends the list. Every other block
+ * boundary has an ungrouped row next to it, which already offers its upper and lower half.
+ * `blocks` are the ordered blocks of the view without the dragged channel, so the slots (and the
+ * positions they resolve to) do not move while the dragged row is previewed among them.
+ */
+export function rootSlotPositionsFor(blocks: ViewBlock[]): number[] {
+  const positions: number[] = [];
+  blocks.forEach((block, position) => {
+    const previous = blocks[position - 1];
+    if (block.kind === 'group' && (previous === undefined || previous.kind === 'group')) {
+      positions.push(position);
+    }
+  });
+  if (blocks[blocks.length - 1]?.kind === 'group') {
+    positions.push(blocks.length);
+  }
+  return positions;
+}
+
+/** `rootSlotPositionsFor` over the non-empty blocks of a view. */
+export function rootSlotPositions(view: View): number[] {
+  return rootSlotPositionsFor(nonEmptyBlocks(view));
+}
+
 /** Indices of the references that belong to `groupId`, in channel order. */
 export function memberIndices(view: View, groupId: string): number[] {
   return view.channels.flatMap((reference, index) =>

@@ -39,6 +39,7 @@ function useIsDropTarget(groupId: string): boolean {
   return (
     (source === 'channel' || source === 'available') &&
     target !== undefined &&
+    'groupId' in target &&
     target.groupId === groupId
   );
 }

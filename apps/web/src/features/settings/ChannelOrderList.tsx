@@ -1,9 +1,10 @@
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { ChannelState, View } from '@flwc/shared';
-import { useMemo, type Ref } from 'react';
+import { Fragment, useMemo, type Ref } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { availableDndId, channelDndId, groupDndId } from './dnd-ids.js';
 import { PlaceholderRow } from './PlaceholderRow.js';
+import { RootSlot } from './RootSlot.js';
 import { channelRowKeys } from './row-keys.js';
 import { SortableChannelRow, type ChannelRowHandlers } from './SortableChannelRow.js';
 import {
@@ -12,7 +13,7 @@ import {
   type GroupBlockHandlers,
 } from './SortableGroupBlock.js';
 import { useDragPreview } from './use-drag-preview.js';
-import { nonEmptyBlocks, viewBlocks } from './view-order.js';
+import { nonEmptyBlocks, rootSlotPositionsFor, viewBlocks, type ViewBlock } from './view-order.js';
 
 interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
   view: View;
@@ -28,11 +29,27 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
  * The CHANNEL ORDER list: top-level blocks (ungrouped rows and groups with members) form the root
  * sortable list, each group nests its own sortable list, and empty groups trail as drop targets.
  * While a drag previews a move into another list the preview view is rendered instead of the
- * draft, with the dragged item shown as a placeholder where it would land.
+ * draft, with the dragged item shown as a placeholder where it would land. While a channel is
+ * dragged, root slots mark the block boundaries next to groups that no row can stand for. They
+ * are computed without the dragged channel and drawn right before the block they precede, so
+ * a placeholder previewed at a slot keeps that slot just below itself and hovering on stays put.
  */
+
+function slotLabel(blocks: ViewBlock[], position: number): string {
+  const above = blocks[position - 1];
+  const below = blocks[position];
+  if (above === undefined) {
+    return 'the start of the list';
+  }
+  if (below === undefined) {
+    return 'the end of the list';
+  }
+  const name = (block: ViewBlock) => (block.kind === 'group' ? `group ${block.group.name}` : '');
+  return `the gap between ${name(above)} and ${name(below)}`;
+}
 export function ChannelOrderList(props: ChannelOrderListProps) {
   const { channels, duplicateNames, channelInventoryLoaded, saving, listRef } = props;
-  const { preview } = useDragPreview();
+  const { dragging, sourceKind, source, preview } = useDragPreview();
   const view = preview?.view ?? props.view;
   const placeholderIndex =
     preview?.placeholderChannelId === undefined || preview.source.kind !== 'channel'
@@ -87,13 +104,55 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       groupNumbers.set(block.group.id, groupNumbers.size + 1);
     }
   }
+  // The ordered blocks as they would be without the dragged channel: slot positions count
+  // these, and each slot is drawn before the block it precedes (or after the last block).
+  const draggedIndex = dragging && source?.kind === 'channel' ? source.index : -1;
+  const isDragged = (block: ViewBlock) =>
+    block.kind === 'single'
+      ? block.index === draggedIndex
+      : block.indices.length === 1 && block.indices[0] === draggedIndex;
+  const ordered = blocks.filter((block) => block.kind === 'single' || block.indices.length > 0);
+  const remaining = ordered.filter((block) => !isDragged(block));
+  // The position the dragged row occupies among the remaining blocks, when it is a root row.
+  const draggedOrdered = ordered.findIndex((block) => block.kind === 'single' && isDragged(block));
+  const currentPosition =
+    draggedOrdered < 0 ? -1 : ordered.slice(0, draggedOrdered).filter((b) => !isDragged(b)).length;
+  const slotPositions = dragging && sourceKind !== 'group' ? rootSlotPositionsFor(remaining) : [];
+  const slotBeforeBlock = new Map<ViewBlock, number>();
+  let slotAfterLast: number | undefined;
+  for (const position of slotPositions) {
+    const block = remaining[position];
+    if (block === undefined) {
+      slotAfterLast = position;
+    } else {
+      slotBeforeBlock.set(block, position);
+    }
+  }
+  const slotAt = (position: number | undefined) =>
+    position === undefined ? null : (
+      <RootSlot
+        key={`slot:${position}`}
+        position={position}
+        label={slotLabel(remaining, position)}
+        current={position === currentPosition}
+      />
+    );
+  const lastOrdered = ordered[ordered.length - 1];
   return (
     <SortableContext items={rootItems} strategy={verticalListSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>
         {blocks.map((block) => {
+          const slotBefore = slotAt(slotBeforeBlock.get(block));
+          const slotAfter = block === lastOrdered ? slotAt(slotAfterLast) : null;
           if (block.kind === 'single') {
             const entry = resolved[block.index];
-            return entry === undefined ? null : renderRow(entry, rowKeys[block.index] ?? '');
+            return entry === undefined ? null : (
+              <Fragment key={rowKeys[block.index] ?? ''}>
+                {slotBefore}
+                {renderRow(entry, rowKeys[block.index] ?? '')}
+                {slotAfter}
+              </Fragment>
+            );
           }
           const entries = block.indices
             .map((index) => resolved[index])
@@ -111,13 +170,16 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
           return entries.length === 0 ? (
             <EmptyGroupBlock key={block.group.id} {...shared} />
           ) : (
-            <SortableGroupBlock
-              key={block.group.id}
-              {...shared}
-              rowKeys={block.indices.map((index) => rowKeys[index] ?? '')}
-              itemIds={block.indices.map(rowDndId)}
-              renderRow={renderRow}
-            />
+            <Fragment key={block.group.id}>
+              {slotBefore}
+              <SortableGroupBlock
+                {...shared}
+                rowKeys={block.indices.map((index) => rowKeys[index] ?? '')}
+                itemIds={block.indices.map(rowDndId)}
+                renderRow={renderRow}
+              />
+              {slotAfter}
+            </Fragment>
           );
         })}
       </ol>

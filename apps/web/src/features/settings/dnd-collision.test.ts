@@ -62,6 +62,10 @@ describe('isEligibleTarget', () => {
       isEligibleTarget('available', { kind: 'groupzone', label: 'g', groupId: 'g1', empty: false }),
     ).toBe(true);
     expect(isEligibleTarget('channel', { kind: 'group', label: 'g', groupId: 'g1' })).toBe(false);
+    const slot = { kind: 'slot', label: 'start', position: 0, current: false } as const;
+    expect(isEligibleTarget('channel', slot)).toBe(true);
+    expect(isEligibleTarget('available', slot)).toBe(true);
+    expect(isEligibleTarget('group', slot)).toBe(false);
     expect(isEligibleTarget('group', { kind: 'channel', label: 'A' })).toBe(true);
     expect(isEligibleTarget('group', { kind: 'channel', label: 'B', groupId: 'g1' })).toBe(false);
     expect(isEligibleTarget('group', { kind: 'group', label: 'g', groupId: 'g2' })).toBe(true);
@@ -88,6 +92,56 @@ describe('viewCollisionDetection', () => {
     expect(ids({ x: 600, y: 60 })).toEqual(['groupzone:g1']);
     expect(ids({ x: 600, y: 200 })).toEqual(['groupzone:g3']);
     expect(ids({ x: 100, y: 20 })).toEqual([]);
+  });
+
+  it('lets a root slot win over the group header it overlays', () => {
+    // A slot band over the top 16px of g1's header, and one after g1 over the empty group.
+    const withSlots = fixture([
+      ['channel:a', { kind: 'channel', label: 'A' }, rect(0)],
+      [
+        'groupzone:g1',
+        { kind: 'groupzone', label: 'group Rhythm', groupId: 'g1', empty: false },
+        rect(40, 120),
+      ],
+      ['slot:1', { kind: 'slot', label: 'the gap', position: 1, current: true }, rect(40, 16)],
+      ['channel:b', { kind: 'channel', label: 'B', groupId: 'g1' }, rect(80)],
+      [
+        'slot:2',
+        { kind: 'slot', label: 'the end of the list', position: 2, current: false },
+        rect(160, 16),
+      ],
+      [
+        'groupzone:g3',
+        { kind: 'groupzone', label: 'group Empty', groupId: 'g3', empty: true },
+        rect(160, 80),
+      ],
+    ]);
+    const ids = (source: Active, pointer: { x: number; y: number }) =>
+      viewCollisionDetection({
+        active: source,
+        collisionRect: rect(0),
+        droppableRects: withSlots.rects,
+        droppableContainers: withSlots.containers,
+        pointerCoordinates: pointer,
+      }).map((collision) => collision.id);
+    expect(ids(channelA, { x: 600, y: 48 })).toEqual(['slot:1']);
+    expect(ids(channelA, { x: 600, y: 70 })).toEqual(['groupzone:g1']);
+    expect(ids(channelA, { x: 600, y: 170 })).toEqual(['slot:2']);
+    expect(ids(channelA, { x: 600, y: 200 })).toEqual(['groupzone:g3']);
+    // Groups never see slots.
+    const group = active('group:g2', { kind: 'group', label: 'group Vocals', groupId: 'g2' });
+    expect(ids(group, { x: 600, y: 48 })).toEqual([]);
+    // Keyboard drags skip the slot the row already occupies but stop at the others.
+    const keyboard = (top: number) =>
+      viewCollisionDetection({
+        active: channelA,
+        collisionRect: rect(top),
+        droppableRects: withSlots.rects,
+        droppableContainers: withSlots.containers,
+        pointerCoordinates: null,
+      }).map((collision) => collision.id);
+    expect(keyboard(30)).not.toContain('slot:1');
+    expect(keyboard(150)[0]).toBe('slot:2');
   });
 
   it('uses the nearest centre for keyboard drags, ignoring populated containers', () => {

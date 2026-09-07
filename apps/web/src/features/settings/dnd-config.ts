@@ -23,3 +23,6 @@ export const AUTO_SCROLL_MAX_STEP_PX = 12;
 
 /** Minimum interval, in milliseconds, between droppable re-measurements while auto-scrolling. */
 export const AUTO_SCROLL_REMEASURE_MS = 50;
+
+/** Height, in CSS pixels, of the drop slots shown before, between and after groups while a channel is dragged. */
+export const ROOT_SLOT_HEIGHT_PX = 16;

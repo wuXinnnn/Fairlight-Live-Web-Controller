@@ -131,6 +131,7 @@ function containerOfOver(over: Over): ListContainer | null {
     case 'groupzone':
       return { kind: 'group', groupId: data.groupId };
     case 'group':
+    case 'slot':
       return { kind: 'root' };
   }
 }
@@ -230,7 +231,12 @@ export function ViewDndContext({
     }
     const from = containerOf(currentView, currentSource);
     const to = containerOfOver(over);
-    if (to === null || sameContainer(from, to)) {
+    if (to === null) {
+      return;
+    }
+    // Inside one list the sortable strategy previews the move, except for root slots: they name
+    // a position no row covers, so the placeholder has to move there explicitly.
+    if (sameContainer(from, to) && readItemData(over)?.kind !== 'slot') {
       return;
     }
     const target = resolveDropTarget(currentView, currentSource, over.id, {
@@ -334,7 +340,13 @@ export function ViewDndContext({
     () =>
       drag === null
         ? IDLE_DRAG_PREVIEW
-        : { dragging: true, preview: drag.preview, removing: drag.removing },
+        : {
+            dragging: true,
+            sourceKind: drag.source.kind,
+            source: drag.preview?.source ?? drag.source,
+            preview: drag.preview,
+            removing: drag.removing,
+          },
     [drag],
   );
 

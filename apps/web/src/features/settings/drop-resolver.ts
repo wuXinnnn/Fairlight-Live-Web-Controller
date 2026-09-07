@@ -54,7 +54,8 @@ export function dragSourceFor(view: View, activeId: UniqueIdentifier): DragSourc
 /**
  * Turns the droppable the drag ended over into a `DropTarget`. Inside one list the dragged item
  * takes the slot of the row it is over (the preview dnd-kit shows while sorting); across lists
- * it lands before that row, or after it when `hint.after` is set. Group containers append.
+ * it lands before that row, or after it when `hint.after` is set. Group containers append, and
+ * root slots place the channel as an ungrouped row at the block boundary they mark.
  */
 export function resolveDropTarget(
   view: View,
@@ -73,6 +74,14 @@ export function resolveDropTarget(
       : { ...view, channels: view.channels.filter((_, index) => index !== removed) };
   const inBase = (index: number): number =>
     removed !== null && index > removed ? index - 1 : index;
+
+  if (over.kind === 'slot') {
+    // Slots already count the blocks of the view without the dragged channel.
+    if (source.kind === 'group' || over.position > nonEmptyBlocks(base).length) {
+      return null;
+    }
+    return { kind: 'root', position: over.position };
+  }
 
   if (over.kind === 'groupzone') {
     if (source.kind === 'group' || !view.groups.some((group) => group.id === over.groupId)) {

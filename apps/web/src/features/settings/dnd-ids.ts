@@ -5,7 +5,8 @@ export type DndId =
   | { kind: 'channel'; rowKey: string }
   | { kind: 'group'; groupId: string }
   | { kind: 'groupzone'; groupId: string }
-  | { kind: 'available'; channelId: string };
+  | { kind: 'available'; channelId: string }
+  | { kind: 'slot'; position: number };
 
 /**
  * Data attached to every draggable and droppable so collision detection and announcements can
@@ -15,7 +16,14 @@ export type DndItemData =
   | { kind: 'channel'; label: string; groupId?: string }
   | { kind: 'group'; label: string; groupId: string }
   | { kind: 'groupzone'; label: string; groupId: string; empty: boolean }
-  | { kind: 'available'; label: string; channelId: string; groupId?: string };
+  | { kind: 'available'; label: string; channelId: string; groupId?: string }
+  | {
+      kind: 'slot';
+      label: string;
+      position: number;
+      /** True when the dragged row already sits at this position. */
+      current: boolean;
+    };
 
 export type DndItemKind = DndItemData['kind'];
 
@@ -42,6 +50,14 @@ export function availableDndId(channelId: string): string {
   return `available:${channelId}`;
 }
 
+/**
+ * Droppable id of a root slot: a block boundary next to a group where a channel can be dropped
+ * as an ungrouped row. `position` counts the non-empty blocks before the boundary.
+ */
+export function rootSlotDndId(position: number): string {
+  return `slot:${position}`;
+}
+
 /** Splits an identifier on its first colon; anything unknown yields null. */
 export function parseDndId(id: UniqueIdentifier): DndId | null {
   const text = String(id);
@@ -63,12 +79,22 @@ export function parseDndId(id: UniqueIdentifier): DndId | null {
       return { kind: 'groupzone', groupId: rest };
     case 'available':
       return { kind: 'available', channelId: rest };
+    case 'slot': {
+      const position = Number(rest);
+      return Number.isInteger(position) && position >= 0 ? { kind: 'slot', position } : null;
+    }
     default:
       return null;
   }
 }
 
-const ITEM_KINDS: ReadonlySet<string> = new Set(['channel', 'group', 'groupzone', 'available']);
+const ITEM_KINDS: ReadonlySet<string> = new Set([
+  'channel',
+  'group',
+  'groupzone',
+  'available',
+  'slot',
+]);
 
 /** Reads the item data dnd-kit carries on an active or over entry, or on a droppable container. */
 export function readItemData(entry: { data?: { current?: unknown } } | null | undefined) {

@@ -6,6 +6,7 @@ import {
   groupZoneDndId,
   parseDndId,
   readItemData,
+  rootSlotDndId,
 } from './dnd-ids.js';
 
 describe('dnd ids', () => {
@@ -17,12 +18,16 @@ describe('dnd ids', () => {
     expect(parseDndId(groupDndId('g1'))).toEqual({ kind: 'group', groupId: 'g1' });
     expect(parseDndId(groupZoneDndId('g1'))).toEqual({ kind: 'groupzone', groupId: 'g1' });
     expect(parseDndId(availableDndId('aux/1'))).toEqual({ kind: 'available', channelId: 'aux/1' });
+    expect(parseDndId(rootSlotDndId(2))).toEqual({ kind: 'slot', position: 2 });
   });
 
   it('rejects identifiers it does not know', () => {
     expect(parseDndId('nonsense')).toBeNull();
     expect(parseDndId('other:thing')).toBeNull();
     expect(parseDndId('channel:')).toBeNull();
+    expect(parseDndId('slot:x')).toBeNull();
+    expect(parseDndId('slot:-1')).toBeNull();
+    expect(parseDndId('slot:1.5')).toBeNull();
     expect(parseDndId(42)).toBeNull();
   });
 

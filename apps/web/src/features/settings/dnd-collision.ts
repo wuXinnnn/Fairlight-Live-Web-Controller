@@ -11,14 +11,16 @@ import { readItemData, type DndItemData, type DndItemKind } from './dnd-ids.js';
 
 /**
  * Which droppables a dragged item may land on. Channels (from the list or the AVAILABLE list)
- * land on channel rows or group containers; groups land on ungrouped rows or other groups, so a
- * group can never enter another group.
+ * land on channel rows, group containers or the root slots next to groups; groups land on
+ * ungrouped rows or other groups, so a group can never enter another group.
  */
 export function isEligibleTarget(source: DndItemKind, candidate: DndItemData): boolean {
   switch (source) {
     case 'channel':
     case 'available':
-      return candidate.kind === 'channel' || candidate.kind === 'groupzone';
+      return (
+        candidate.kind === 'channel' || candidate.kind === 'groupzone' || candidate.kind === 'slot'
+      );
     case 'group':
       return (
         (candidate.kind === 'channel' && candidate.groupId === undefined) ||
@@ -45,18 +47,25 @@ function eligibleContainers(
   });
 }
 
-/** Non-empty group containers share their rectangle with their members, so only rows count. */
-function withoutPopulatedZones(containers: DroppableContainer[]): DroppableContainer[] {
+/**
+ * Keyboard stops: non-empty group containers share their rectangle with their members, so only
+ * rows count, and the slot the dragged row already occupies would be a move to nowhere.
+ */
+function keyboardStops(containers: DroppableContainer[]): DroppableContainer[] {
   return containers.filter((container) => {
     const data = readItemData(container);
-    return data?.kind !== 'groupzone' || data.empty;
+    if (data?.kind === 'groupzone') {
+      return data.empty;
+    }
+    return data?.kind !== 'slot' || !data.current;
   });
 }
 
 /**
- * Pointer and touch drags use what the pointer is inside (rows win over the group container
- * around them; the container alone means "append to this group"), so releasing outside the list
- * yields no target. Keyboard drags use the nearest centre among the eligible targets.
+ * Pointer and touch drags use what the pointer is inside (a root slot wins over the group header
+ * it overlays, rows win over the group container around them; the container alone means "append
+ * to this group"), so releasing outside the list yields no target. Keyboard drags use the nearest
+ * centre among the eligible targets.
  */
 export const viewCollisionDetection: CollisionDetection = (args) => {
   const source = readItemData(args.active)?.kind;
@@ -66,12 +75,16 @@ export const viewCollisionDetection: CollisionDetection = (args) => {
   const eligible = eligibleContainers(source, args.droppableContainers, args.active.id);
   if (args.pointerCoordinates !== null) {
     const within = pointerWithin({ ...args, droppableContainers: eligible });
-    const rows = within.filter(
-      (collision) => readItemData(collision.data?.droppableContainer)?.kind !== 'groupzone',
-    );
+    const kindOf = (collision: (typeof within)[number]) =>
+      readItemData(collision.data?.droppableContainer)?.kind;
+    const slots = within.filter((collision) => kindOf(collision) === 'slot');
+    if (slots.length > 0) {
+      return slots;
+    }
+    const rows = within.filter((collision) => kindOf(collision) !== 'groupzone');
     return rows.length > 0 ? rows : within;
   }
-  return closestCenter({ ...args, droppableContainers: withoutPopulatedZones(eligible) });
+  return closestCenter({ ...args, droppableContainers: keyboardStops(eligible) });
 };
 
 interface Candidate {
@@ -94,7 +107,7 @@ export const viewKeyboardCoordinates: KeyboardCoordinateGetter = (event, { activ
     return undefined;
   }
   event.preventDefault();
-  const candidates: Candidate[] = withoutPopulatedZones(
+  const candidates: Candidate[] = keyboardStops(
     eligibleContainers(source, droppableContainers.getEnabled()),
   )
     .filter((container) => container.id !== active)

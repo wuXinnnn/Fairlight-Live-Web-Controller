@@ -8,6 +8,8 @@
 
 export const STUB_ROW_HEIGHT = 40;
 export const STUB_ROW_WIDTH = 400;
+/** Root slots are short bands overlaying the top of the block below a boundary. */
+export const STUB_SLOT_HEIGHT = 16;
 const LIST_LEFT = 500;
 
 function rect(x: number, y: number, width: number, height: number): DOMRect {
@@ -44,6 +46,13 @@ function layoutRects(): Map<Element, DOMRect> {
         y += STUB_ROW_HEIGHT;
       }
       rects.set(block, rect(LIST_LEFT, start, STUB_ROW_WIDTH, y - start));
+    } else if (block.classList.contains('root-slot')) {
+      // The slot takes no space; its band overlays the top of whatever follows.
+      rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, 0));
+      const band = block.querySelector('.root-slot__band');
+      if (band !== null) {
+        rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_SLOT_HEIGHT));
+      }
     } else {
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
       y += STUB_ROW_HEIGHT;
