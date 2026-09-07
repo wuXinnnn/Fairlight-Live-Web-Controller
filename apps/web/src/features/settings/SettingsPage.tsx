@@ -1,5 +1,5 @@
 import { type ChannelPaletteKey, type View, type ViewChannelRef } from '@flwc/shared';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -22,6 +22,7 @@ import {
 import { AvailableChannelList } from './AvailableChannelList.js';
 import { ChannelOrderList } from './ChannelOrderList.js';
 import { pad } from './channel-labels.js';
+import { useFlipList } from './use-flip-list.js';
 import { ViewDndContext } from './ViewDndContext.js';
 import {
   addGroup,
@@ -104,6 +105,8 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const [newGroupName, setNewGroupName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const listRef = useRef<HTMLOListElement>(null);
+  const flip = useFlipList(listRef, activeDraft);
 
   const resolved = useMemo(
     () => (activeDraft === null ? [] : resolveViewChannels(activeDraft, availableChannels)),
@@ -390,6 +393,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                 channels={channels}
                 assignedChannelIds={assignedChannelIds}
                 onDrop={editDraft}
+                onBeforeDrop={flip.capture}
               >
                 <div className="view-editor__grid">
                   <section className="channel-picker" aria-labelledby="available-channel-heading">
@@ -469,6 +473,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
                     ) : (
                       <ChannelOrderList
+                        listRef={listRef}
                         view={activeDraft}
                         resolved={resolved}
                         duplicateNames={duplicateNames}
