@@ -43,7 +43,8 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 - **纯函数定位规则**(`apps/web/src/features/settings/view-order.ts`):`DropTarget` 的 `root.position` 按 `nonEmptyBlocks(view)`(单行 + 非空组块)计数,`group.position` 按 `memberIndices(view, groupId)` 计数。共用的 `placeReference(base, moved, target)` 只在块边界(某块的首个索引或数组末尾)或组内(成员之间或末尾;空组落在数组末尾,即 `viewBlocks` 显示空组的位置)插入,因此同组连续不变量自动成立。`moveChannelTo` 先把源从数组移除得到 `base` 再定位,进组写 `groupId`、出组 `delete` 该键,结果与原数组逐项结构相等(kind/name/channelId/groupId/color)时返回 null,统一覆盖原位放下、同组同槽位等情形;`insertChannelAt` 先按 `kind + name + channelId` 三字段全等拦截已存在引用;`moveGroupTo` 在非空块中找到组块、移出后按 `position` 插回,空组/未知组/越界/等于原下标返回 null,结果经既有 `flatten` 重建。新增导出 `nonEmptyBlocks`、`memberIndices` 供解析层复用;既有七个导出签名与语义未变,既有单测未删改。
 - **稳定 key**(`row-keys.ts`):`channelRowKeys(view)` 为每个引用生成 `kind:name:channelId#<出现序号>`,`groupRowKey(id)` 为 `group:<id>`;React key、`data-flip-key` 与 dnd-kit id 同用该值。
 - **dnd-kit 结构**:`ViewDndContext.tsx` 承载 `DndContext`(包住 `.view-editor__grid` 两列),`ChannelOrderList.tsx` 的根 `SortableContext` items 为非空块(`channel:<rowKey>` / `group:<id>`,`verticalListSortingStrategy`),`SortableGroupBlock.tsx` 对非空组同时 `useSortable(group:<id>)` 与 `useDroppable(groupzone:<id>)`(两个 id 分开是因为 `useSortable` 已用项 id 注册 droppable),内嵌成员 `SortableContext`;`EmptyGroupBlock` 只 `useDroppable`,不进根 items;`AvailableChannelList.tsx` 每个 label 用 `useDraggable(available:<channelId>)`,已勾选或保存中 `disabled`,把手按钮同时 `disabled`。每个 draggable/droppable 的 `data` 带 `{ kind, label, groupId?, empty? }`(`dnd-ids.ts`),碰撞与播报按 data 判断而不解析 id。`onDragOver` 不改草稿:组块的 `is-drop-target` 直接由 `useDndContext()` 的 `over` 推导。`onDragEnd` 在 `editDraft` 的 updater 内解析:`dragSourceFor` 把 active id 映射回当前草稿(过期 key 返回 null → 无操作),`resolveDropTarget`(`drop-resolver.ts`)把 `over` 解析为 `DropTarget`:同列表内被拖项占据 over 行在原列表中的下标(与 dnd-kit 排序预览一致,上移落前、下移落后);跨列表(含 available)在移除源后的视图中定位,松手点低于 over 行中线(`hint.after`,键盘路径恒为 false)则 +1;`groupzone` 追加到组尾;组头只接受根单行与其它非空组。available 落下前再用 `resolvedByChannelId` 拦一次。
-- **碰撞检测与传感器**(`dnd-collision.ts`、`dnd-config.ts`):先按 `isEligibleTarget` 过滤(通道/available 源 → 通道行或组容器;组源 → 根单行或其它组,永远不能进入别的组)。有指针坐标时用 `pointerWithin`,行优先于所在组容器,只命中容器(组头或空组占位)即视为追加,指针在列表外松手 → `over` 为空 → 不改草稿;键盘路径排除非空组容器后用 `closestCenter`。传感器:`PointerSensor(distance: 4)`、`TouchSensor(delay: 250, tolerance: 8)`、`KeyboardSensor(coordinateGetter: viewKeyboardCoordinates)` 三者同时启用;`viewKeyboardCoordinates` 把被拖项中心对齐方向上最近的可落目标中心(见第 8 节偏离说明),来自 AVAILABLE 的项在尚未进入列表时先跳到首/末目标。`saving` 为真时所有 `useSortable` / `useDraggable` `disabled` 且把手 `disabled`。`accessibility.announcements` 与 `screenReaderInstructions` 改为带通道名的英文文案。未使用 `DragOverlay`。
+- **拖动呈现、占位预览、拖出移除与边缘滚动**(本机反馈后的修订,见第 11 节):被拖项原位留作占位,跟随指针的是 `DragOverlay` 克隆(`DragOverlayContent.tsx`);跨列表拖动时 `ViewDndContext` 维护预览视图(`drag-preview.ts` 的 `previewFor` 用 `moveChannelTo` / `moveGroupTo` / `insertChannelAt` 生成,`use-drag-preview.ts` 提供给列表),`ChannelOrderList` 按预览视图渲染、AVAILABLE 来源用 `PlaceholderRow`(以拖动自身的 id 注册 sortable)占位;指针离开列表可见区域超过阈值时克隆变红并在松手时移除(`removalFor`);`ListAutoScroller` 自写列表边缘滚动并重测矩形,dnd-kit 自动滚动关闭。
+- **碰撞检测与传感器**(`dnd-collision.ts`、`dnd-config.ts`):先按 `isEligibleTarget` 过滤(通道/available 源 → 通道行或组容器;组源 → 根单行或其它组,永远不能进入别的组;被拖项自身的 droppable 始终可落,供 sortable 策略在占位上方时回落到自身)。有指针坐标时用 `pointerWithin`,行优先于所在组容器,只命中容器(组头或空组占位)即视为追加,指针在列表外松手 → `over` 为空 → 不改草稿(超过移除阈值则移除);键盘路径排除非空组容器后用 `closestCenter`。传感器:`PointerSensor(distance: 4)`、`TouchSensor(delay: 250, tolerance: 8)`、`KeyboardSensor(coordinateGetter: viewKeyboardCoordinates)` 三者同时启用;`viewKeyboardCoordinates` 把被拖项中心对齐方向上最近的可落目标中心(见第 8 节偏离说明),来自 AVAILABLE 的项在尚未进入列表时先跳到首/末目标。`saving` 为真时所有 `useSortable` / `useDraggable` `disabled` 且把手 `disabled`。`accessibility.announcements` 与 `screenReaderInstructions` 改为带通道名的英文文案。未使用 `DragOverlay`。
 - **FLIP hook**(`use-flip-list.ts`):`useFlipList(containerRef, dependency)` 在 `useLayoutEffect` 中读取容器内全部 `[data-flip-key]` 的 rect 与上次比对,位移 ≥ `FLIP_MIN_SHIFT_PX` 的元素先写反向 `translate`(`transition: none`,强制 reflow),`requestAnimationFrame` 后清 transform 并写 `FLIP_TRANSITION`,`transitionend` 或 `FLIP_CLEANUP_FALLBACK_MS` 兜底移除内联样式;成员行减去所属组块的位移,避免整组移动时双重平移;新出现的元素与首次测量不补间;`window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches` 为真不补间(jsdom 无 `matchMedia` 视为不减少)。hook 挂在 `SettingsPage` 的列表 ref 上,依赖为 `activeDraft`,所有草稿变更走同一套补间。与 dnd-kit 的配合:所有 `useSortable` 传 `animateLayoutChanges: () => false` 关闭其布局动画;`onDragEnd` 提交草稿前调用 `flip.capture()` 把拖动态(含让位 transform 与被拖行的松手位置)记为基线,于是让位行几乎零位移不动,被拖行从松手位置滑入新槽位。`skipNext()` 作为备选保留。
 - **脏检测与 `pendingAction`**:`view-dirty.ts` 的 `isViewDirty` 比较 `name`、`channels`(顺序与五个字段,缺键与 `undefined` 相等)、`groups`(顺序、id、name);`SettingsPage` 以 `useMemo` 求 `dirty`,并用 `dirtyRef` 在 effect 中同步最新值供守卫读取。`pendingAction: { navigate, route } | { select, view } | { delete } | { create, name }`:`RETURN TO MIXER`(经 App 的 `navigate('mixer')` → 守卫拒绝 → `navigate` 类)、点击其它 view(`select`;点击已选中项 no-op)、两段式删除的第二次点击(`delete`;干净时直接删)、`ADD`(`create`;干净时直接建)在脏态下只设置 `pendingAction` 并弹窗。`DISCARD`:先 `setPendingAction(null)`、`setDraft(null)`、`dirtyRef.current = false`,再分别 `navigate(route)` / `selectView(view)` / `performDelete(id)` / `performCreate(name)`;`KEEP EDITING`(按钮、Esc、背景 mousedown)关闭并把 `confirmDelete` 复位。三处提示:`SAVE VIEW` 的 `is-dirty`、`<span class="unsaved-badge">UNSAVED</span>`、列表当前项 `data-dirty="true"` + CSS 圆点 + `.visually-hidden` 的 `Unsaved changes`。`beforeunload` 仅在脏态挂在 `window` 上(`preventDefault` + `returnValue = true`),干净或卸载时移除。保存失败(`viewStore.error`)草稿不变,脏态保持。
 - **对话框**:`DiscardChangesDialog.tsx` 复用 `useModalDialog({ onClose: onKeepEditing })`,`role="dialog"`、`aria-modal`、`aria-labelledby` → `UNSAVED CHANGES`、`aria-describedby` → 正文(四种文案见组件内 `discardMessage`),按钮 `DISCARD`(utility)与 `KEEP EDITING`(primary,挂载后聚焦);样式复用 `.connection-backdrop` / `.connection-dialog*`,仅加 `.discard-dialog` 宽度与正文样式。**`use-modal-dialog.ts` 已移动**到 `apps/web/src/components/use-modal-dialog.ts`(`git mv`,内容未改),`ConnectionPanel.tsx` 的 import 已更新;CONNECTION 面板行为不变、不做脏检测。
@@ -61,6 +62,10 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 | `FLIP_MIN_SHIFT_PX` | 1 | `apps/web/src/features/settings/use-flip-list.ts` | 小于该位移不补间(落下后让位行的亚像素残差约 1.4px 会触发一次极短补间,可调到 2) |
 | `FLIP_TRANSITION` | `transform var(--motion-medium) ease-out` | 同上 | FLIP 过渡;`--motion-medium` = 200ms(`styles.css` `:root`),reduced-motion 下为 1ms |
 | `FLIP_CLEANUP_FALLBACK_MS` | 600 | 同上 | `transitionend` 未触发时清理内联样式的兜底 |
+| `REMOVE_DRAG_THRESHOLD_PX` | 64 | `apps/web/src/features/settings/dnd-config.ts` | 指针离开 CHANNEL ORDER 列表可见区域多远(CSS px)松手即移除 |
+| `AUTO_SCROLL_EDGE_PX` | 48 | 同上 | 列表可见区域上下边缘多宽(CSS px)进入自动滚动区 |
+| `AUTO_SCROLL_MAX_STEP_PX` | 12 | 同上 | 贴边时每帧最大滚动量(CSS px/帧,约 60 帧/秒) |
+| `AUTO_SCROLL_REMEASURE_MS` | 50 | 同上 | 自动滚动中重测各行矩形的最小间隔 |
 | 键盘方向判定阈值 | 0.5 | `apps/web/src/features/settings/dnd-collision.ts`(`viewKeyboardCoordinates`) | 目标中心需比被拖项中心至少高/低 0.5px 才算在该方向上 |
 | `STUB_ROW_HEIGHT` / `STUB_ROW_WIDTH` | 40 / 400 | `apps/web/tests/stub-layout.ts` | 仅测试用的 jsdom 布局 stub |
 
@@ -78,12 +83,19 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 4. 再拖一行到组内成员之间(把手压在成员行上半部分松开落其前、下半部分落其后),再拖到组头上松开。预期:前者落在指定位置,后者追加到组尾;悬停时组块有琥珀描边(`is-drop-target`)。
 5. 把组内某成员拖到组外的根行上松开。预期:脱组,`GROUP` 下拉回到 `NO GROUP`,`UNGROUP` 与箭头按钮仍可用。
 6. 按住组头把手把整组拖到列表顶部。预期:整组连同成员一起移动,不能落进另一个组(如有第二个组,拖过去时不应高亮)。
-7. 从左侧 AVAILABLE CHANNELS 拖一个未勾选通道的把手到右侧任意位置或组内松开。预期:插入到对应位置,左侧勾选框同步勾选,该条目把手变灰不可拖;已勾选条目的把手一开始就是灰的;拖到列表外松手无变化。
+7. 从左侧 AVAILABLE CHANNELS 拖一个未勾选通道的把手到右侧任意位置或组内松开。预期:拖动中右侧列表里出现一条虚线描边的占位行,随指针在行间/组内移动并标出落点,拖进组时组块琥珀高亮;左侧对应条目变暗且 AVAILABLE 列表不再滚动;松手后占位行原地变为正常行,左侧勾选框同步勾选,该条目把手变灰不可拖;拖回左栏松手则无变化(占位消失)。
+7b. 把右侧任意通道行的把手拖到列表外(例如拖到左栏上方)超过约 64px。预期:跟随指针的克隆变红并显示 `DROP TO REMOVE`,松手后该通道从 view 移除、左侧勾选框取消;拖回列表内克隆恢复正常。组头同样操作会移除整组及其成员。拖动过程中两个列表都不应出现横向滚动条。
 8. 点箭头按钮上移/下移某行、用 `GROUP` 下拉编组/脱组、点 `UNGROUP`。预期:目标行与因它位移的行都平滑过渡(约 200ms),无闪烁。
 9. 任一编辑后:`SAVE VIEW` 变琥珀描边、旁边出现 `UNSAVED`、左侧当前 view 右上角出现琥珀圆点。点页头 `MIXER`。预期:弹出 `UNSAVED CHANGES`,正文 `Return to the mixer without saving changes to "DnD Check"?`,焦点在 `KEEP EDITING`;点 `KEEP EDITING` 留在配置页且草稿不变。
 10. 浏览器后退。预期:弹出同一对话框,地址栏停留在 `/views`,页面仍是 VIEW CONFIGURATION;点 `DISCARD` 回到混音页,再进配置页时是已保存的版本。
 11. 分别验证:脏态点其它 view → 弹窗(`Switch to ...`);`DELETE VIEW` → `CONFIRM DELETE` → 弹窗(`Delete ...`);`NEW VIEW` 输入名字 `ADD` → 弹窗(`Create ...`);Esc 与点背景等同 `KEEP EDITING`;脏态刷新页面出现浏览器自带的离开提示;干净时以上操作直接执行。
 12. 若系统开启「减弱动态效果」,重复第 2、8 步。预期:无补间,直接到位。
+
+手机竖屏路径(通道较多时):
+
+1. view 内放 12 个以上通道,页面滚动到 AVAILABLE 底部与 CHANNEL ORDER 顶部同时可见。从 AVAILABLE 长按一条未勾选通道拖到 CHANNEL ORDER 可见区域的底边停住。预期:克隆始终在手指下方不跳开;AVAILABLE 列表与整页不滚动;CHANNEL ORDER 列表持续向下滚动(越贴边越快,最快约 720px/s),占位行随之出现在滚动到的位置;手指离开边缘区即停止;松手后通道插入在占位处。
+2. 在 CHANNEL ORDER 内长按一行拖到列表可见区域的顶边停住。预期:列表向上滚动,一次拖动即可把该行放到任意位置。
+3. 记录:`AUTO_SCROLL_EDGE_PX` / `AUTO_SCROLL_MAX_STEP_PX` 的手感(`dnd-config.ts`)。
 
 触屏路径(平板,仅需确认可用,手感调参属 6.4):
 
@@ -141,8 +153,7 @@ Phase 6.2 云端范围已全部完成:配置页引入 dnd-kit 拖放编排(通�
 - **键盘路径无法把通道追加到组尾**:键盘落下恒为「落在 over 行之前」(中心对齐时无法区分上下半),要把通道放到某组末尾可先落入组内再用 `Move <name> down` 箭头或 `GROUP` 下拉(下拉本就追加到组尾);指针路径按松手点相对 over 行中线区分前后,组头/空组则追加。
 - **FLIP 在拖放落下时采用 `capture()` 基线而不是跳过**:提示词允许「若两套补间叠加抖动则跳过一次测量」。实现选择在 `onDragEnd` 提交草稿前把拖动态 rect 记为基线并关闭 dnd-kit 的 `animateLayoutChanges`,让位行几乎零位移(不补间),被拖行从松手位置滑入新槽位,得到一个自然的落下动画;冒烟按 `style` 写入时序确认两套 transform 不同时作用。若真机观感有抖动,一行改动即可切换到 `skipNext()`。
 - **`pointerWithin` 而非 `closestCenter` 用于指针拖动**:指针在列表外松手时 `over` 为空,严格满足「`over` 为空不改草稿」;代价是列表底部空白区域不是投放目标(要落到末尾需压在最后一行的下半部分)。
-- **`DragOverlay` 未使用**:跨容器拖动时被拖行本身跟随指针,冒烟未见跳动。
-- **拖动中不做跨容器预览**:通道行悬停在某组上时组块只高亮,不预先让位(`onDragOver` 不改草稿),落下后由 FLIP 补间到位。
+- **`DragOverlay` 已启用、跨容器做占位预览**(本机反馈后的修订,见第 11 节):原实现让被拖行本身随指针位移,导致容器出现横向滚动条、左栏拖出时被裁切、手机上滚动补偿切换时跳开;现改为克隆跟随指针、原位占位,跨列表拖动用预览视图显示落点。`onDragOver` 仍不改草稿,只改预览视图。
 - **路由缓存的重同步策略**:提示词要求缓存首次从 `location.pathname` 初始化;实现额外在「无订阅者」时重读 URL,以便每个测试用例的 `replaceState('/')` 在首帧生效,生产语义不变。
 - **`views.integration.test.tsx` 的改写方式**:「重新点击已选中 view 以丢弃草稿」统一改为 `RETURN TO MIXER` → `DISCARD` → `CONFIGURE VIEWS`(配置页卸载重挂,草稿自然清空)。
 - **触屏传感器与指针传感器共存的已知行为**:同时启用 `PointerSensor` 与 `TouchSensor` 时,触屏设备上 `pointerdown` 先于 `touchstart`,dnd-kit 会由指针传感器(4px 距离)接管,`TouchSensor` 的 250ms 长按不会生效。本阶段按提示词要求三者同时启用、不改数值,是否改为「Mouse + Touch」或只留 Pointer 由 6.4 触屏审计决定。
@@ -182,4 +193,14 @@ PR #15 的 Cursor Bugbot 对 `18d5555` 给出两条 finding,处理如下:
 - **Medium:被拒绝的 `popstate` 一律 `history.forward()`,只能撤销「后退」**。成立:配置页 → 混音页 → 后退回配置页,再在脏态下**前进**,`forward()` 撤不回,地址栏停在 `/` 而页面仍是配置页,此时 `KEEP EDITING` 后刷新会直接离开。修复(`apps/web/src/lib/router.ts`):路由模块在每个 history 条目的 `state` 里写入 `{ routeIndex }`(首个订阅者注册时给当前条目补 0,`navigate` push 递增、replace 沿用),`popstate` 被拒绝时按 `history.go(当前序号 - 目标序号)` 沿来路撤销,后退、前进与多步跳转统一;没有序号的条目(非本应用写入)只能来自后退,保留 `history.forward()`。`router.test.ts` 新增前进/后退/两步跳转被拒的 `go` 参数断言与序号跟随放行跳转的用例;`settings-dirty.integration.test.tsx` 的后退用例改为带序号的条目并新增前进被拒的分支。
 - **Low:AVAILABLE CHANNELS 的把手在 `<label>` 内,单击把手会切换勾选框**。在预装 Chromium 上用 Playwright 实测(label 内 `<button>` 单击),勾选框**不会**切换,与 HTML 规范一致(label 的激活行为跳过交互式后代);未验证的浏览器无法排除,故把手 `onClick` 加 `preventDefault()` 作为防御,`settings-dnd.integration.test.tsx` 增加「单击把手不改勾选框、不改草稿」断言。
 
-修订后串行 lint / typecheck / test / build 全绿,提交见本节末尾的 `git log`,远端 CI 与 Bugbot 复查结果以 PR #15 为准。
+修订后串行 lint / typecheck / test / build 全绿,远端 CI 与 Bugbot 复查在 `178dfe1` 上均 success。
+
+用户本机验证(桌面)后提出三项,手机竖屏验证后又提出两项,处理如下(提交见本节末尾):
+
+- **桌面 1:横向拖动时两个列表容器出现横向滚动条**。原因是被拖行本身带 `translate3d` 位移,超出容器盒子形成可滚动溢出。改为 `DragOverlay`:跟随指针的是 portal 里的克隆(`DragOverlayContent.tsx`),被拖行原位留作占位(`.is-dragging` 虚线描边、低透明度);两个容器 `overflow: hidden auto` 兜底。冒烟中拖动时 `scrollWidth === clientWidth`。
+- **桌面 2:AVAILABLE 拖入右侧列表需要占位元素预示落点(进组时保持琥珀高亮)**,并按用户确认扩展到列表内跨组拖动。实现为预览视图:`drag-preview.ts` 的 `previewFor` 用既有纯函数把被拖项放进目标容器,`ViewDndContext` 在 `onDragOver` 检测容器变化时更新预览(同容器内交给 sortable 策略,避免物理重排与策略位移互相叠加),`ChannelOrderList` 按预览视图渲染,AVAILABLE 来源以 `PlaceholderRow`(用拖动自身的 id 注册 sortable,左栏对应条目改为不可拖的静态变体)占位;`onDragEnd` 在预览视图内按同列表语义结算。落点语义随之统一为「占位显示在哪里就落在哪里」:跨入另一列表后继续移动时,被拖项占据 `over` 行的槽位(与同列表一致),集成测试的两处预期相应调整。
+- **桌面 3:拖出 CHANNEL ORDER 容器超过阈值即移除**(用户确认通道行与组头都可移除)。`REMOVE_DRAG_THRESHOLD_PX = 64`;指针离开列表可见区域超过阈值时克隆加 `is-removing`(红色、`DROP TO REMOVE`),松手用 `removeChannel` / `removeGroupWithMembers`(新增纯函数,`removeGroup` 语义不变)写入草稿;键盘拖动无指针坐标,不触发。
+- **手机 1:从 AVAILABLE 拖到容器边缘会触发 AVAILABLE 滚动,进入列表后不跟手**。根因:dnd-kit 自动滚动只滚动 `over`(无 over 时为 active)节点的可滚动祖先,拖出时滚的是 AVAILABLE;进入列表后祖先切换、原位 transform 的滚动补偿被丢弃,行跳开。处理:`autoScroll={false}` 彻底停用 dnd-kit 自动滚动;`DragOverlay` 的位移不含滚动补偿,天然跟手;拖动期间 AVAILABLE 加 `is-drag-locked`(`overflow-y: hidden`)。
+- **手机 2:通道较多时拖到列表边缘不能滚动列表**。新增 `ListAutoScroller.tsx`:拖动期间自行监听 `pointermove` / `touchmove` 记录指针(dnd-kit 事件里的 `delta` 含滚动补偿,列表一滚动就会偏移,首版据此计算曾出现滚 66px 即停的现象),每帧按指针到列表**可见部分**(与视口相交,手机上列表底边常在视口外)上下边缘的距离比例滚动(`AUTO_SCROLL_EDGE_PX = 48`、`AUTO_SCROLL_MAX_STEP_PX = 12`),滚动后按 `AUTO_SCROLL_REMEASURE_MS = 50` 节流调用 `measureDroppableContainers` 重测各行矩形,保证落点判定跟上;只滚动 CHANNEL ORDER 列表,不滚动 AVAILABLE 与页面。
+
+验证:单测新增 `drag-preview.test.ts`、`list-auto-scroll.test.ts`、`ListAutoScroller.test.ts` 与 `view-order.test.ts` 的移除用例;集成测试补占位行/组块高亮/AVAILABLE 锁定断言;jsdom 下 `DragOverlay` 需布局 stub 提供 overlay 容器(dnd-kit 测量的是其唯一子元素)的矩形并 stub `Element.prototype.animate`。Playwright 冒烟(桌面 1400×900):克隆位移与指针一致(误差 <1px)、拖动中两容器无横向溢出、源行为占位、单行拖到组成员上时占位已在组内且组块高亮、AVAILABLE 拖入时列表出现占位行且 AVAILABLE 锁定、通道行与组头拖到左栏后克隆变红并在松手后移除、保存体正确;手机竖屏(390×844,`isMobile` + `hasTouch`,12 行):从 AVAILABLE 拖到列表可见底边停住 0.9s 列表滚动 495px 而 AVAILABLE 与页面不动、克隆位移与指针一致、占位行随滚动出现、离开边缘即停、松手插入在滚动后的位置;列表内行拖到可见顶边列表回滚 505px;两容器 `scrollWidth === clientWidth`。真实触屏手感仍由用户本机确认。
