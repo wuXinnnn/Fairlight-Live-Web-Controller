@@ -1,13 +1,16 @@
 import type { ChannelState, View } from '@flwc/shared';
 import { describe, expect, it } from 'vitest';
+import { defaultDropAnimation } from '@dnd-kit/core';
 import {
   containerOf,
   containerOfTarget,
+  dropAnimationFor,
   eventPoint,
   pointerOutside,
   previewFor,
   removalFor,
   sameContainer,
+  settlePreview,
 } from './drag-preview.js';
 
 function ref(name: string, groupId?: string) {
@@ -153,5 +156,53 @@ describe('pointer helpers', () => {
     expect(pointerOutside({ x: 300, y: 35 }, box, 64)).toBe(true);
     expect(pointerOutside({ x: 300, y: 565 }, box, 64)).toBe(true);
     expect(pointerOutside({ x: 300, y: 564 }, box, 64)).toBe(false);
+  });
+});
+
+describe('settlePreview', () => {
+  // A previewed at the start of g1: g1(A, B, C) | D
+  const preview = previewFor(
+    view,
+    { kind: 'channel', index: 0 },
+    { kind: 'group', groupId: 'g1', position: 0 },
+  ) as NonNullable<ReturnType<typeof previewFor>>;
+  const activeId = 'channel:channel:A:channel/A#0';
+  const hint = { after: false };
+
+  it('keeps the preview when the item is released over itself', () => {
+    expect(settlePreview(preview, activeId, activeId, hint)).toBe(preview.view);
+  });
+
+  it('keeps the previewed slot when the item is released over the group it already sits in', () => {
+    expect(settlePreview(preview, activeId, 'groupzone:g1', hint)).toBe(preview.view);
+    expect(names(preview.view)).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('settles against the row the item is released over inside its list', () => {
+    const settled = settlePreview(preview, activeId, 'channel:channel:C:channel/C#0', hint);
+    expect(names(settled)).toEqual(['B', 'C', 'A', 'D']);
+    expect(settled.channels[2]?.groupId).toBe('g1');
+  });
+
+  it('appends when released over another group container', () => {
+    // g3 is the empty group at the end of the view, so A becomes its first member after D.
+    const settled = settlePreview(preview, activeId, 'groupzone:g3', hint);
+    expect(names(settled)).toEqual(['B', 'C', 'D', 'A']);
+    expect(settled.channels[3]?.groupId).toBe('g3');
+  });
+
+  it('keeps the preview when the drop target cannot be resolved', () => {
+    expect(settlePreview(preview, activeId, 'available:aux/1', hint)).toBe(preview.view);
+    expect(settlePreview(preview, activeId, 'group:g1', hint)).toBe(preview.view);
+  });
+});
+
+describe('dropAnimationFor', () => {
+  it('animates rows and groups but not AVAILABLE channels or removals', () => {
+    expect(dropAnimationFor({ kind: 'channel', index: 0 }, false)).toBe(defaultDropAnimation);
+    expect(dropAnimationFor({ kind: 'group', groupId: 'g1' }, false)).toBe(defaultDropAnimation);
+    expect(dropAnimationFor({ kind: 'available', channelId: 'aux/1' }, false)).toBeNull();
+    expect(dropAnimationFor({ kind: 'channel', index: 0 }, true)).toBeNull();
+    expect(dropAnimationFor({ kind: 'group', groupId: 'g1' }, true)).toBeNull();
   });
 });

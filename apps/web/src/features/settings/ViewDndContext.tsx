@@ -4,13 +4,13 @@ import {
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
-  defaultDropAnimation,
   useSensor,
   useSensors,
   type Active,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type DropAnimation,
   type Over,
 } from '@dnd-kit/core';
 import type { ChannelState, View } from '@flwc/shared';
@@ -36,16 +36,18 @@ import {
 import { readItemData } from './dnd-ids.js';
 import {
   containerOf,
+  dropAnimationFor,
   eventPoint,
   pointerOutside,
   previewFor,
   removalFor,
   sameContainer,
+  settlePreview,
   type DragPreview,
   type ListContainer,
   type Point,
 } from './drag-preview.js';
-import { DragOverlayContent } from './DragOverlayContent.js';
+import { DragOverlayContent, type DragOverlayVariant } from './DragOverlayContent.js';
 import { dragSourceFor, resolveDropTarget, type DragSource } from './drop-resolver.js';
 import { ListAutoScroller } from './ListAutoScroller.js';
 import {
@@ -75,6 +77,8 @@ interface DragState {
   /** The draft when the drag started; drops are resolved against it. */
   startView: View;
   source: DragSource;
+  /** Name shown on the drag overlay. */
+  label: string;
   preview: DragPreview | null;
   removing: boolean;
 }
@@ -165,6 +169,9 @@ export function ViewDndContext({
     dragRef.current = next;
     setDrag(next);
   }, []);
+  // Kept outside the drag state so it is still set in the render where dnd-kit clones the
+  // overlay for its drop animation, after the drag state has already been cleared.
+  const [dropAnimation, setDropAnimation] = useState<DropAnimation | null>(null);
 
   // The pointer is tracked directly: dnd-kit's deltas include scroll compensation, so they no
   // longer describe where the finger is once the list auto-scrolls.
@@ -196,7 +203,12 @@ export function ViewDndContext({
       return;
     }
     const source = dragSourceFor(view, active.id);
-    update(source === null ? null : { startView: view, source, preview: null, removing: false });
+    if (source === null) {
+      update(null);
+      return;
+    }
+    setDropAnimation(dropAnimationFor(source, false));
+    update({ startView: view, source, label: labelOf(active), preview: null, removing: false });
   };
 
   const handleDragOver = ({ active, over }: DragOverEvent) => {
@@ -264,21 +276,7 @@ export function ViewDndContext({
     }
     const hint = { after: droppedAfter(active, over) };
     if (state.preview !== null) {
-      const { view: previewView, source } = state.preview;
-      if (over.id === active.id) {
-        return previewView;
-      }
-      const target = resolveDropTarget(previewView, source, over.id, hint);
-      if (target === null) {
-        return previewView;
-      }
-      const settled =
-        source.kind === 'channel'
-          ? moveChannelTo(previewView, source.index, target)
-          : source.kind === 'group' && target.kind === 'root'
-            ? moveGroupTo(previewView, source.groupId, target.position)
-            : null;
-      return settled ?? previewView;
+      return settlePreview(state.preview, active.id, over.id, hint);
     }
     if (over.id === active.id) {
       return null;
@@ -307,10 +305,12 @@ export function ViewDndContext({
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     const state = dragRef.current;
     pointerRef.current = null;
-    update(null);
     if (state === null) {
+      update(null);
       return;
     }
+    setDropAnimation(dropAnimationFor(state.source, state.removing));
+    update(null);
     const finalView = finalViewFor(state, active, over);
     if (finalView === null) {
       return;
@@ -321,7 +321,12 @@ export function ViewDndContext({
   };
 
   const handleDragCancel = () => {
+    const state = dragRef.current;
     pointerRef.current = null;
+    if (state !== null) {
+      // The overlay flies back to the row it was picked up from.
+      setDropAnimation(dropAnimationFor(state.source, false));
+    }
     update(null);
   };
 
@@ -338,15 +343,23 @@ export function ViewDndContext({
       return null;
     }
     const current = drag.preview?.view ?? drag.startView;
+    const variant: DragOverlayVariant =
+      drag.source.kind === 'group'
+        ? 'group'
+        : drag.source.kind === 'available'
+          ? 'available'
+          : 'row';
+    const label = variant === 'group' ? drag.label.replace(/^group /, '') : drag.label;
     switch (drag.source.kind) {
       case 'channel': {
         const reference = drag.startView.channels[drag.source.index];
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
         return {
+          variant,
+          label,
           accent: channelColor(kind, reference?.color),
           detail: KIND_LABELS[kind],
-          dropAnimation: defaultDropAnimation,
         };
       }
       case 'group': {
@@ -355,15 +368,16 @@ export function ViewDndContext({
         const lead = members[0];
         const live = lead?.channelId === undefined ? undefined : channels[lead.channelId];
         return {
+          variant,
+          label,
           accent: channelColor(live?.kind ?? lead?.kind ?? 'channel', lead?.color),
           detail: `${pad(members.length)} CH`,
-          dropAnimation: defaultDropAnimation,
         };
       }
       case 'available': {
         const channel = channels[drag.source.channelId];
         const kind = channel?.kind ?? 'channel';
-        return { accent: channelTypeColor(kind), detail: KIND_LABELS[kind], dropAnimation: null };
+        return { variant, label, accent: channelTypeColor(kind), detail: KIND_LABELS[kind] };
       }
     }
   }, [channels, drag]);
@@ -383,10 +397,8 @@ export function ViewDndContext({
       <DragPreviewContext.Provider value={previewState}>
         {children}
         <ListAutoScroller listRef={listRef} pointerRef={pointerRef} />
-        <DragOverlay dropAnimation={drag?.removing ? null : (overlay?.dropAnimation ?? null)}>
-          {overlay === null ? null : (
-            <DragOverlayContent accent={overlay.accent} detail={overlay.detail} />
-          )}
+        <DragOverlay dropAnimation={dropAnimation}>
+          {overlay === null ? null : <DragOverlayContent {...overlay} />}
         </DragOverlay>
       </DragPreviewContext.Provider>
     </DndContext>

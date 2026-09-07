@@ -1,7 +1,9 @@
+import { defaultDropAnimation, type DropAnimation, type UniqueIdentifier } from '@dnd-kit/core';
 import { getEventCoordinates } from '@dnd-kit/utilities';
 import type { ChannelState, View } from '@flwc/shared';
 import { referenceForChannel } from '../mixer/view-resolver.js';
-import type { DragSource } from './drop-resolver.js';
+import { parseDndId } from './dnd-ids.js';
+import { resolveDropTarget, type DragSource, type DropHint } from './drop-resolver.js';
 import {
   insertChannelAt,
   moveChannelTo,
@@ -112,6 +114,50 @@ export function previewFor(
       };
     }
   }
+}
+
+/**
+ * The view to commit when a drag that produced a preview ends over `overId`. The placeholder
+ * already shows where the item lands, so releasing it over itself or over the container it sits
+ * in keeps the preview as it is; releasing it over a row settles the move against that row, the
+ * same way a drag inside one list does.
+ */
+export function settlePreview(
+  preview: DragPreview,
+  activeId: UniqueIdentifier,
+  overId: UniqueIdentifier,
+  hint: DropHint,
+): View {
+  const { view, source } = preview;
+  if (overId === activeId) {
+    return view;
+  }
+  const over = parseDndId(overId);
+  if (over?.kind === 'groupzone') {
+    const container = containerOf(view, source);
+    if (container?.kind === 'group' && container.groupId === over.groupId) {
+      return view;
+    }
+  }
+  const target = resolveDropTarget(view, source, overId, hint);
+  if (target === null) {
+    return view;
+  }
+  const settled =
+    source.kind === 'channel'
+      ? moveChannelTo(view, source.index, target)
+      : source.kind === 'group' && target.kind === 'root'
+        ? moveGroupTo(view, source.groupId, target.position)
+        : null;
+  return settled ?? view;
+}
+
+/**
+ * How the drag overlay leaves the screen: rows and groups fly to the row they became, an
+ * AVAILABLE channel turns into its placeholder in place, and a removed item just disappears.
+ */
+export function dropAnimationFor(source: DragSource, removing: boolean): DropAnimation | null {
+  return removing || source.kind === 'available' ? null : defaultDropAnimation;
 }
 
 /** The view without the dragged item; null for AVAILABLE channels, which are not in it yet. */

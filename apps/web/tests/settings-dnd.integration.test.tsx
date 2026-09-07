@@ -116,7 +116,13 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(
       page.container.querySelector('[data-view-group-id="g1"] [data-ordered-channel-name="BASS"]'),
     ).toHaveClass('is-dragging');
-    await press('Space');
+    expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS');
+    // Dropping keeps the overlay clone mounted for its drop animation until the animation
+    // settles (synchronously here, jsdom has no computed transform), so it must still carry
+    // the row's label after the drag state is gone.
+    fireEvent.keyDown(document, { code: 'Space', key: ' ' });
+    expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS');
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS', 'FX']));
     expect(screen.getByRole('combobox', { name: 'BASS group' })).toHaveValue('g1');
     expect(page.container.querySelector('[data-view-group-id="g1"]')).not.toHaveClass(
