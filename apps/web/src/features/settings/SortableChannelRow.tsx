@@ -74,6 +74,7 @@ export function SortableChannelRow({
       ref={setNodeRef}
       className={`channel-order-row ${missing ? 'is-missing' : ''} ${isDragging ? 'is-dragging' : ''}`}
       data-flip-key={rowKey}
+      data-flip-skip={isDragging ? '' : undefined}
       data-ordered-channel-id={channel?.id ?? reference.channelId}
       data-ordered-channel-name={reference.name}
       style={style}

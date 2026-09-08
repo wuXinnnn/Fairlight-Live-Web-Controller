@@ -1,6 +1,6 @@
 import { SortableContext } from '@dnd-kit/sortable';
 import type { ChannelState, View } from '@flwc/shared';
-import { Fragment, useMemo, type Ref } from 'react';
+import { Fragment, useImperativeHandle, useMemo, type RefObject } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { availableDndId, channelDndId, groupDndId } from './dnd-ids.js';
@@ -14,6 +14,7 @@ import {
   type GroupBlockHandlers,
 } from './SortableGroupBlock.js';
 import { useDragPreview } from './use-drag-preview.js';
+import { useFlipList, type FlipListHandle } from './use-flip-list.js';
 import { nonEmptyBlocks, rootSlotPositionsFor, viewBlocks, type ViewBlock } from './view-order.js';
 
 interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
@@ -23,7 +24,10 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
   duplicateNames: Set<string>;
   channelInventoryLoaded: boolean;
   saving: boolean;
-  listRef?: Ref<HTMLOListElement>;
+  /** The list element; the FLIP list measures inside it and the page scrolls it. */
+  listRef: RefObject<HTMLOListElement | null>;
+  /** Receives the FLIP handle so the page can re-baseline or skip a tween. */
+  flipRef?: RefObject<FlipListHandle | null>;
 }
 
 /**
@@ -50,9 +54,12 @@ function slotLabel(blocks: ViewBlock[], position: number): string {
   return `the gap between ${name(above)} and ${name(below)}`;
 }
 export function ChannelOrderList(props: ChannelOrderListProps) {
-  const { channels, duplicateNames, channelInventoryLoaded, saving, listRef } = props;
+  const { channels, duplicateNames, channelInventoryLoaded, saving, listRef, flipRef } = props;
   const { dragging, sourceKind, source, preview } = useDragPreview();
   const view = preview?.view ?? props.view;
+  // The tween runs on the view that is actually rendered, so a drag preview animates too.
+  const flip = useFlipList(listRef, view);
+  useImperativeHandle(flipRef, () => flip, [flip]);
   const placeholderIndex =
     preview?.placeholderChannelId === undefined || preview.source.kind !== 'channel'
       ? -1

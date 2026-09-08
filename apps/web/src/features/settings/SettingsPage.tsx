@@ -24,7 +24,7 @@ import { AvailableChannelList } from './AvailableChannelList.js';
 import { ChannelOrderList } from './ChannelOrderList.js';
 import { pad } from './channel-labels.js';
 import { DiscardChangesDialog, type PendingAction } from './DiscardChangesDialog.js';
-import { useFlipList } from './use-flip-list.js';
+import type { FlipListHandle } from './use-flip-list.js';
 import { isViewDirty } from './view-dirty.js';
 import { ViewDndContext } from './ViewDndContext.js';
 import {
@@ -109,7 +109,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
-  const flip = useFlipList(listRef, activeDraft);
+  // The FLIP list lives inside ChannelOrderList, which is the component that renders the drag
+  // preview; the page only reaches in to re-baseline before a drop and to skip a view switch.
+  const flipRef = useRef<FlipListHandle | null>(null);
   const dirty = useMemo(
     () =>
       draft !== null &&
@@ -176,6 +178,8 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const channelsEmptyDetail = emptyStateDetail(channelsEmptyState);
 
   const selectView = (view: View) => {
+    // Two views can share row keys; without this the shared rows would fly to their new places.
+    flipRef.current?.skipNext();
     setSelectedId(view.id);
     setDraft(copyView(view));
     setConfirmDelete(false);
@@ -500,7 +504,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                 assignedChannelIds={assignedChannelIds}
                 listRef={listRef}
                 onDrop={editDraft}
-                onBeforeDrop={flip.capture}
+                onBeforeDrop={() => flipRef.current?.capture()}
               >
                 <div className="view-editor__grid">
                   <section className="channel-picker" aria-labelledby="available-channel-heading">
@@ -581,6 +585,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                     ) : (
                       <ChannelOrderList
                         listRef={listRef}
+                        flipRef={flipRef}
                         view={activeDraft}
                         channels={availableChannels}
                         duplicateNames={duplicateNames}

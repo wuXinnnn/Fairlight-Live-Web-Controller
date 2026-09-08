@@ -15,6 +15,7 @@ import {
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
 } from '../src/features/settings/dnd-config.js';
+import { recordFlipWrites } from './flip-writes.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -84,6 +85,62 @@ describe('settings drag and drop (keyboard sensor)', () => {
 
   afterEach(() => {
     restoreLayout();
+  });
+
+  it('tweens the rows a drag preview displaces and skips a view switch', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      channels: [BASS, MAIN, FX],
+      groups: [],
+    });
+    const flip = recordFlipWrites(page.list());
+    const bassKey = 'channel:BASS:channel/1#0';
+    const mainKey = 'main:MAIN:main/1#0';
+
+    await pickUp(page.handle('BASS'));
+    await press('ArrowDown');
+    // The draft has not changed, only the preview; MAIN still moved up and must tween there.
+    expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
+    expect(flip.tweened()).toContain(mainKey);
+    expect(flip.writes()).toContainEqual({
+      key: mainKey,
+      transform: `translate(0px, ${STUB_ROW_HEIGHT}px)`,
+    });
+    // The dragged row follows the pointer instead of trailing it, so it is never tweened.
+    expect(flip.tweened()).not.toContain(bassKey);
+
+    // Escape drops the preview, which moves MAIN back and tweens it again.
+    await press('Escape');
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']));
+    expect(flip.writes()).toContainEqual({
+      key: mainKey,
+      transform: `translate(0px, -${STUB_ROW_HEIGHT}px)`,
+    });
+    flip.stop();
+  });
+
+  it('does not tween rows that two views happen to share', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      { id: 'a', name: 'Alpha', channels: [BASS, MAIN], groups: [] },
+      { id: 'b', name: 'Beta', channels: [MAIN, BASS], groups: [] },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Alpha' });
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    const orderedNames = () =>
+      [...container.querySelectorAll('.view-channel-list .channel-order-row')].map(
+        (element) => (element as HTMLElement).dataset.orderedChannelName,
+      );
+    await waitFor(() => expect(orderedNames()).toEqual(['BASS', 'MAIN']));
+
+    const flip = recordFlipWrites(container.querySelector('.view-channel-list') as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
+    await waitFor(() => expect(orderedNames()).toEqual(['MAIN', 'BASS']));
+    expect(flip.tweened()).toEqual([]);
+    flip.stop();
   });
 
   it('reorders ungrouped rows and saves the new order', async () => {

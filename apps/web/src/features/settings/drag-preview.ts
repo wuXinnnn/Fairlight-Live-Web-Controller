@@ -2,6 +2,7 @@ import { defaultDropAnimation, type DropAnimation, type UniqueIdentifier } from 
 import { getEventCoordinates } from '@dnd-kit/utilities';
 import type { ChannelState, View } from '@flwc/shared';
 import { referenceForChannel } from '../mixer/view-resolver.js';
+import { DROP_ANIMATION_MS } from './dnd-config.js';
 import { parseDndId } from './dnd-ids.js';
 import { resolveDropTarget, type DragSource, type DropHint } from './drop-resolver.js';
 import {
@@ -182,7 +183,9 @@ export function dropHintFor(
  * AVAILABLE channel turns into its placeholder in place, and a removed item just disappears.
  */
 export function dropAnimationFor(source: DragSource, removing: boolean): DropAnimation | null {
-  return removing || source.kind === 'available' ? null : defaultDropAnimation;
+  return removing || source.kind === 'available'
+    ? null
+    : { ...defaultDropAnimation, duration: DROP_ANIMATION_MS };
 }
 
 /** The view without the dragged item; null for AVAILABLE channels, which are not in it yet. */

@@ -132,6 +132,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
       }}
       className={`view-group ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
       data-flip-key={groupRowKey(group.id)}
+      data-flip-skip={isDragging ? '' : undefined}
       data-view-group-id={group.id}
       style={style}
     >
