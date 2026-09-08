@@ -9,6 +9,7 @@ import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
 import { pickUp, press } from './keyboard-drag.js';
 import { stubListLayout } from './stub-layout.js';
+import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -182,9 +183,137 @@ describe('settings group collapse', () => {
     // The group stays open after the drop.
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
     expect(await page.savedChannels()).toEqual([
-      { ...FX, groupId: 'g1' },
+      // FX joined the group, so its automatic colour becomes "follow the group".
+      { ...FX, groupId: 'g1', color: 'group' },
       { ...BASS, groupId: 'g1' },
       { ...MAIN, groupId: 'g1' },
     ]);
+  });
+});
+
+describe('settings group colours', () => {
+  let restoreLayout: () => void;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetMixerStore();
+    resetMeterStore();
+    resetViewStore();
+    restoreLayout = stubListLayout();
+    return () => restoreLayout();
+  });
+
+  const accentOf = (row: Element | null) =>
+    (row as HTMLElement | null)?.style.getPropertyValue('--channel-row-accent');
+  const rowOf = (container: HTMLElement, name: string) =>
+    container.querySelector(`.view-channel-list [data-ordered-channel-name="${name}"]`);
+
+  it('switches a row between automatic, group and a colour of its own', async () => {
+    const page = await openSettings([
+      { id: 'v1', name: 'Stage', channels: [BASS, MAIN], groups: [RHYTHM] },
+    ]);
+    // Outside a group there is nothing to follow, so GROUP is not offered.
+    expect(screen.queryByRole('button', { name: 'BASS use group color' })).toBeNull();
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.green);
+
+    // Joining a group turns the automatic colour into GROUP.
+    fireEvent.change(screen.getByRole('combobox', { name: 'BASS group' }), {
+      target: { value: 'g1' },
+    });
+    const groupButton = screen.getByRole('button', { name: 'BASS use group color' });
+    expect(groupButton).toHaveClass('is-selected');
+    expect(screen.getByRole('button', { name: 'BASS use default color' })).not.toHaveClass(
+      'is-selected',
+    );
+    // The group has no colour of its own yet, so it follows its first present member: an input.
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.green);
+
+    // Colouring the group repaints the row that follows it.
+    fireEvent.click(screen.getByRole('button', { name: 'Group Rhythm color Matrix Purple' }));
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.purple);
+
+    // Picking a colour by hand overrides the group.
+    fireEvent.click(screen.getByRole('button', { name: 'BASS color Mix Minus Lime' }));
+    expect(groupButton).not.toHaveClass('is-selected');
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.lime);
+
+    // And that choice survives leaving the group, where GROUP disappears again.
+    fireEvent.change(screen.getByRole('combobox', { name: 'BASS group' }), {
+      target: { value: '' },
+    });
+    expect(screen.queryByRole('button', { name: 'BASS use group color' })).toBeNull();
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.lime);
+
+    // Joining the group moved BASS to the end of its run; leaving it left it there.
+    expect(await page.savedChannels()).toEqual([MAIN, { ...BASS, color: 'lime' }]);
+  });
+
+  it('drops a row back to automatic when it is dragged out of its group', async () => {
+    const page = await openSettings([
+      {
+        id: 'v1',
+        name: 'Stage',
+        channels: [{ ...BASS, groupId: 'g1', color: 'group' }, MAIN],
+        groups: [{ ...RHYTHM, color: 'teal' }],
+      },
+    ]);
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.teal);
+    expect(screen.getByRole('button', { name: 'BASS use group color' })).toHaveClass('is-selected');
+
+    await pickUp(page.handle('BASS'));
+    await press('ArrowDown');
+    await press('Space');
+    await waitFor(() => expect(page.memberNames('g1')).toEqual([]));
+    expect(screen.queryByRole('button', { name: 'BASS use group color' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'BASS use default color' })).toHaveClass(
+      'is-selected',
+    );
+    expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.green);
+    // A keyboard drag into another list lands before the row it reaches.
+    expect(await page.savedChannels()).toEqual([BASS, MAIN]);
+  });
+
+  it('clears a group colour back to its first present member', async () => {
+    const page = await openSettings([
+      {
+        id: 'v1',
+        name: 'Stage',
+        channels: [{ ...MAIN, groupId: 'g1', color: 'group' }],
+        groups: [{ ...RHYTHM, color: 'lime' }],
+      },
+    ]);
+    expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.lime);
+    fireEvent.click(screen.getByRole('button', { name: 'Group Rhythm use automatic color' }));
+    expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.red);
+    expect(await page.savedChannels()).toEqual([{ ...MAIN, groupId: 'g1', color: 'group' }]);
+    expect(page.viewsClient.calls.at(-1)?.body?.groups).toEqual([{ id: 'g1', name: 'Rhythm' }]);
+  });
+
+  it('paints the mixer group section with the same colour', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'v1',
+        name: 'Stage',
+        channels: [
+          { ...MAIN, groupId: 'g1', color: 'group' },
+          { ...BASS, groupId: 'g1', color: 'group' },
+        ],
+        groups: [{ ...RHYTHM, color: 'purple' }],
+      },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'v1' },
+    });
+
+    const section = container.querySelector<HTMLElement>('[data-view-group-id="g1"]');
+    expect(section?.style.getPropertyValue('--channel-accent')).toBe(CHANNEL_PALETTE.purple);
+    const strips = [...container.querySelectorAll<HTMLElement>('article.channel-strip')];
+    expect(strips).toHaveLength(2);
+    for (const strip of strips) {
+      expect(strip.style.getPropertyValue('--channel-accent')).toBe(CHANNEL_PALETTE.purple);
+    }
   });
 });

@@ -181,7 +181,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
 
     await press('Space');
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['BASS']));
-    expect(await page.savedChannels()).toEqual([{ ...BASS, groupId: 'g1' }]);
+    expect(await page.savedChannels()).toEqual([{ ...BASS, groupId: 'g1', color: 'group' }]);
   });
 
   it('reorders ungrouped rows and saves the new order', async () => {
@@ -240,7 +240,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     );
     expect(await page.savedChannels()).toEqual([
       { ...MAIN, groupId: 'g1' },
-      { ...BASS, groupId: 'g1' },
+      { ...BASS, groupId: 'g1', color: 'group' },
       { ...FX, groupId: 'g1' },
     ]);
 
@@ -437,7 +437,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(await page.savedChannels()).toEqual([
       FX,
       BASS,
-      { ...SUB, groupId: 'g1' },
+      { ...SUB, groupId: 'g1', color: 'group' },
       { ...MAIN, groupId: 'g1' },
     ]);
   });
@@ -547,7 +547,7 @@ describe('settings drag and drop (mouse sensor)', () => {
     expect(await page.savedChannels()).toEqual([
       { ...MAIN, groupId: 'g1' },
       { ...FX, groupId: 'g1' },
-      { ...SUB, groupId: 'g1' },
+      { ...SUB, groupId: 'g1', color: 'group' },
       BASS,
     ]);
   });

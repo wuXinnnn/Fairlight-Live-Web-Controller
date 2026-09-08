@@ -123,6 +123,54 @@ describe('config and connection schemas', () => {
     ).toThrow();
   });
 
+  it('accepts group colours and only lets a grouped channel follow one', () => {
+    const view = {
+      id: 'v1',
+      name: 'FOH',
+      channels: [
+        { kind: 'channel', name: 'BASS', groupId: 'g1', color: 'group' },
+        { kind: 'main', name: 'Main', color: 'purple' },
+        { kind: 'aux', name: 'FX' },
+      ],
+      groups: [{ id: 'g1', name: 'Rhythm', color: 'teal' }],
+    };
+    const parsed = viewSchema.parse(view);
+    expect(parsed.groups[0]?.color).toBe('teal');
+    expect(parsed.channels[0]?.color).toBe('group');
+    expect(parsed.channels[2]?.color).toBeUndefined();
+
+    // A group without a colour is still valid; it takes one from its first present member.
+    expect(() =>
+      viewSchema.parse({ ...view, groups: [{ id: 'g1', name: 'Rhythm' }] }),
+    ).not.toThrow();
+    // Palette keys are still an enum on both sides.
+    expect(() =>
+      viewSchema.parse({ ...view, groups: [{ id: 'g1', name: 'Rhythm', color: 'group' }] }),
+    ).toThrow();
+    expect(() =>
+      viewSchema.parse({
+        ...view,
+        channels: [{ kind: 'channel', name: 'BASS', groupId: 'g1', color: 'mauve' }],
+      }),
+    ).toThrow();
+
+    // "group" without a group has nothing to follow.
+    expect(() =>
+      viewSchema.parse({
+        ...view,
+        channels: [{ kind: 'channel', name: 'BASS', color: 'group' }],
+      }),
+    ).toThrow(/Channel color .+ requires a group/);
+    // The write body runs the same refinement.
+    expect(() =>
+      viewWriteBodySchema.parse({
+        name: 'FOH',
+        channels: [{ kind: 'channel', name: 'BASS', color: 'group' }],
+        groups: [],
+      }),
+    ).toThrow(/Channel color .+ requires a group/);
+  });
+
   it('rejects dangling group references and duplicate group ids', () => {
     expect(() =>
       viewWriteBodySchema.parse({

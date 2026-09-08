@@ -15,7 +15,7 @@ import {
   type KeyboardCoordinateGetter,
   type Over,
 } from '@dnd-kit/core';
-import type { ChannelState, View } from '@flwc/shared';
+import type { ChannelKind, ChannelState, View } from '@flwc/shared';
 import {
   useCallback,
   useEffect,
@@ -25,7 +25,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { channelColor, channelTypeColor } from '../mixer/channel-colors.js';
+import { channelAccent, channelTypeColor, groupAccent } from '../mixer/channel-colors.js';
 import { referenceForChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, pad } from './channel-labels.js';
 import { viewCollisionDetection, viewKeyboardCoordinates } from './dnd-collision.js';
@@ -439,6 +439,19 @@ export function ViewDndContext({
       return null;
     }
     const current = drag.preview?.view ?? drag.startView;
+    // Same rule as the list: a group without a colour takes its first present member's type.
+    const leadKindOf = (groupId: string | undefined): ChannelKind | undefined => {
+      if (groupId === undefined) {
+        return undefined;
+      }
+      for (const reference of current.channels) {
+        const live = reference.channelId === undefined ? undefined : channels[reference.channelId];
+        if (reference.groupId === groupId && live !== undefined) {
+          return live.kind;
+        }
+      }
+      return undefined;
+    };
     const variant: DragOverlayVariant =
       drag.source.kind === 'group'
         ? 'group'
@@ -451,22 +464,24 @@ export function ViewDndContext({
         const reference = drag.startView.channels[drag.source.index];
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
+        const group = current.groups.find((candidate) => candidate.id === reference?.groupId);
         return {
           variant,
           label,
-          accent: channelColor(kind, reference?.color),
+          accent: channelAccent(kind, reference?.color, group, leadKindOf(group?.id)),
           detail: KIND_LABELS[kind],
         };
       }
       case 'group': {
         const groupId = drag.source.groupId;
         const members = current.channels.filter((reference) => reference.groupId === groupId);
-        const lead = members[0];
-        const live = lead?.channelId === undefined ? undefined : channels[lead.channelId];
         return {
           variant,
           label,
-          accent: channelColor(live?.kind ?? lead?.kind ?? 'channel', lead?.color),
+          accent: groupAccent(
+            current.groups.find((candidate) => candidate.id === groupId),
+            leadKindOf(groupId),
+          ),
           detail: `${pad(members.length)} CH`,
         };
       }

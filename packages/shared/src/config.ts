@@ -9,6 +9,13 @@ export const channelPaletteKeySchema = z.enum(CHANNEL_PALETTE_KEYS);
 export type ChannelPaletteKey = z.infer<typeof channelPaletteKeySchema>;
 
 /**
+ * Colour of a channel in a view: one of the palette keys, or `'group'` to follow the colour of
+ * the group the channel belongs to. `'group'` therefore only makes sense inside a group.
+ */
+export const viewChannelColorSchema = z.union([channelPaletteKeySchema, z.literal('group')]);
+export type ViewChannelColor = z.infer<typeof viewChannelColorSchema>;
+
+/**
  * A view references a mixer channel by its kind and user-facing name. Fairlight Live does not
  * expose a stable channel id: inserting or reordering strips renumbers the Ember identifiers,
  * so the logical `channelId` (for example `channel/3`) only survives as a tie-breaker when two
@@ -19,7 +26,7 @@ const viewChannelRefObjectSchema = z.object({
   name: z.string().trim().min(1),
   channelId: z.string().min(1).optional(),
   groupId: z.string().min(1).optional(),
-  color: channelPaletteKeySchema.optional(),
+  color: viewChannelColorSchema.optional(),
 });
 
 function kindFromChannelId(channelId: string): ChannelKind {
@@ -62,6 +69,8 @@ export type ViewChannelRef = z.infer<typeof viewChannelRefObjectSchema>;
 export const viewGroupSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1),
+  /** Overrides the colour the group would take from its first present member. */
+  color: channelPaletteKeySchema.optional(),
 });
 export type ViewGroup = z.infer<typeof viewGroupSchema>;
 
@@ -78,7 +87,10 @@ interface ViewGroupIntegrity {
   groups: ViewGroup[];
 }
 
-/** Ensures group ids are unique and every channel `groupId` points at an existing group. */
+/**
+ * Ensures group ids are unique, every channel `groupId` points at an existing group, and no
+ * channel asks to follow a group colour without belonging to a group.
+ */
 export function checkViewGroups(view: ViewGroupIntegrity, ctx: z.RefinementCtx): void {
   const groupIds = new Set<string>();
   view.groups.forEach((group, index) => {
@@ -97,6 +109,13 @@ export function checkViewGroups(view: ViewGroupIntegrity, ctx: z.RefinementCtx):
         code: 'custom',
         path: ['channels', index, 'groupId'],
         message: `Unknown group id "${channel.groupId}"`,
+      });
+    }
+    if (channel.color === 'group' && channel.groupId === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channels', index, 'color'],
+        message: 'Channel color "group" requires a group',
       });
     }
   });

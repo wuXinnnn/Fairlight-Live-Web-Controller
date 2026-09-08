@@ -1504,6 +1504,15 @@ html.fader-cap-dragging * {
     grid-column: 4 / 7;
     justify-content: flex-start;
   }
+
+  .channel-order .view-group__header {
+    grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto;
+  }
+
+  .channel-order .view-group__header .palette-control {
+    grid-column: 1 / 8;
+    justify-content: flex-start;
+  }
 }
 
 .settings-notice {
@@ -2156,7 +2165,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2567,6 +2576,10 @@ html.fader-cap-dragging * {
   box-shadow: 0 0 0.35rem color-mix(in srgb, var(--swatch) 35%, transparent);
 }
 
+.view-group__header .palette-control button {
+  min-height: 1.4rem;
+}
+
 .palette-control button.is-selected > span {
   box-shadow:
     0 0 0 1px #0d0f13,
@@ -2704,6 +2717,11 @@ html.fader-cap-dragging * {
 
   .view-group__header .utility-button {
     grid-column: 6 / 7;
+  }
+
+  .view-group__header .palette-control {
+    grid-column: 1 / 7;
+    justify-content: flex-start;
   }
 
   .group-toolbar {

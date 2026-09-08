@@ -1,11 +1,16 @@
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { View, ViewGroup } from '@flwc/shared';
+import {
+  CHANNEL_PALETTE_KEYS,
+  type ChannelPaletteKey,
+  type View,
+  type ViewGroup,
+} from '@flwc/shared';
 import type { CSSProperties, ReactNode } from 'react';
-import { channelColor, channelTypeColor } from '../mixer/channel-colors.js';
-import type { ResolvedViewChannel } from '../mixer/view-resolver.js';
-import { pad } from './channel-labels.js';
+import { CHANNEL_PALETTE, groupAccent } from '../mixer/channel-colors.js';
+import { leadChannelKind, type ResolvedViewChannel } from '../mixer/view-resolver.js';
+import { PALETTE_LABELS, pad } from './channel-labels.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
@@ -19,6 +24,7 @@ export interface GroupBlockHandlers {
   onRenameGroup(groupId: string, name: string): void;
   onRemoveGroup(groupId: string): void;
   onToggleCollapse(groupId: string): void;
+  onSetGroupColor(groupId: string, color?: ChannelPaletteKey): void;
 }
 
 interface GroupBlockProps extends GroupBlockHandlers {
@@ -49,13 +55,6 @@ function useIsDropTarget(groupId: string): boolean {
   );
 }
 
-function groupAccent(entries: ResolvedViewChannel[]): string {
-  const lead = entries.find((entry) => entry.channel !== undefined) ?? entries[0];
-  return lead === undefined
-    ? channelTypeColor('channel')
-    : channelColor(lead.channel?.kind ?? lead.reference.kind, lead.reference.color);
-}
-
 /** Chevron for the collapse button: pointing down while open, right while collapsed. */
 function Chevron({ collapsed }: { collapsed: boolean }) {
   return (
@@ -84,6 +83,7 @@ function GroupHeader({
   onRenameGroup,
   onRemoveGroup,
   onToggleCollapse,
+  onSetGroupColor,
 }: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'> & {
   handle: ReactNode;
   /** Id of the member list the collapse button controls; undefined for an empty group. */
@@ -134,6 +134,32 @@ function GroupHeader({
       >
         UNGROUP
       </button>
+      <div className="palette-control" aria-label={`Group ${group.name} color`}>
+        <button
+          type="button"
+          className={group.color === undefined ? 'is-selected' : ''}
+          aria-label={`Group ${group.name} use automatic color`}
+          title="First member's type"
+          onClick={() => onSetGroupColor(group.id, undefined)}
+          disabled={saving}
+        >
+          AUTO
+        </button>
+        {CHANNEL_PALETTE_KEYS.map((color) => (
+          <button
+            type="button"
+            key={color}
+            className={group.color === color ? 'is-selected' : ''}
+            aria-label={`Group ${group.name} color ${PALETTE_LABELS[color]}`}
+            title={PALETTE_LABELS[color]}
+            style={{ '--swatch': CHANNEL_PALETTE[color] } as CSSProperties}
+            onClick={() => onSetGroupColor(group.id, color)}
+            disabled={saving}
+          >
+            <span aria-hidden="true" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -141,6 +167,7 @@ function GroupHeader({
 /** A group with members: a sortable block in the root list and a drop container for channels. */
 export function SortableGroupBlock(props: GroupBlockProps) {
   const { group, entries, rowKeys, itemIds, saving, collapsed, renderRow } = props;
+  const leadKind = leadChannelKind(entries);
   const membersId = `view-group-${group.id}-members`;
   const {
     attributes,
@@ -170,7 +197,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
   });
   const isDropTarget = useIsDropTarget(group.id);
   const style = {
-    '--channel-row-accent': groupAccent(entries),
+    '--channel-row-accent': groupAccent(group, leadKind),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;
@@ -233,7 +260,7 @@ export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowK
       className={`view-group ${isDropTarget ? 'is-drop-target' : ''}`}
       data-flip-key={groupRowKey(group.id)}
       data-view-group-id={group.id}
-      style={{ '--channel-row-accent': channelTypeColor('channel') } as CSSProperties}
+      style={{ '--channel-row-accent': groupAccent(group, undefined) } as CSSProperties}
     >
       <GroupHeader
         {...props}

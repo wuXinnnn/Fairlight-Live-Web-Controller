@@ -94,6 +94,47 @@ describe('view routes', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/views' })).json()).toEqual([]);
   });
 
+  it('persists group colours and channels that follow them', async () => {
+    const { app, configPath } = await setup();
+    const payload = {
+      name: 'FOH',
+      channels: [
+        { kind: 'channel', name: 'BASS', channelId: 'channel/3', groupId: 'g1', color: 'group' },
+        { kind: 'main', name: 'Main', color: 'purple' },
+      ],
+      groups: [{ id: 'g1', name: 'Rhythm', color: 'teal' }],
+    };
+    const created = await app.inject({ method: 'POST', url: '/api/v1/views', payload });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      channels: [{ color: 'group', groupId: 'g1' }, { color: 'purple' }],
+      groups: [{ id: 'g1', name: 'Rhythm', color: 'teal' }],
+    });
+
+    const listed = (await app.inject({ method: 'GET', url: '/api/v1/views' })).json();
+    expect(listed[0].groups[0].color).toBe('teal');
+    expect(listed[0].channels[0].color).toBe('group');
+    const persisted = JSON.parse(await readFile(configPath, 'utf8'));
+    expect(persisted.views[0].groups[0].color).toBe('teal');
+    expect(persisted.version).toBe(1);
+
+    // A channel can only follow a group colour while it belongs to a group.
+    const orphan = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/views/${created.json().id}`,
+      payload: {
+        name: 'FOH',
+        channels: [{ kind: 'channel', name: 'BASS', color: 'group' }],
+        groups: [],
+      },
+    });
+    expect(orphan.statusCode).toBe(400);
+    expect(orphan.json()).toMatchObject({ error: { code: 'VALIDATION' } });
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/views' })).json()[0].channels,
+    ).toHaveLength(2);
+  });
+
   it('rejects invalid payloads without changing persisted views', async () => {
     const { app } = await setup();
     for (const payload of [

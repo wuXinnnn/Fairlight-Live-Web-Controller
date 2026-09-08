@@ -1,4 +1,4 @@
-import { type ChannelPaletteKey, type View, type ViewChannelRef } from '@flwc/shared';
+import { type View, type ViewChannelColor, type ViewChannelRef } from '@flwc/shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,6 +34,7 @@ import {
   moveGroup,
   removeGroup,
   renameGroup,
+  setGroupColor,
   type MoveDirection,
 } from './view-order.js';
 
@@ -51,7 +52,7 @@ function copyView(view: View): View {
   };
 }
 
-function withColor(reference: ViewChannelRef, color?: ChannelPaletteKey): ViewChannelRef {
+function withColor(reference: ViewChannelRef, color?: ViewChannelColor): ViewChannelRef {
   const next: ViewChannelRef = { kind: reference.kind, name: reference.name };
   if (reference.channelId !== undefined) {
     next.channelId = reference.channelId;
@@ -377,7 +378,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     editDraft((source) => assignGroup(source, index, groupId));
   };
 
-  const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
+  const setChannelColor = (index: number, color?: ViewChannelColor) => {
     editDraft((source) => ({
       ...source,
       channels: source.channels.map((reference, candidate) =>
@@ -638,6 +639,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                         editDraft((source) => removeGroup(source, groupId));
                       }}
                       onToggleCollapse={toggleCollapse}
+                      onSetGroupColor={(groupId, color) =>
+                        editDraft((source) => setGroupColor(source, groupId, color))
+                      }
                     />
                   </section>
                 </div>

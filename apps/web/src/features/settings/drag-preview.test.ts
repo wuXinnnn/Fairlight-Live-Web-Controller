@@ -120,6 +120,7 @@ describe('previewFor', () => {
       name: 'FX',
       channelId: 'aux/1',
       groupId: 'g3',
+      color: 'group',
     });
     expect(preview?.source).toEqual({ kind: 'channel', index: 4 });
     expect(preview?.placeholderChannelId).toBe('aux/1');

@@ -13,7 +13,7 @@ export function sameChannelReference(a: ViewChannelRef, b: ViewChannelRef): bool
 
 /**
  * Reports whether the draft differs from the saved view: name, channel references (order and
- * every field), and groups (order, id, name) are compared structurally.
+ * every field), and groups (order, id, name and colour) are compared structurally.
  */
 export function isViewDirty(saved: View, draft: View): boolean {
   if (saved.name !== draft.name) {
@@ -35,6 +35,11 @@ export function isViewDirty(saved: View, draft: View): boolean {
   }
   return saved.groups.some((group, index) => {
     const other = draft.groups[index];
-    return other === undefined || group.id !== other.id || group.name !== other.name;
+    return (
+      other === undefined ||
+      group.id !== other.id ||
+      group.name !== other.name ||
+      group.color !== other.color
+    );
   });
 }

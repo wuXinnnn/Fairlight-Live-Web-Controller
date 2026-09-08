@@ -106,14 +106,14 @@ interface ViewChannelRef {
   name: string;               // 通道 name 参数(与节点 description 相同),trim 后精确、大小写敏感匹配
   channelId?: string;         // 勾选时的逻辑 id,只用于同名通道之间的优先裁决
   groupId?: string;           // 所属分组,必须存在于 view.groups
-  color?: ChannelPaletteKey;  // 覆盖类型默认色
+  color?: ChannelPaletteKey | 'group';  // 覆盖类型默认色;'group' 表示跟随所属组的颜色
 }
 
 interface View {
   id: string;
   name: string;
   channels: ViewChannelRef[]; // 渲染顺序;同组成员在数组中连续
-  groups: { id: string; name: string }[];
+  groups: { id: string; name: string; color?: ChannelPaletteKey }[];
 }
 ```
 
@@ -138,7 +138,11 @@ interface View {
 - 混音页按同样的连续段渲染:每个组段复用 `All Channels` 的类型分区样式(竖排标题 = 组名,计数 = 在场通道数),无组引用平铺;含分组的 View 也支持 `TYPE ROWS` 横排布局
 - 分组折叠:组头把手之后有一个折叠按钮(自绘 chevron,`aria-expanded`、`aria-controls` 指向成员列表,可访问名 `Collapse group <name>` / `Expand group <name>`),空分组不显示。折叠是**编辑器的 UI 状态**,不进 View 模型、不持久化,切换 view、`UNGROUP` 与 `DISCARD` 都会清掉;折叠时成员整体不渲染(而不是隐藏,隐藏的行仍会注册零矩形的 droppable),组头保留全部控件,`<nn> CH` 就是成员数提示,组块加 `is-collapsed`。折叠的组仍是投放容器:`groupzone` 的 `data` 带 `collapsed`,`keyboardStops` 把「空的或折叠的」组当作停靠点(展开的组与成员共用矩形,只有成员算停靠点);占位行一旦预览进某个折叠组,该组立即展开并退出折叠集合,拖动结束后保持展开。展开与预览在同一批提交,占位行不会被渲染进还关着的组
 - 键盘拖放的收敛:一次方向键只产生一次移动。每次预览后行会重排,dnd-kit 会带着上一次方向键定下的落点重新做碰撞检测,那些额外的碰撞只是几何在安顿,不是新的意图,所以 `syncPreview` 按「键盘步数」忽略它们;松手时同理,只有当最后报告的 droppable 与预览所在的列表相同(只能微调位置)才用它结算,否则直接提交预览——否则折叠组一展开,盖在组头上的根级落槽就会立刻把行拽回根列表
-- 服务端只校验组 id 唯一、`groupId` 必须指向已存在的组,不强制连续
+- 分组与通道条的颜色(解析集中在 `features/mixer/channel-colors.ts`,配置页与混音页共用):
+  - `groupAccent(group, leadKind)`:组有 `color` 就取该色,否则取**首个在场成员的类型色**(刻意忽略成员自己的覆盖,否则跟随组色的成员会与组互相引用),没有在场成员时按输入通道色
+  - `channelAccent(kind, color, group, leadKind)`:`color` 为 `'group'` 时跟随 `groupAccent`,自定义色直接取,没有颜色则取类型色;`'group'` 却没有组(草稿编辑中的一瞬)按类型色兜底
+  - 通道行的调色板为 `AUTO` /(仅在组内)`GROUP` / 6 个色块,组头另有 `GROUP COLOR`(`AUTO` + 6 色)。进出组时颜色自动转换(`view-order.ts` 的 `colorForMembership`,由 `assignGroup`、`moveChannelTo`、`insertChannelAt`、`removeGroup` 共同调用):进入某个组时 `AUTO` → `'group'`,离开组时 `'group'` → `AUTO`,自定义色两个方向都保持,组内重排不变。因此已保存的旧 view 里组内没有颜色的引用会在**跨组或出组移动一次后**升级为 `'group'`,不做批量迁移
+- 服务端只校验组 id 唯一、`groupId` 必须指向已存在的组、`color` 为 `'group'` 的引用必须有 `groupId`,不强制连续
 
 ## 持久化
 
@@ -153,10 +157,11 @@ interface View {
       "id": "uuid",
       "name": "FOH",
       "channels": [
-        { "kind": "channel", "name": "BASS", "channelId": "channel/3", "groupId": "g1", "color": "purple" },
+        { "kind": "channel", "name": "BASS", "channelId": "channel/3", "groupId": "g1", "color": "group" },
+        { "kind": "channel", "name": "GTR", "channelId": "channel/4", "groupId": "g1", "color": "purple" },
         { "kind": "main", "name": "Main", "channelId": "main/1" }
       ],
-      "groups": [{ "id": "g1", "name": "Rhythm" }]
+      "groups": [{ "id": "g1", "name": "Rhythm", "color": "teal" }]
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { SortableContext } from '@dnd-kit/sortable';
-import type { ChannelState, View } from '@flwc/shared';
+import type { ChannelKind, ChannelState, View } from '@flwc/shared';
 import { Fragment, useImperativeHandle, useMemo, type RefObject } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { previewSortingStrategy } from './dnd-collision.js';
@@ -77,6 +77,20 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       ? -1
       : preview.source.index;
   const resolved = useMemo(() => resolveViewChannels(view, channels), [view, channels]);
+  // A group without a colour of its own takes the type colour of its first present member, and
+  // every row set to follow the group needs the same answer. Work it out once for the whole view.
+  const groupLeadKinds = useMemo(() => {
+    const kinds = new Map<string, ChannelKind>();
+    for (const entry of resolved) {
+      const groupId = entry.reference.groupId;
+      if (groupId !== undefined && entry.channel !== undefined && !kinds.has(groupId)) {
+        kinds.set(groupId, entry.channel.kind);
+      }
+    }
+    return kinds;
+  }, [resolved]);
+  const groupOf = (groupId: string | undefined) =>
+    groupId === undefined ? undefined : view.groups.find((group) => group.id === groupId);
   const rowKeys = channelRowKeys(view);
   const rowDndId = (index: number): string =>
     index === placeholderIndex && preview?.placeholderChannelId !== undefined
@@ -103,12 +117,15 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         />
       );
     }
+    const group = groupOf(entry.reference.groupId);
     return (
       <SortableChannelRow
         key={rowKey}
         entry={entry}
         view={view}
         rowKey={rowKey}
+        group={group}
+        groupLeadKind={group === undefined ? undefined : groupLeadKinds.get(group.id)}
         duplicateNames={duplicateNames}
         channelInventoryLoaded={channelInventoryLoaded}
         saving={saving}
@@ -207,6 +224,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             onRenameGroup: props.onRenameGroup,
             onRemoveGroup: props.onRemoveGroup,
             onToggleCollapse: props.onToggleCollapse,
+            onSetGroupColor: props.onSetGroupColor,
           };
           return entries.length === 0 ? (
             <EmptyGroupBlock key={block.group.id} {...shared} collapsed={false} />

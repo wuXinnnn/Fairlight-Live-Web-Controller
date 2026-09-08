@@ -1,4 +1,4 @@
-import { CHANNEL_KINDS, type ChannelKind } from '@flwc/shared';
+import { CHANNEL_KINDS, type ChannelKind, type ViewGroup } from '@flwc/shared';
 import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -7,7 +7,7 @@ import type { ControlClient } from '../../lib/socket.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import { viewStore } from '../../store/view-store.js';
 import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
-import { channelColor, channelTypeColor } from './channel-colors.js';
+import { channelAccent, channelTypeColor, groupAccent } from './channel-colors.js';
 import { ChannelStrip } from './ChannelStrip.js';
 import { ControlLock } from './ControlLock.js';
 import { EmptyConsole } from './EmptyConsole.js';
@@ -18,6 +18,7 @@ import { useChannelPresence, type PresenceChannel } from './use-channel-presence
 import { useControlLockPreference } from './use-control-lock-preference.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
 import {
+  leadChannelKind,
   resolveViewChannels,
   segmentViewChannels,
   type ResolvedViewChannel,
@@ -43,12 +44,7 @@ interface MixerPageProps {
 }
 
 function segmentAccent(segment: ViewSegment): string {
-  const present = segment.entries.find((entry) => entry.channel !== undefined);
-  const lead = present ?? segment.entries[0];
-  if (lead === undefined) {
-    return channelTypeColor('channel');
-  }
-  return channelColor(lead.channel?.kind ?? lead.reference.kind, lead.reference.color);
+  return groupAccent(segment.group, leadChannelKind(segment.entries));
 }
 
 export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: MixerPageProps) {
@@ -104,6 +100,9 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     entry: ResolvedViewChannel,
     position: number,
     extraClass?: string,
+    // The group a strip belongs to, so a colour of `'group'` resolves the same as in the editor.
+    group?: ViewGroup,
+    groupLeadKind?: ChannelKind,
   ): ReactNode => {
     const { reference, channel, index } = entry;
     let item: PresenceChannel | undefined;
@@ -133,6 +132,8 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           reference={reference}
           index={position}
           className={extraClass}
+          group={group}
+          groupLeadKind={groupLeadKind}
         />
       );
     }
@@ -146,7 +147,12 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         style={
           {
             '--strip-index': position,
-            '--channel-accent': channelColor(item.channel.kind, reference.color),
+            '--channel-accent': channelAccent(
+              item.channel.kind,
+              reference.color,
+              group,
+              groupLeadKind,
+            ),
           } as CSSProperties
         }
       />
@@ -176,6 +182,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     }
     const headingId = `view-group-${group.id}-${first.index}`;
     const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
+    const leadKind = leadChannelKind(entries);
     return (
       <section
         className="mixer-section"
@@ -189,10 +196,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
             <h2 id={headingId}>{group.name}</h2>
             <span>{presentCount.toString().padStart(2, '0')}</span>
           </header>
-          {renderViewStrip(first, offset)}
+          {renderViewStrip(first, offset, undefined, group, leadKind)}
         </div>
         <div className="channel-bay">
-          {entries.slice(1).map((entry, position) => renderViewStrip(entry, offset + position + 1))}
+          {entries
+            .slice(1)
+            .map((entry, position) =>
+              renderViewStrip(entry, offset + position + 1, undefined, group, leadKind),
+            )}
         </div>
       </section>
     );

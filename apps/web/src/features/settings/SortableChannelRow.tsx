@@ -1,8 +1,14 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { CHANNEL_PALETTE_KEYS, type ChannelPaletteKey, type View } from '@flwc/shared';
+import {
+  CHANNEL_PALETTE_KEYS,
+  type ChannelKind,
+  type View,
+  type ViewChannelColor,
+  type ViewGroup,
+} from '@flwc/shared';
 import type { CSSProperties } from 'react';
-import { CHANNEL_PALETTE, channelColor } from '../mixer/channel-colors.js';
+import { CHANNEL_PALETTE, channelAccent, groupAccent } from '../mixer/channel-colors.js';
 import { channelNameKey, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, PALETTE_LABELS, pad } from './channel-labels.js';
 import { channelDndId, type DndItemData } from './dnd-ids.js';
@@ -13,7 +19,7 @@ import { moveChannel, type MoveDirection } from './view-order.js';
 export interface ChannelRowHandlers {
   onMoveChannel(index: number, direction: MoveDirection): void;
   onAssignGroup(index: number, groupId: string | undefined): void;
-  onSetColor(index: number, color?: ChannelPaletteKey): void;
+  onSetColor(index: number, color?: ViewChannelColor): void;
 }
 
 interface SortableChannelRowProps extends ChannelRowHandlers {
@@ -23,6 +29,10 @@ interface SortableChannelRowProps extends ChannelRowHandlers {
   duplicateNames: Set<string>;
   channelInventoryLoaded: boolean;
   saving: boolean;
+  /** The group this row belongs to, when it has one; its colour is what GROUP follows. */
+  group?: ViewGroup;
+  /** Kind of the group's first present member, which is what a group without a colour takes. */
+  groupLeadKind?: ChannelKind;
 }
 
 /** One channel reference of the view: sortable inside its list, with the row's own controls. */
@@ -33,6 +43,8 @@ export function SortableChannelRow({
   duplicateNames,
   channelInventoryLoaded,
   saving,
+  group,
+  groupLeadKind,
   onMoveChannel,
   onAssignGroup,
   onSetColor,
@@ -65,7 +77,7 @@ export function SortableChannelRow({
     transition: null,
   });
   const style = {
-    '--channel-row-accent': channelColor(kind, reference.color),
+    '--channel-row-accent': channelAccent(kind, reference.color, group, groupLeadKind),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;
@@ -126,6 +138,18 @@ export function SortableChannelRow({
         >
           AUTO
         </button>
+        {group !== undefined && (
+          <button
+            type="button"
+            className={reference.color === 'group' ? 'is-selected' : ''}
+            aria-label={`${reference.name} use group color`}
+            title={`Group ${group.name}`}
+            style={{ '--swatch': groupAccent(group, groupLeadKind) } as CSSProperties}
+            onClick={() => onSetColor(index, 'group')}
+          >
+            <span aria-hidden="true" />
+          </button>
+        )}
         {CHANNEL_PALETTE_KEYS.map((color) => (
           <button
             type="button"
