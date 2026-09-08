@@ -2156,7 +2156,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2288,6 +2288,44 @@ html.fader-cap-dragging * {
 }
 
 .drag-handle.is-placeholder {
+  visibility: hidden;
+}
+
+/* Folds a group shut. Editor state only: it is never saved with the view. */
+.group-collapse {
+  display: grid;
+  width: 1.4rem;
+  min-height: 1.4rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #7c828d;
+  cursor: pointer;
+  transition: color var(--motion-fast) ease;
+}
+
+.group-collapse svg {
+  display: block;
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.group-collapse:hover:not(:disabled) {
+  color: var(--amber-pale);
+}
+
+.group-collapse:focus-visible {
+  border-color: var(--amber);
+  outline: 0;
+}
+
+.group-collapse:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.group-collapse.is-placeholder {
   visibility: hidden;
 }
 
@@ -2656,16 +2694,16 @@ html.fader-cap-dragging * {
   }
 
   .view-group__header {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto;
   }
 
   .view-group__header .order-buttons {
-    grid-column: 4 / 5;
+    grid-column: 5 / 6;
     justify-self: start;
   }
 
   .view-group__header .utility-button {
-    grid-column: 5 / 6;
+    grid-column: 6 / 7;
   }
 
   .group-toolbar {

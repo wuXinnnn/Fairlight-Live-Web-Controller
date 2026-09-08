@@ -11,12 +11,14 @@ import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { groupRowKey } from './row-keys.js';
+import { useDragPreview } from './use-drag-preview.js';
 import { moveGroup, type MoveDirection } from './view-order.js';
 
 export interface GroupBlockHandlers {
   onMoveGroup(groupId: string, direction: MoveDirection): void;
   onRenameGroup(groupId: string, name: string): void;
   onRemoveGroup(groupId: string): void;
+  onToggleCollapse(groupId: string): void;
 }
 
 interface GroupBlockProps extends GroupBlockHandlers {
@@ -29,6 +31,8 @@ interface GroupBlockProps extends GroupBlockHandlers {
   view: View;
   groupNumber: number;
   saving: boolean;
+  /** Editor state, not part of the view: a collapsed group hides its members. */
+  collapsed: boolean;
   renderRow(entry: ResolvedViewChannel, rowKey: string): ReactNode;
 }
 
@@ -52,21 +56,60 @@ function groupAccent(entries: ResolvedViewChannel[]): string {
     : channelColor(lead.channel?.kind ?? lead.reference.kind, lead.reference.color);
 }
 
+/** Chevron for the collapse button: pointing down while open, right while collapsed. */
+function Chevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <path
+        d={collapsed ? 'M4.5 2.5 8 6l-3.5 3.5' : 'M2.5 4.5 6 8l3.5-3.5'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="square"
+      />
+    </svg>
+  );
+}
+
 function GroupHeader({
   group,
   entries,
   view,
   groupNumber,
   saving,
+  collapsed,
   handle,
+  membersId,
   onMoveGroup,
   onRenameGroup,
   onRemoveGroup,
-}: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'> & { handle: ReactNode }) {
+  onToggleCollapse,
+}: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'> & {
+  handle: ReactNode;
+  /** Id of the member list the collapse button controls; undefined for an empty group. */
+  membersId?: string;
+}) {
   const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
+  const { dragging } = useDragPreview();
   return (
     <div className="view-group__header">
       {handle}
+      {membersId === undefined ? (
+        <span className="group-collapse is-placeholder" aria-hidden="true" />
+      ) : (
+        <button
+          type="button"
+          className="group-collapse"
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} group ${group.name}`}
+          aria-expanded={!collapsed}
+          aria-controls={collapsed ? undefined : membersId}
+          // A drag never has to worry about its own rows disappearing under it.
+          disabled={saving || dragging}
+          onClick={() => onToggleCollapse(group.id)}
+        >
+          <Chevron collapsed={collapsed} />
+        </button>
+      )}
       <div className="channel-order__index">G{pad(groupNumber)}</div>
       <span className="channel-order__accent" aria-hidden="true" />
       <input
@@ -97,7 +140,8 @@ function GroupHeader({
 
 /** A group with members: a sortable block in the root list and a drop container for channels. */
 export function SortableGroupBlock(props: GroupBlockProps) {
-  const { group, entries, rowKeys, itemIds, saving, renderRow } = props;
+  const { group, entries, rowKeys, itemIds, saving, collapsed, renderRow } = props;
+  const membersId = `view-group-${group.id}-members`;
   const {
     attributes,
     listeners,
@@ -115,7 +159,13 @@ export function SortableGroupBlock(props: GroupBlockProps) {
   });
   const { setNodeRef: setZoneRef } = useDroppable({
     id: groupZoneDndId(group.id),
-    data: { kind: 'groupzone', label: `group ${group.name}`, groupId: group.id, empty: false },
+    data: {
+      kind: 'groupzone',
+      label: `group ${group.name}`,
+      groupId: group.id,
+      empty: false,
+      collapsed,
+    },
     disabled: saving,
   });
   const isDropTarget = useIsDropTarget(group.id);
@@ -130,7 +180,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
         setNodeRef(node);
         setZoneRef(node);
       }}
-      className={`view-group ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+      className={`view-group ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${collapsed ? 'is-collapsed' : ''}`}
       data-flip-key={groupRowKey(group.id)}
       data-flip-skip={isDragging ? '' : undefined}
       data-view-group-id={group.id}
@@ -138,6 +188,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
     >
       <GroupHeader
         {...props}
+        membersId={membersId}
         handle={
           <DragHandle
             label={`Drag group ${group.name}`}
@@ -148,11 +199,15 @@ export function SortableGroupBlock(props: GroupBlockProps) {
           />
         }
       />
-      <SortableContext items={itemIds} strategy={previewSortingStrategy}>
-        <ol className="view-group__members">
-          {entries.map((entry, position) => renderRow(entry, rowKeys[position] ?? ''))}
-        </ol>
-      </SortableContext>
+      {/* Collapsed members are unmounted, not hidden: a hidden row still registers a droppable
+          with an empty rectangle, which a keyboard drag would happily aim at. */}
+      {!collapsed && (
+        <SortableContext items={itemIds} strategy={previewSortingStrategy}>
+          <ol className="view-group__members" id={membersId}>
+            {entries.map((entry, position) => renderRow(entry, rowKeys[position] ?? ''))}
+          </ol>
+        </SortableContext>
+      )}
     </li>
   );
 }
@@ -162,7 +217,13 @@ export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowK
   const { group, saving } = props;
   const { setNodeRef } = useDroppable({
     id: groupZoneDndId(group.id),
-    data: { kind: 'groupzone', label: `group ${group.name}`, groupId: group.id, empty: true },
+    data: {
+      kind: 'groupzone',
+      label: `group ${group.name}`,
+      groupId: group.id,
+      empty: true,
+      collapsed: false,
+    },
     disabled: saving,
   });
   const isDropTarget = useIsDropTarget(group.id);

@@ -74,6 +74,10 @@ interface ViewDndContextProps {
   onDrop(update: (source: View) => View | null): void;
   /** Called right before the draft changes, while the list still shows the drag state. */
   onBeforeDrop?(): void;
+  /** Ids of the groups whose members are hidden. */
+  collapsedGroupIds: ReadonlySet<string>;
+  /** Reveals a collapsed group the drag is about to drop into. */
+  onExpandGroup(groupId: string): void;
   children: ReactNode;
 }
 
@@ -87,6 +91,12 @@ interface DragState {
   pointer: boolean;
   preview: DragPreview | null;
   removing: boolean;
+  /**
+   * Keyboard step the current preview was computed for. Expanding a group or shifting the rows
+   * makes dnd-kit run collision detection again while the drag still aims where the last arrow
+   * put it, and that stale aim can land on a neighbour; one arrow key means one move.
+   */
+  step: number;
 }
 
 function labelOf(entry: Active | Over | null): string {
@@ -148,11 +158,15 @@ export function ViewDndContext({
   listRef,
   onDrop,
   onBeforeDrop,
+  collapsedGroupIds,
+  onExpandGroup,
   children,
 }: ViewDndContextProps) {
   // Direction of the last keyboard move; the drop hint has no pointer to read for those.
   const keyboardDownRef = useRef<boolean | null>(null);
+  const keyboardStepRef = useRef(0);
   const keyboardCoordinates = useCallback<KeyboardCoordinateGetter>((event, args) => {
+    keyboardStepRef.current += 1;
     if (event.code === 'ArrowDown' || event.code === 'ArrowRight') {
       keyboardDownRef.current = true;
     } else if (event.code === 'ArrowUp' || event.code === 'ArrowLeft') {
@@ -215,6 +229,7 @@ export function ViewDndContext({
   const handleDragStart = ({ active, activatorEvent }: DragStartEvent) => {
     pointerRef.current = eventPoint(activatorEvent);
     keyboardDownRef.current = null;
+    keyboardStepRef.current += 1;
     if (view === null) {
       return;
     }
@@ -231,6 +246,7 @@ export function ViewDndContext({
       pointer: pointerRef.current !== null,
       preview: null,
       removing: false,
+      step: keyboardStepRef.current,
     });
   };
 
@@ -245,6 +261,11 @@ export function ViewDndContext({
   const syncPreview = (active: Active, over: Over | null) => {
     const state = dragRef.current;
     if (state === null) {
+      return;
+    }
+    // A keyboard drag only moves when an arrow key was pressed; every other collision it sees is
+    // the geometry settling around the move it just made.
+    if (!state.pointer && state.preview !== null && state.step === keyboardStepRef.current) {
       return;
     }
     const currentView = state.preview?.view ?? state.startView;
@@ -273,6 +294,12 @@ export function ViewDndContext({
     if (target === null) {
       return;
     }
+    // Reveal a collapsed group the moment the placeholder lands in it, so the drop is visible.
+    // The expansion and the preview commit together, so the placeholder is never rendered into
+    // a group that is still closed. It stays open after the drag.
+    if (target.kind === 'group' && collapsedGroupIds.has(target.groupId)) {
+      onExpandGroup(target.groupId);
+    }
     const channel =
       state.source.kind === 'available' ? channels[state.source.channelId] : undefined;
     const next = previewFor(currentView, currentSource, target, channel);
@@ -282,6 +309,7 @@ export function ViewDndContext({
     const placeholderChannelId = next.placeholderChannelId ?? state.preview?.placeholderChannelId;
     update({
       ...state,
+      step: keyboardStepRef.current,
       preview: placeholderChannelId === undefined ? next : { ...next, placeholderChannelId },
     });
   };
@@ -322,7 +350,15 @@ export function ViewDndContext({
       sameContainer(containerOf(currentView, currentSource), containerOfOver(over)),
     );
     if (state.preview !== null) {
-      return settlePreview(state.preview, active.id, over.id, hint);
+      // A keyboard drag settles against whatever collision detection last reported only while
+      // that droppable is in the list the arrows already put the row in, where it can only
+      // refine the position. A target in another list would undo the move the operator can see:
+      // the rows settle after every preview and collision runs again against a stale aim, which
+      // is exactly what the root slot above a collapsed group does the moment the group opens.
+      const settles =
+        state.pointer ||
+        sameContainer(containerOf(currentView, currentSource), containerOfOver(over));
+      return settles ? settlePreview(state.preview, active.id, over.id, hint) : state.preview.view;
     }
     if (over.id === active.id) {
       return null;
@@ -377,6 +413,12 @@ export function ViewDndContext({
     }
     update(null);
   };
+
+  // Expanding a group moves everything below it, and `previewFor` may well return the same view.
+  const remeasureTrigger = useMemo(
+    () => ({ view: drag?.preview?.view, collapsedGroupIds }),
+    [drag?.preview?.view, collapsedGroupIds],
+  );
 
   const previewState = useMemo<DragPreviewState>(
     () =>
@@ -451,7 +493,7 @@ export function ViewDndContext({
       <DragPreviewContext.Provider value={previewState}>
         {children}
         <ListAutoScroller listRef={listRef} pointerRef={pointerRef} />
-        <DroppableRemeasure trigger={drag?.preview?.view} />
+        <DroppableRemeasure trigger={remeasureTrigger} />
         <DragOverlay dropAnimation={dropAnimation}>
           {overlay === null ? null : <DragOverlayContent {...overlay} />}
         </DragOverlay>

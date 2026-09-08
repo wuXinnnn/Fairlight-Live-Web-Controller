@@ -24,6 +24,8 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
   duplicateNames: Set<string>;
   channelInventoryLoaded: boolean;
   saving: boolean;
+  /** Ids of the groups whose members are hidden; editor state, not part of the view. */
+  collapsedGroupIds: ReadonlySet<string>;
   /** The list element; the FLIP list measures inside it and the page scrolls it. */
   listRef: RefObject<HTMLOListElement | null>;
   /** Receives the FLIP handle so the page can re-baseline or skip a tween. */
@@ -54,11 +56,21 @@ function slotLabel(blocks: ViewBlock[], position: number): string {
   return `the gap between ${name(above)} and ${name(below)}`;
 }
 export function ChannelOrderList(props: ChannelOrderListProps) {
-  const { channels, duplicateNames, channelInventoryLoaded, saving, listRef, flipRef } = props;
+  const {
+    channels,
+    duplicateNames,
+    channelInventoryLoaded,
+    saving,
+    collapsedGroupIds,
+    listRef,
+    flipRef,
+  } = props;
   const { dragging, sourceKind, source, preview } = useDragPreview();
   const view = preview?.view ?? props.view;
-  // The tween runs on the view that is actually rendered, so a drag preview animates too.
-  const flip = useFlipList(listRef, view);
+  // The tween runs on the view that is actually rendered, so a drag preview animates too, and
+  // collapsing a group shifts every row below it.
+  const flipDependency = useMemo(() => ({ view, collapsedGroupIds }), [view, collapsedGroupIds]);
+  const flip = useFlipList(listRef, flipDependency);
   useImperativeHandle(flipRef, () => flip, [flip]);
   const placeholderIndex =
     preview?.placeholderChannelId === undefined || preview.source.kind !== 'channel'
@@ -190,12 +202,14 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             view,
             groupNumber: groupNumbers.get(block.group.id) ?? 0,
             saving,
+            collapsed: collapsedGroupIds.has(block.group.id),
             onMoveGroup: props.onMoveGroup,
             onRenameGroup: props.onRenameGroup,
             onRemoveGroup: props.onRemoveGroup,
+            onToggleCollapse: props.onToggleCollapse,
           };
           return entries.length === 0 ? (
-            <EmptyGroupBlock key={block.group.id} {...shared} />
+            <EmptyGroupBlock key={block.group.id} {...shared} collapsed={false} />
           ) : (
             <Fragment key={block.group.id}>
               {slotBefore}

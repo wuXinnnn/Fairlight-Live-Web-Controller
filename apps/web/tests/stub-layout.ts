@@ -57,7 +57,8 @@ function layoutRects(): Map<Element, DOMRect> {
         rects.set(row, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
         y += STUB_ROW_HEIGHT;
       });
-      if (members.length === 0) {
+      // An empty group shows its "assign channels" body; a collapsed one is only its header.
+      if (members.length === 0 && !block.classList.contains('is-collapsed')) {
         y += STUB_ROW_HEIGHT;
       }
       rects.set(block, rect(LIST_LEFT, start, STUB_ROW_WIDTH, y - start));

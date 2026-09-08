@@ -126,6 +126,39 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     dirtyRef.current = dirty;
   }, [dirty]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  // Which groups are folded shut. Editor state only: it never reaches the view or the server.
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const toggleCollapse = (groupId: string) =>
+    setCollapsedGroupIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(groupId)) {
+        next.add(groupId);
+      }
+      return next;
+    });
+  const expandGroup = useCallback(
+    (groupId: string) =>
+      setCollapsedGroupIds((current) => {
+        if (!current.has(groupId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(groupId);
+        return next;
+      }),
+    [],
+  );
+  const forgetCollapsed = (groupId: string) =>
+    setCollapsedGroupIds((current) => {
+      if (!current.has(groupId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(groupId);
+      return next;
+    });
 
   useEffect(() => {
     setNavigationGuard((route) => {
@@ -181,6 +214,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     // Two views can share row keys; without this the shared rows would fly to their new places.
     flipRef.current?.skipNext();
     setSelectedId(view.id);
+    setCollapsedGroupIds(new Set());
     setDraft(copyView(view));
     setConfirmDelete(false);
     setLocalError(null);
@@ -288,6 +322,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     const targetId = selected.id;
     setPendingAction(null);
     setDraft(null);
+    setCollapsedGroupIds(new Set());
     setConfirmDelete(false);
     dirtyRef.current = false;
     switch (action.kind) {
@@ -505,6 +540,8 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                 listRef={listRef}
                 onDrop={editDraft}
                 onBeforeDrop={() => flipRef.current?.capture()}
+                collapsedGroupIds={collapsedGroupIds}
+                onExpandGroup={expandGroup}
               >
                 <div className="view-editor__grid">
                   <section className="channel-picker" aria-labelledby="available-channel-heading">
@@ -588,6 +625,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       duplicateNames={duplicateNames}
                       channelInventoryLoaded={channelInventoryLoaded}
                       saving={saving}
+                      collapsedGroupIds={collapsedGroupIds}
                       onMoveChannel={handleMoveChannel}
                       onMoveGroup={handleMoveGroup}
                       onAssignGroup={handleAssignGroup}
@@ -595,9 +633,11 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       onRenameGroup={(groupId, name) =>
                         editDraft((source) => renameGroup(source, groupId, name))
                       }
-                      onRemoveGroup={(groupId) =>
-                        editDraft((source) => removeGroup(source, groupId))
-                      }
+                      onRemoveGroup={(groupId) => {
+                        forgetCollapsed(groupId);
+                        editDraft((source) => removeGroup(source, groupId));
+                      }}
+                      onToggleCollapse={toggleCollapse}
                     />
                   </section>
                 </div>
