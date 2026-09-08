@@ -90,7 +90,13 @@ describe('settings drag and drop (keyboard sensor)', () => {
     });
     expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
     await pickUp(page.handle('BASS'));
+    // An idle mouse resting on the upper half of MAIN must not turn the arrow into "before".
+    fireEvent.pointerMove(window, {
+      clientX: 700,
+      clientY: STUB_LIST_PADDING + STUB_ROW_HEIGHT * 1.1,
+    });
     await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']));
     expect(await page.savedChannels()).toEqual([MAIN, BASS, FX]);

@@ -83,6 +83,8 @@ interface DragState {
   source: DragSource;
   /** Name shown on the drag overlay. */
   label: string;
+  /** True for pointer and touch drags; keyboard drags have no pointer to follow. */
+  pointer: boolean;
   preview: DragPreview | null;
   removing: boolean;
 }
@@ -180,10 +182,11 @@ export function ViewDndContext({
   const [dropAnimation, setDropAnimation] = useState<DropAnimation | null>(null);
 
   // The pointer is tracked directly: dnd-kit's deltas include scroll compensation, so they no
-  // longer describe where the finger is once the list auto-scrolls.
+  // longer describe where the finger is once the list auto-scrolls. Only pointer and touch drags
+  // track it: during a keyboard drag an idle mouse must not decide where the row lands.
   const pointerRef = useRef<Point | null>(null);
   useEffect(() => {
-    if (drag === null) {
+    if (drag === null || !drag.pointer) {
       return undefined;
     }
     const onPointerMove = (event: PointerEvent): void => {
@@ -215,7 +218,14 @@ export function ViewDndContext({
       return;
     }
     setDropAnimation(dropAnimationFor(source, false));
-    update({ startView: view, source, label: labelOf(active), preview: null, removing: false });
+    update({
+      startView: view,
+      source,
+      label: labelOf(active),
+      pointer: pointerRef.current !== null,
+      preview: null,
+      removing: false,
+    });
   };
 
   /** Where the dragged item lands if released over `over` now. */
