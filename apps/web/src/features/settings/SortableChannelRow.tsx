@@ -8,7 +8,7 @@ import {
   type ViewGroup,
 } from '@flwc/shared';
 import type { CSSProperties } from 'react';
-import { CHANNEL_PALETTE, channelAccent, groupAccent } from '../mixer/channel-colors.js';
+import { CHANNEL_PALETTE, channelAccent } from '../mixer/channel-colors.js';
 import { channelNameKey, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, PALETTE_LABELS, pad } from './channel-labels.js';
 import { channelDndId, type DndItemData } from './dnd-ids.js';
@@ -141,13 +141,14 @@ export function SortableChannelRow({
         {group !== undefined && (
           <button
             type="button"
-            className={reference.color === 'group' ? 'is-selected' : ''}
+            // A swatch here would repeat whichever palette colour the group holds, leaving two
+            // identical squares in one row; the abbreviation says what the choice means instead.
+            className={`is-label ${reference.color === 'group' ? 'is-selected' : ''}`}
             aria-label={`${reference.name} use group color`}
             title={`Group ${group.name}`}
-            style={{ '--swatch': groupAccent(group, groupLeadKind) } as CSSProperties}
             onClick={() => onSetColor(index, 'group')}
           >
-            <span aria-hidden="true" />
+            GRP
           </button>
         )}
         {CHANNEL_PALETTE_KEYS.map((color) => (

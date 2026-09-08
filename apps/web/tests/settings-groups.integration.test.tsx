@@ -245,6 +245,10 @@ describe('settings group colours', () => {
     });
     const groupButton = screen.getByRole('button', { name: 'BASS use group color' });
     expect(groupButton).toHaveClass('is-selected');
+    // The choice is spelled out rather than drawn: a swatch would repeat the group's own colour
+    // and leave two identical squares side by side.
+    expect(groupButton).toHaveTextContent('GRP');
+    expect(groupButton.querySelector('span')).toBeNull();
     expect(screen.getByRole('button', { name: 'BASS use default color' })).not.toHaveClass(
       'is-selected',
     );

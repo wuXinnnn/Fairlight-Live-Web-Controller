@@ -2562,8 +2562,14 @@ html.fader-cap-dragging * {
   border-left: 0;
 }
 
-.palette-control button:first-child {
+/* AUTO and GRP read as words, not swatches: they keep the wider text padding and their own width. */
+.palette-control button:first-child,
+.palette-control button.is-label {
   width: auto;
+  padding: 0.25rem 0.38rem;
+}
+
+.palette-control button:first-child {
   border-left: 1px solid var(--line);
 }
 
