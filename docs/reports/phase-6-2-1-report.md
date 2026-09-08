@@ -4,7 +4,7 @@
 
 Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSensor` 改为 `MouseSensor + TouchSensor`(加 `KeyboardSensor`),触屏长按不再被指针传感器抢走;FLIP 列表下沉到 `ChannelOrderList` 并改为**每次提交测量、按渲染视图补间**,拖动期间占位行移动时被它挤开的行现在有补间,时长改为常量 `FLIP_DURATION_MS`(120ms)与 `DROP_ANIMATION_MS`(150ms),切换 view 跳过一次补间;配置页无条件渲染 CHANNEL ORDER 列表,草稿没有任何有序块时在列表末尾补一个吃掉剩余高度的根级落槽,新建 view 用鼠标或键盘都能拖入首个通道;分组可折叠/展开(编辑器 UI 状态,不入模型、不持久化),折叠组仍是投放容器且被预览进入时立即展开;`ViewGroup` 增加可选 `color`、通道引用的 `color` 增加 `'group'` 字面量,颜色解析集中到 `channel-colors.ts` 的 `groupAccent` / `channelAccent`,配置页与混音页共用,进出组的颜色转换由 `view-order.ts` 的 `colorForMembership` 统一处理。
 
-最终 HEAD 串行 lint / typecheck / test(覆盖率门槛)/ build 全绿,远端 CI 亦全绿:web 273 项、server 142 项、shared 34 项、test-utils 22 项(本容器上并行跑四个包时,Phase 6.2 的一条既有用例会因负载间歇超时,在基线提交上同样复现,详见第 2 节与第 9 节)。`pnpm dev` + Mock Provider 的 Playwright 浏览器冒烟 5 组全部通过(空 view 拖入、拖动中补间与落下不叠加、Esc 回位补间、折叠组拖入自动展开、组色与 GROUP 行及混音页联动)。未新增任何依赖,`pnpm-lock.yaml` 无 diff,CI 流水线未改动。云端无法连接真实 Fairlight,触屏手感、动效观感与颜色观感按边界移交用户(第 5 节)。与提示词的偏离有三处(既有单测的必要更新、键盘拖放收敛的额外改动、`touch-action` 与容差语义的矛盾),见第 8 节。
+最终 HEAD 串行 lint / typecheck / test(覆盖率门槛)/ build 全绿,远端 CI 亦全绿:web 273 项、server 142 项、shared 34 项、test-utils 22 项(本容器上并行跑四个包时,Phase 6.2 的一条既有用例会因负载间歇超时,在基线提交上同样复现,详见第 2 节与第 9 节)。`pnpm dev` + Mock Provider 的 Playwright 浏览器冒烟 5 组全部通过(空 view 拖入、拖动中补间与落下不叠加、Esc 回位补间、折叠组拖入自动展开、组色与 GROUP 行及混音页联动)。未新增任何依赖,`pnpm-lock.yaml` 无 diff,CI 流水线未改动。云端无法连接真实 Fairlight,触屏手感、动效观感与颜色观感按边界移交用户(第 5 节)。与提示词的偏离有三处(既有单测的必要更新、键盘拖放收敛的额外改动、`touch-action` 与容差语义的矛盾),见第 8 节。**用户真机验收后又提出三项呈现层面的调整(`GRP` 字样、行始终单行的响应式、Views 栏收窄),已在本分支完成,见第 12 节;第 2、4 节中与之相关的数字以第 12 节为准。**
 
 ## 2. 验收标准逐条核对
 
@@ -133,7 +133,9 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 | `apps/web/tests/flip-writes.ts` | 新增:记录 FLIP 的 style 写入 |
 | `apps/web/tests/stub-layout.ts` | 空态落槽、空态行、折叠组三个布局分支 |
 | `apps/web/tests/settings-dnd.integration.test.tsx` | 传感器改名 + 触屏 2 例、FLIP 2 例、空 view 3 例 |
-| `apps/web/tests/settings-groups.integration.test.tsx` | 新增:折叠 6 例 + 颜色 4 例 |
+| `apps/web/tests/settings-groups.integration.test.tsx` | 新增:折叠 6 例 + 颜色 4 例(第 12 节再补 `GRP` 字样一条断言) |
+| `apps/web/src/features/settings/PaletteControl.tsx` | 第 12 节新增:按钮排与下拉菜单两套形态共用的调色控件 |
+| `apps/web/tests/settings-palette.integration.test.tsx` | 第 12 节新增:下拉菜单写入行色与组色 3 例 |
 | `docs/architecture.md` | 传感器、FLIP、空态落槽、折叠、键盘收敛、颜色模型与持久化示例 |
 | `docs/reports/phase-6-2-1-report.md` | 本报告 |
 
@@ -199,3 +201,73 @@ c796a62 refactor(web): drive settings drag and drop with mouse and touch sensors
 评审后追加(第 10 节):`fix(web): reveal a group when a channel is assigned into it`,以及用户的真机调参提交 `adjust(web): DnD Touch Delay`。
 
 不含本报告本身,合计 34 个文件、+1626 / −186 行。
+
+## 12. 真机验收后的 UX 调整
+
+用户在平板上验收后提出三项呈现层面的修正,都在本分支上完成,不涉及数据模型、拖放语义与服务端。
+
+### 12.1 `GRP` 字样取代色块
+
+组内通道行的「跟随组色」按钮原先画一个组色色块。组色一旦取自那六个调色板颜色之一,这个色块就与右边某一个完全一样,屏幕上出现两个同色方块,分不出哪个是「跟随」哪个是「选定」。改为显示缩写字样 `GRP`(与 `AUTO` 同样式),颜色本身由行左侧的 accent 条呈现。`aria-label`(`<name> use group color`)与 `title`(`Group <name>`)一字未改,既有 6 处断言原样通过;新增断言:该按钮文本为 `GRP` 且不再渲染色块 `<span>`。
+
+### 12.2 行始终单行 + 两档响应式
+
+`.channel-order` 原来的窄屏规则(`@container (max-width: 44rem)`)本身就是「窄了就把调色板换到第二行」,平板横屏(1024×768)时该列约 31.6rem,必然触发。现改为按代价从小到大让出宽度:
+
+| 档 | 触发 | 让出的东西 |
+| --- | --- | --- |
+| 1 | 默认 | —— 通道名列 `minmax(7rem, 1fr)`,调色板是按钮排 |
+| 2 | 容器 ≤ **42rem** | 去掉通道名列的 7rem 下限(名字本来就带省略号),行内 `gap` 0.65→0.45rem、左右 `padding` 0.7→0.5rem |
+| 3 | 容器 ≤ **34rem** | 隐藏 6 个色块改用下拉菜单;隐藏 `GROUP` 下拉前面的字样(`<select>` 自带可访问名) |
+
+两个阈值是**实测**的,不是算出来的:在 Chromium 里把行钉在某一形态上、从 1600px 起每 4px 缩窄视口,记录该形态第一次「高度超过一行或内容溢出行宽」的位置——形态 1 撑到 40.13rem 的列宽,形态 2 撑到 32.71rem;阈值取在其上(42 / 34),保证换挡时上一形态仍然放得下,不会出现两档之间的空隙。
+
+实现按用户选定的方案:按钮排与 `<select>` **两套控件始终都渲染**,由容器查询 `display: none` 只显示一套。浏览器里被 `display: none` 的那套不进无障碍树、也不是栅格项,所以栅格列定义不用为第三档改动;切换不需要 `ResizeObserver`、不引入状态、拖动中不会重排。两处调色板因此抽成共用的 `PaletteControl.tsx`,可访问名仍由调用方构造,菜单另取 `<name> color menu` / `Group <name> color menu` 以免与按钮重名。jsdom 不求值容器查询,两套在测试里都在 DOM 中:既有用例查的是 button 角色,新增的 `settings-palette.integration.test.tsx` 查 `combobox`,互不干扰。
+
+**一并删除**了 `@media (max-width: 800px)` 里 `.channel-order-row` / `.group-control` / `.palette-control` / `.view-group__header` 的四组换行覆写。它们不是无害的残留:视口 <800px 时两列堆叠、`.channel-order` 反而变宽到 46.5rem,新的容器档位都不触发,于是这些规则仍然生效并把行折成 85px(组头 120px)。删掉后由两档统一接管,手机宽度同样单行。
+
+### 12.3 Views 栏流式收窄
+
+`.settings-workbench` 的第一列由 `minmax(17rem, 21rem)` 改为 `minmax(0, clamp(12rem, 20vw, 21rem))`,随视口连续收窄而不需要断点;视口 ≤1200px 时该列已到 15rem 以下,再压缩 `.view-index` 的内边距、`NEW VIEW` 表单外边距与条目行的 `padding` / `gap`(用 `@media` 而非 `@container`——容器查询无法给它所询问的那个容器本身设样式)。实测宽度:1920px → 336px、1366px → 273px、1280px → 256px、1024px → 205px、≤960px → 192px。这一项同时给编辑区让出约 130px,是 12.2 能在平板横屏上做到单行的前提之一。
+
+### 12.4 验证
+
+质量门:`pnpm lint` / `typecheck` / `test` / `build` 串行全绿。测试 web 277(新增 3 项 + 1 条断言)、server 142、shared 34、test-utils 22;覆盖率 web 96.72% / 92.22% / 99.18% / 96.64%,server 92.51% / 85.77%,shared 100%,均未调低门槛、未新增排除项;`git diff pnpm-lock.yaml` 为空。本轮四个包并行的 `pnpm test` 里,第 9 节记录的那条既有超时用例未复现。
+
+浏览器实测(`pnpm dev` + Mock Provider + Playwright 驱动预装 Chromium):
+
+```text
+# 视口从 1600px 每 20px 缩到 360px,共 69 个宽度,外加 1366/1180/1024/820/768/390
+widths swept: 69 ; wrapping or overflowing: 0
+1920x1080  views 336px   order 63.89rem  rows [54] headers [50]  buttons=true  menu=false
+1366x1024  views 273.2px order 43.17rem  rows [54] headers [50]  buttons=true  menu=false
+1280x800   views 256px   order 40.27rem  rows [54] headers [50]  buttons=true  menu=false
+1180x820   views 236px   order 36.89rem  rows [54] headers [50]  buttons=true  menu=false
+1024x768   views 204.8px order 31.63rem  rows [54] headers [50]  buttons=false menu=true
+768x1024   views 768px   order 46.50rem  rows [54] headers [50]  buttons=true  menu=false
+390x844    views 390px   order 22.88rem  rows [54] headers [50]  buttons=false menu=true
+```
+
+每一档都只有一套调色控件可见,行高恒为 54px、组头恒为 50px(单行),无横向溢出。第 2 节的五组冒烟在 1400×900 上重跑全部通过;另在 **1024×768** 上重跑一遍拖放相关的部分,确认第三档下几何未受影响:
+
+```text
+palette shape: buttons visible = false ; menu visible = true ; every row on one line = true
+during drag: {"total":45,"flip":13,"dndkit":0,"flipKeys":["MIC-REVERB","BASS"]} ; one line = true
+on drop:     {"total":12,"flip":0,"dndkit":0} -> order MIC-REVERB,BASS,MIC,Anagram-Wet,Anagram-Dry
+row menu follows the group: group
+group colour through the menu: #55b978 -> #9b6ac8
+dragged onto the closed header: expanded = true ; preview members MIC,MIC-REVERB,BASS ; one line = true
+saved: groups [["Rhythm","purple"]] ; colours [...,["MIC","g","group"],["MIC-REVERB","g","group"],["BASS","g","group"]]
+```
+
+**观感与手感仍由用户在平板上验收**:`GRP` 是否比色块清楚、两个阈值换挡的位置是否合适、下拉菜单在触屏上是否好按、Views 栏收窄后是否仍够用。
+
+### 12.5 本节提交
+
+```text
+docs: align the report with the tuned touch delay
+feat(web): label the group colour choice GRP instead of a swatch
+refactor(web): share one palette control between rows and group headers
+feat(web): let the views column narrow with the viewport
+feat(web): keep settings rows on one line as the column narrows
+```
