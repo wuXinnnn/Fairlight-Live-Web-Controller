@@ -1494,24 +1494,49 @@ html.fader-cap-dragging * {
   container-type: inline-size;
 }
 
-/* Narrow order column: move the palette onto its own line instead of overflowing sideways. */
-@container (max-width: 44rem) {
-  .channel-order .channel-order-row {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto;
+/*
+ * Every row in the CHANNEL ORDER column has to stay on one line: a row that wraps stops reading as
+ * one channel and its controls. Two stages give the width back in the order that costs the least.
+ * First the channel name, which loses only the tail of a name its own truncation already marks.
+ * Then the six swatches, which fold into the menu the palette control already carries beside them.
+ * Both thresholds are measured in Chromium against the width at which each shape starts to push
+ * past the row: the name floor plus the swatches holds down to a 40.1rem column, and the truncating
+ * name plus the swatches down to 32.7rem. The stages sit just above those, so each one takes over
+ * while the one before it still fits.
+ */
+@container (max-width: 42rem) {
+  .channel-order .channel-order-row,
+  .channel-order .view-group__header {
+    gap: 0.45rem;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
   }
 
-  .channel-order .channel-order-row .palette-control {
-    grid-column: 4 / 7;
-    justify-content: flex-start;
+  .channel-order .channel-order-row {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto;
   }
 
   .channel-order .view-group__header {
-    grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto;
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto auto auto;
+  }
+}
+
+@container (max-width: 34rem) {
+  .channel-order .palette-control {
+    display: none;
   }
 
-  .channel-order .view-group__header .palette-control {
-    grid-column: 1 / 8;
-    justify-content: flex-start;
+  .channel-order .palette-select {
+    display: block;
+  }
+
+  /* The menu names itself, so the word in front of it is decoration the row can no longer afford. */
+  .channel-order .group-control {
+    grid-template-columns: minmax(4rem, 1fr);
+  }
+
+  .channel-order .group-control > span {
+    display: none;
   }
 }
 
@@ -2751,37 +2776,6 @@ html.fader-cap-dragging * {
 
   .view-editor__grid {
     grid-template-columns: 1fr;
-  }
-
-  .channel-order-row {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
-  }
-
-  .group-control {
-    grid-column: 1 / 4;
-  }
-
-  .palette-control {
-    grid-column: 4 / 6;
-    justify-content: flex-start;
-  }
-
-  .view-group__header {
-    grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto;
-  }
-
-  .view-group__header .order-buttons {
-    grid-column: 5 / 6;
-    justify-self: start;
-  }
-
-  .view-group__header .utility-button {
-    grid-column: 6 / 7;
-  }
-
-  .view-group__header .palette-control {
-    grid-column: 1 / 7;
-    justify-content: flex-start;
   }
 
   .group-toolbar {
