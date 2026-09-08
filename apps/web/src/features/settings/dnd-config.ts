@@ -3,14 +3,23 @@
  * be tuned against the real console; the touch values in particular belong to the touch audit.
  */
 
-/** Pointer movement, in CSS pixels, before a press on a drag handle becomes a drag. */
-export const POINTER_ACTIVATION_DISTANCE_PX = 4;
+/** Mouse movement, in CSS pixels, before a press on a drag handle becomes a drag. */
+export const MOUSE_ACTIVATION_DISTANCE_PX = 4;
 
-/** Press duration, in milliseconds, before a touch on a drag handle becomes a drag. */
+/**
+ * Press duration, in milliseconds, a finger must rest on a drag handle before the touch becomes
+ * a drag. Below it the gesture stays with the page, so a flick still scrolls the list.
+ */
 export const TOUCH_ACTIVATION_DELAY_MS = 250;
 
-/** Finger movement, in CSS pixels, tolerated during the touch delay before the press is cancelled. */
+/**
+ * Finger movement, in CSS pixels, tolerated while the touch delay runs. Moving further reads as
+ * a scroll and cancels the press, so the drag never starts.
+ */
 export const TOUCH_ACTIVATION_TOLERANCE_PX = 8;
+
+/** Duration, in milliseconds, of the drag overlay animation that flies the clone to its row. */
+export const DROP_ANIMATION_MS = 150;
 
 /** How far, in CSS pixels, the pointer must leave the CHANNEL ORDER list before a drop removes the item. */
 export const REMOVE_DRAG_THRESHOLD_PX = 64;

@@ -1,6 +1,6 @@
 import { SOCKET_EVENTS, type MixerSnapshot, type View } from '@flwc/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
@@ -9,7 +9,12 @@ import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
 import { pickUp, press } from './keyboard-drag.js';
 import { pointerDown, pointerMoveTo, pointerUp } from './pointer-drag.js';
+import { advanceTouchDelay, touchEnd, touchMove, touchStart } from './touch-drag.js';
 import { STUB_LIST_PADDING, STUB_ROW_HEIGHT, stubListLayout } from './stub-layout.js';
+import {
+  TOUCH_ACTIVATION_DELAY_MS,
+  TOUCH_ACTIVATION_TOLERANCE_PX,
+} from '../src/features/settings/dnd-config.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -378,7 +383,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
   });
 });
 
-describe('settings drag and drop (pointer sensor)', () => {
+describe('settings drag and drop (mouse sensor)', () => {
   let restoreLayout: () => void;
 
   beforeEach(() => {
@@ -464,5 +469,64 @@ describe('settings drag and drop (pointer sensor)', () => {
       SUB,
       BASS,
     ]);
+  });
+});
+
+describe('settings drag and drop (touch sensor)', () => {
+  let restoreLayout: () => void;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetMixerStore();
+    resetMeterStore();
+    resetViewStore();
+    restoreLayout = stubListLayout();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(async () => {
+    // dnd-kit removes its capturing click blocker from the document on a timeout; leaving it
+    // installed would swallow the first click of the next test.
+    await advanceTouchDelay(TOUCH_ACTIVATION_DELAY_MS);
+    vi.useRealTimers();
+    restoreLayout();
+  });
+
+  const X = 700;
+  const rowY = (row: number, fraction: number) =>
+    STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
+  const view: View = { id: 'v1', name: 'Stage', channels: [BASS, MAIN, FX], groups: [] };
+
+  it('starts a drag only after the finger has rested on the handle', async () => {
+    const page = await openSettings(view);
+    const handle = page.handle('BASS');
+
+    await touchStart(handle, X, rowY(0, 0.5));
+    expect(document.querySelector('.drag-overlay')).toBeNull();
+
+    await advanceTouchDelay(TOUCH_ACTIVATION_DELAY_MS);
+    expect(document.querySelector('.drag-overlay')).not.toBeNull();
+
+    // Lower half of MAIN: BASS lands after it, the same midline rule the mouse follows.
+    await touchMove(handle, X, rowY(1, 0.75));
+    expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
+    await touchEnd(handle, X, rowY(1, 0.75));
+    expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
+    // dnd-kit swallows clicks for a moment after a drop; let that window pass before saving.
+    await advanceTouchDelay(TOUCH_ACTIVATION_DELAY_MS);
+    expect(await page.savedChannels()).toEqual([MAIN, BASS, FX]);
+  });
+
+  it('reads a finger that moves past the tolerance as a scroll and never starts', async () => {
+    const page = await openSettings(view);
+    const handle = page.handle('BASS');
+
+    await touchStart(handle, X, rowY(0, 0.5));
+    await touchMove(handle, X, rowY(0, 0.5) + TOUCH_ACTIVATION_TOLERANCE_PX + 1);
+    await advanceTouchDelay(TOUCH_ACTIVATION_DELAY_MS * 2);
+
+    expect(document.querySelector('.drag-overlay')).toBeNull();
+    await touchEnd(handle, X, rowY(0, 0.5) + TOUCH_ACTIVATION_TOLERANCE_PX + 1);
+    expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
   });
 });

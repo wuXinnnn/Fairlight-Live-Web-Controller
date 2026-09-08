@@ -2,7 +2,7 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -30,7 +30,7 @@ import { referenceForChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, pad } from './channel-labels.js';
 import { viewCollisionDetection, viewKeyboardCoordinates } from './dnd-collision.js';
 import {
-  POINTER_ACTIVATION_DISTANCE_PX,
+  MOUSE_ACTIVATION_DISTANCE_PX,
   REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
@@ -134,7 +134,9 @@ function containerOfOver(over: Over): ListContainer | null {
 }
 
 /**
- * Drag and drop for the configuration page. Pointer, touch and keyboard sensors are enabled.
+ * Drag and drop for the configuration page. Mouse, touch and keyboard sensors are enabled, one
+ * per input: the mouse starts a drag after MOUSE_ACTIVATION_DISTANCE_PX, a finger after resting
+ * TOUCH_ACTIVATION_DELAY_MS on the handle, and neither can claim the other's press.
  * While an item is dragged the page renders a preview view with the item already where it would
  * land, inside its own list or another one, so the placeholder shows the drop; the preview is
  * kept in sync on every move. The draft only changes when the drag ends.
@@ -159,8 +161,8 @@ export function ViewDndContext({
     return viewKeyboardCoordinates(event, args);
   }, []);
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: MOUSE_ACTIVATION_DISTANCE_PX },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
@@ -182,14 +184,16 @@ export function ViewDndContext({
   const [dropAnimation, setDropAnimation] = useState<DropAnimation | null>(null);
 
   // The pointer is tracked directly: dnd-kit's deltas include scroll compensation, so they no
-  // longer describe where the finger is once the list auto-scrolls. Only pointer and touch drags
+  // longer describe where the finger is once the list auto-scrolls. Only mouse and touch drags
   // track it: during a keyboard drag an idle mouse must not decide where the row lands.
+  // `mousemove` is what the mouse sensor itself listens for and the only move event jsdom emits;
+  // `pointermove` is kept as well so a browser that only sends pointer events still tracks.
   const pointerRef = useRef<Point | null>(null);
   useEffect(() => {
     if (drag === null || !drag.pointer) {
       return undefined;
     }
-    const onPointerMove = (event: PointerEvent): void => {
+    const onMouseMove = (event: MouseEvent): void => {
       pointerRef.current = { x: event.clientX, y: event.clientY };
     };
     const onTouchMove = (event: TouchEvent): void => {
@@ -198,10 +202,12 @@ export function ViewDndContext({
         pointerRef.current = { x: touch.clientX, y: touch.clientY };
       }
     };
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    window.addEventListener('pointermove', onMouseMove, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: true });
     return () => {
-      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('pointermove', onMouseMove);
       window.removeEventListener('touchmove', onTouchMove);
     };
   }, [drag]);
