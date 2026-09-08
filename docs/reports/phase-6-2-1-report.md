@@ -10,7 +10,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 
 | 验收标准 | 结果 | 实际执行与输出摘要 |
 | --- | --- | --- |
-| 1. 传感器:鼠标 4px 起拖、触屏 250ms 长按起拖且 8px 内抖动容忍、超过即取消 | 通过 | `ViewDndContext.tsx` 用 `MouseSensor({ distance: MOUSE_ACTIVATION_DISTANCE_PX })` 取代 `PointerSensor`,`TouchSensor` 与 `KeyboardSensor` 不变。`apps/web/tests/pointer-drag.ts` 改为 `mouseDown`(把手)/ `mouseMove` / `mouseUp`(document),既有「pointer sensor」describe 改名为「mouse sensor」,两个用例原样通过。新增 `apps/web/tests/touch-drag.ts` 与 `settings-dnd.integration.test.tsx` 的「touch sensor」describe 两例:`touchStart` 后推进 250ms 才出现 `.drag-overlay` 并完成一次落点正确的重排;250ms 内 `touchMove` 超过 8px 则不出现 overlay、列表顺序不变。真机手感 **移交用户**。 |
+| 1. 传感器:鼠标 4px 起拖、触屏长按起拖且 8px 内抖动容忍、超过即取消 | 通过 | `ViewDndContext.tsx` 用 `MouseSensor({ distance: MOUSE_ACTIVATION_DISTANCE_PX })` 取代 `PointerSensor`,`TouchSensor` 与 `KeyboardSensor` 不变。`apps/web/tests/pointer-drag.ts` 改为 `mouseDown`(把手)/ `mouseMove` / `mouseUp`(document),既有「pointer sensor」describe 改名为「mouse sensor」,两个用例原样通过。新增 `apps/web/tests/touch-drag.ts` 与 `settings-dnd.integration.test.tsx` 的「touch sensor」describe 两例:`touchStart` 后推进 `TOUCH_ACTIVATION_DELAY_MS` 才出现 `.drag-overlay` 并完成一次落点正确的重排;延迟窗口内 `touchMove` 超过 8px 则不出现 overlay、列表顺序不变(两例都读常量,不写死毫秒数)。真机手感 **移交用户**。 |
 | 2. 动画:拖动期间占位行移动时其它行有补间;落下无叠加;Esc 回位有补间;时长常量生效;切换 view 不飞行 | 通过 | `use-flip-list.ts` 改为无依赖数组的 `useLayoutEffect`(每次提交刷新基线),仅在 `dependency` 变化时补间;hook 挂在 `ChannelOrderList` 内、依赖为「渲染所用视图 + 折叠集合」,`capture()` / `skipNext()` 经 `useImperativeHandle` 交回 `SettingsPage`。被拖行与 AVAILABLE 占位行带 `data-flip-skip`,跟着指针而不是拖在后面。集成用例断言 `ArrowDown` 后被挤开的行收到 `translate(0px, 40px)` 且被拖行没有,Esc 后收到反向补间;另一例断言切换 view 不产生任何补间。浏览器冒烟见下。观感 **移交用户**。 |
 | 3. 空列表:新建 view 后可从 AVAILABLE 拖入首个通道(键盘与鼠标);只有空分组时可落为无组行或落进空组 | 通过 | `SettingsPage` 无条件渲染 `ChannelOrderList`,`THIS VIEW HAS NO CHANNELS` 改为列表内的 `<li class="panel-empty">`。草稿 `nonEmptyBlocks` 为空时列表末尾渲染 `root-slot--fill`(`flex: 1`,吃掉剩余高度)。集成用例:键盘一次、鼠标一次拖入首个通道(文案消失、勾选框勾选、保存体正确);只有空分组的 view 里,拾起后先预览进空组,`ArrowDown` 移到落槽变为无组行,`ArrowUp` 又回到组内。 |
 | 4. 折叠:按钮、`aria-expanded`、成员显隐、切换 view 重置、拖入自动展开、折叠态各控件可用 | 通过 | `settings-groups.integration.test.tsx` 6 例:折叠/展开切换 `aria-expanded` 与成员显隐(组头 `<nn> CH` 仍在)、空分组无折叠按钮、切换 view 后回来已展开、折叠态改名/箭头/`UNGROUP` 均可用且 `UNGROUP` 后成员原位显示、折叠组用组头把手整组移动、键盘拖入折叠组时立即展开并在落下后保持展开。 |
@@ -41,7 +41,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 
 ## 3. 实现摘要
 
-- **传感器**(`dnd-config.ts`、`ViewDndContext.tsx`):`POINTER_ACTIVATION_DISTANCE_PX` 更名为 `MOUSE_ACTIVATION_DISTANCE_PX`(值仍为 4),`PointerSensor` 换成 `MouseSensor`,`TouchSensor`(250ms / 8px)与 `KeyboardSensor` 不变。三个常量的注释补全了含义与单位。窗口级指针追踪同时监听 `mousemove` 与 `pointermove`(以及 `touchmove`):`MouseSensor` 自身监听的是 `mousemove`,而 jsdom 只发 `mousemove` 不发 `pointermove`,只留 `pointermove` 会让 `pointerRef` 在集成测试里冻结在按下点,`dropHintFor` 的中线判定全部失效;两个监听写同一个坐标,幂等。`DragState.pointer` 的判定不变——`getEventCoordinates` 支持 MouseEvent,`MouseSensor` 的 `activatorEvent` 就是原生 `MouseEvent`。把手上的 `touch-action: none` 保留(见第 8 节)。
+- **传感器**(`dnd-config.ts`、`ViewDndContext.tsx`):`POINTER_ACTIVATION_DISTANCE_PX` 更名为 `MOUSE_ACTIVATION_DISTANCE_PX`(值仍为 4),`PointerSensor` 换成 `MouseSensor`,`TouchSensor`(`TOUCH_ACTIVATION_DELAY_MS` / `TOUCH_ACTIVATION_TOLERANCE_PX`)与 `KeyboardSensor` 不变。三个常量的注释补全了含义与单位。窗口级指针追踪同时监听 `mousemove` 与 `pointermove`(以及 `touchmove`):`MouseSensor` 自身监听的是 `mousemove`,而 jsdom 只发 `mousemove` 不发 `pointermove`,只留 `pointermove` 会让 `pointerRef` 在集成测试里冻结在按下点,`dropHintFor` 的中线判定全部失效;两个监听写同一个坐标,幂等。`DragState.pointer` 的判定不变——`getEventCoordinates` 支持 MouseEvent,`MouseSensor` 的 `activatorEvent` 就是原生 `MouseEvent`。把手上的 `touch-action: none` 保留(见第 8 节)。
 - **FLIP**(`use-flip-list.ts`、`ChannelOrderList.tsx`、`SettingsPage.tsx`):`useLayoutEffect` 去掉依赖数组,每次提交都测量并刷新基线,再用一个 ref 与 `dependency` 比对决定是否补间——行也会因与重排无关的原因移动(重名标记出现、清单解析完成、`saving` 变化),那些不该被当成重排,也不该留下过期基线。hook 从 `SettingsPage` 移到 `ChannelOrderList`(它才是渲染 `preview?.view ?? props.view` 的组件),依赖是 `useMemo(() => ({ view, collapsedGroupIds }))`,所以每次预览提交、每次草稿提交、每次折叠切换都会补间。`FlipListHandle` 经 `useImperativeHandle(flipRef, () => flip, [flip])` 交回页面,`onBeforeDrop` 调 `capture()`、`selectView` 先调 `skipNext()`。新增 `FLIP_DURATION_MS = 120`,`FLIP_TRANSITION` 直接用它,`FLIP_CLEANUP_FALLBACK_MS` 改为其 3 倍;`DROP_ANIMATION_MS = 150` 放 `dnd-config.ts`,`dropAnimationFor` 返回 `{ ...defaultDropAnimation, duration }`。被拖行(`isDragging`)与 `PlaceholderRow` 带 `data-flip-skip`,FLIP 跳过它们。**dnd-kit 默认就用 `getTransformAgnosticClientRect` 测量 droppable**(`inverseTransform` 只认 `matrix(` / `matrix3d(`,浏览器的 `getComputedStyle().transform` 正是这种形式),所以补间中的反向 transform 不会污染命中矩形,不需要额外的 `measuring` 配置。
 - **空列表**(`SettingsPage.tsx`、`ChannelOrderList.tsx`、`RootSlot.tsx`、`styles.css`、`stub-layout.ts`):列表容器始终渲染;空态文案变成列表内的一行,按**渲染视图**判定,占位行一出现就消失。落槽按**草稿**判定是否渲染:若按预览视图判,占位行一出现视图就非空、槽随即卸载、指针落空、`available` 源的预览被清掉、视图又空——逐帧闪烁。落槽不是覆盖式的 16px 命中带而是真正占位的块(`flex: 1 1 auto`,`min-height: 4rem`),排在空组块之下吃掉剩余高度,`viewCollisionDetection` 的「slot 优先」因此不会把空组块吞掉。`.view-channel-list > li { flex: 0 0 auto }` 会盖过它,选择器要写成 `.view-channel-list > .root-slot--fill`(这一条是冒烟发现的,见第 10 节最后一个提交)。下游三条路径无需改动:`resolveDropTarget` 的 slot 分支在无有序块时 `0 > 0` 为假,`placeReference` 落到 `at = base.channels.length`,`keyboardStops` 只排除 `current` 的落槽而空态槽恒为 `false`。
 - **折叠**(`SortableGroupBlock.tsx`、`SettingsPage.tsx`、`dnd-ids.ts`、`dnd-collision.ts`):`collapsedGroupIds: ReadonlySet<string>` 放在 `SettingsPage`,`selectView`、`UNGROUP` 与 `discardPending` 都会清理。组头把手之后是自绘 chevron 按钮(`aria-expanded`、展开时 `aria-controls` 指向成员 `<ol>`,可访问名 `Collapse group <name>` / `Expand group <name>`),空分组不渲染该按钮,拖动进行中禁用。折叠时成员**整体不渲染**(而不是 `hidden`:隐藏的行仍会注册零矩形的 droppable,`closestCenter` 会照样瞄准它),内嵌 `SortableContext` 一并跳过;组头保留全部控件,`<nn> CH` 由 `entries` 算出,组块加 `is-collapsed`。`groupzone` 的 `data` 增加**可选**的 `collapsed`(必填会逼着改 `dnd-collision.test.ts` 里 6 处既有字面量),`keyboardStops` 判 `data.empty || data.collapsed === true`。`syncPreview` 解析出 `{ kind: 'group' }` 且该组折叠时调 `onExpandGroup`,展开与预览在同一批提交,占位行不会被渲染进还关着的组;`DroppableRemeasure` 的 trigger 并入折叠集合,因为展开会改变下方所有块的几何而 `previewFor` 可能返回 `null`。
@@ -56,7 +56,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 | 常量 | 值 | 文件 | 用途 |
 | --- | --- | --- | --- |
 | `MOUSE_ACTIVATION_DISTANCE_PX` | 4 | `apps/web/src/features/settings/dnd-config.ts` | `MouseSensor` 激活距离(CSS px);由 `POINTER_ACTIVATION_DISTANCE_PX` 更名而来,值未变 |
-| `TOUCH_ACTIVATION_DELAY_MS` | 250 | 同上 | `TouchSensor` 按压延迟(ms),6.4 调参 |
+| `TOUCH_ACTIVATION_DELAY_MS` | **150**(交付初值 250,用户真机调整,见第 10 节) | 同上 | `TouchSensor` 按压延迟(ms) |
 | `TOUCH_ACTIVATION_TOLERANCE_PX` | 8 | 同上 | `TouchSensor` 按压期间容差(CSS px),6.4 调参 |
 | `DROP_ANIMATION_MS` | **150**(新增) | 同上 | `DragOverlay` 落下动画时长 |
 | `FLIP_DURATION_MS` | **120**(新增) | `apps/web/src/features/settings/use-flip-list.ts` | 行位移补间时长;`FLIP_TRANSITION` 直接用它,不再挂 `--motion-medium` |
@@ -94,10 +94,10 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 触屏路径(平板;**本批次的重点**,手感数值调参仍属 6.4):
 
 1. 用手指在列表空白处上下滑动。预期:页面/列表正常滚动。
-2. 手指按在某行把手上**不动**约 250ms 直到该行变半透明,再拖到目标位置松开。预期:能起拖,落点语义与鼠标相同。**6.2 上这一步是做不到的**(指针传感器抢先接管)。
+2. 手指按在某行把手上**不动**约 `TOUCH_ACTIVATION_DELAY_MS`(当前 150ms)直到该行变半透明,再拖到目标位置松开。预期:能起拖,落点语义与鼠标相同。**6.2 上这一步是做不到的**(指针传感器抢先接管)。
 3. 手指按在把手上后**立刻**滑动(超过约 8px)。预期:不起拖。注意:把手上有 `touch-action: none`,所以这一下也不会滚动列表——手势相当于被丢弃(见第 8 节);请记录这是否影响手感。
 4. 长按组头把手整组移动;从左侧长按可用通道把手拖入右侧;长按折叠组的组头拖一个通道进去。
-5. 记录:250ms 与 8px 是否合适(`dnd-config.ts` 的 `TOUCH_ACTIVATION_DELAY_MS` / `TOUCH_ACTIVATION_TOLERANCE_PX`),留给 6.4 调整。
+5. 记录:按压延迟与 8px 容差是否合适(`dnd-config.ts` 的 `TOUCH_ACTIVATION_DELAY_MS` / `TOUCH_ACTIVATION_TOLERANCE_PX`),留给 6.4 调整。
 
 键盘路径(桌面浏览器):
 
@@ -161,7 +161,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 ## 9. 遗留问题与移交事项
 
 - **用户需完成第 5 节真机验收**,重点是触屏长按起拖(本批次的核心修正)、拖动中的行补间观感与 120ms / 150ms 两个时长、颜色在两个页面是否一致。
-- **留给 6.4**:`TOUCH_ACTIVATION_DELAY_MS` / `TOUCH_ACTIVATION_TOLERANCE_PX` 的调参仍属 6.4;上面提到的 `touch-action: none` 与容差语义矛盾一并在 6.4 处理;把手 `:hover` 样式待包进 `@media (hover: hover)`;新增的 `.group-collapse:hover` 同理。
+- **留给 6.4**:`TOUCH_ACTIVATION_DELAY_MS` 已由用户在真机上调为 150(见第 10 节),`TOUCH_ACTIVATION_TOLERANCE_PX` 的调参仍属 6.4;上面提到的 `touch-action: none` 与容差语义矛盾一并在 6.4 处理;把手 `:hover` 样式待包进 `@media (hover: hover)`;新增的 `.group-collapse:hover` 同理。
 - **留给 6.3**:组头现在有 9 列(把手、折叠、序号、accent、组名、计数、箭头、`UNGROUP`、`GROUP COLOR`),窄屏排布已同步两处断点,但页头压缩时需一并复核。
 - **键盘路径的已知限制**(6.2 已记录,本批次未变):键盘落下恒为「落在 over 行之前」,要把通道放到某组末尾仍需先落入组内再用箭头或 `GROUP` 下拉。
 - **旧数据的颜色升级**:已保存的旧 view 里组内没有颜色的引用不做批量迁移,但它**跨组移动或移出组一次后**会按规则升级为 `'group'` / `AUTO`,表现为一次「看起来没动却变脏」的编辑。这是规则作用于它,不是迁移;已在 `docs/architecture.md` 与 `view-order.test.ts` 中写明。
@@ -179,6 +179,8 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 
 > 中途试过在 `SettingsPage` 用 `useEffect` 把折叠集合按草稿裁剪(「没有成员的组不可折叠」),被 `react-hooks/set-state-in-effect` 拒绝——该规则是对的,这里本来就不需要 effect。最终的入组即展开既符合 lint,也与既有语义一致。
 
+**真机调参(`bb029d9`,用户提交)**:用户在平板上验收后把 `TOUCH_ACTIVATION_DELAY_MS` 由交付初值 250 调整为 **150**,这正是第 5 节第 2、5 步与第 9 节留给真机的那项调参;调整理由由用户掌握,此处只记录结果。`TOUCH_ACTIVATION_TOLERANCE_PX` 维持 8。两个触屏用例读的是常量而非字面量,改值后无需改测试;该 head 上 `ci` ×2 与 Cursor Bugbot 均为 success。第 4 节的表已同步为当前值。
+
 ## 11. 提交记录
 
 分支 `claude/phase-6-2-1-4pm0av`(基于 `c3ecab3 docs: add the Phase 6.2.1 follow-up batch and its execution prompt`),本批次新增提交:
@@ -194,6 +196,6 @@ d21cd31 feat(web): collapse and expand groups in the view editor
 c796a62 refactor(web): drive settings drag and drop with mouse and touch sensors
 ```
 
-评审后追加(第 10 节):`fix(web): reveal a group when a channel is assigned into it`。
+评审后追加(第 10 节):`fix(web): reveal a group when a channel is assigned into it`,以及用户的真机调参提交 `adjust(web): DnD Touch Delay`。
 
 不含本报告本身,合计 34 个文件、+1626 / −186 行。
