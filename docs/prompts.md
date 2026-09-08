@@ -89,6 +89,17 @@ router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 详细执行提示词见 docs/prompts/phase-6-2.md。
 ```
 
+### 6.2.1 配置页 UX 补充
+
+```
+按 docs/development-plan.md 的 Phase 6.2.1(6.2 真机验收后的补充批次):传感器改为 MouseSensor + TouchSensor(触屏长按
+250ms 起拖,常量可调);FLIP 覆盖拖动期间的预览重排并整体加快(FLIP_DURATION_MS、DROP_ANIMATION_MS);
+空 view 列表可作为投放目标;分组可折叠/展开(UI 状态,不持久化,拖入即展开);分组可设颜色,
+通道条颜色支持 AUTO / GROUP / 自定义,进组时 AUTO 自动变 GROUP、出组时 GROUP 自动变 AUTO
+(shared 增加 group.color 与 color: 'group',向后兼容)。不新增依赖,覆盖率达标。
+详细执行提示词见 docs/prompts/phase-6-2-1.md。
+```
+
 ### 6.3 混音页分页
 
 ```
