@@ -1,7 +1,8 @@
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext } from '@dnd-kit/sortable';
 import type { ChannelState, View } from '@flwc/shared';
 import { Fragment, useMemo, type Ref } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
+import { previewSortingStrategy } from './dnd-collision.js';
 import { availableDndId, channelDndId, groupDndId } from './dnd-ids.js';
 import { PlaceholderRow } from './PlaceholderRow.js';
 import { RootSlot } from './RootSlot.js';
@@ -28,8 +29,9 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
 /**
  * The CHANNEL ORDER list: top-level blocks (ungrouped rows and groups with members) form the root
  * sortable list, each group nests its own sortable list, and empty groups trail as drop targets.
- * While a drag previews a move into another list the preview view is rendered instead of the
- * draft, with the dragged item shown as a placeholder where it would land. While a channel is
+ * While a drag is previewed the preview view is rendered instead of the draft, with the dragged
+ * item shown as a placeholder where it would land; the DOM order is the preview, so dnd-kit's
+ * sorting strategy displaces nothing and the FLIP list animates the moves. While a channel is
  * dragged, root slots mark the block boundaries next to groups that no row can stand for. They
  * are computed without the dragged channel and drawn right before the block they precede, so
  * a placeholder previewed at a slot keeps that slot just below itself and hovering on stays put.
@@ -139,7 +141,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
     );
   const lastOrdered = ordered[ordered.length - 1];
   return (
-    <SortableContext items={rootItems} strategy={verticalListSortingStrategy}>
+    <SortableContext items={rootItems} strategy={previewSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>
         {blocks.map((block) => {
           const slotBefore = slotAt(slotBeforeBlock.get(block));

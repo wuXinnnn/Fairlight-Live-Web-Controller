@@ -8,9 +8,11 @@ import {
   useSensors,
   type Active,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   type DropAnimation,
+  type KeyboardCoordinateGetter,
   type Over,
 } from '@dnd-kit/core';
 import type { ChannelState, View } from '@flwc/shared';
@@ -37,6 +39,7 @@ import { readItemData } from './dnd-ids.js';
 import {
   containerOf,
   dropAnimationFor,
+  dropHintFor,
   eventPoint,
   pointerOutside,
   previewFor,
@@ -49,6 +52,7 @@ import {
 } from './drag-preview.js';
 import { DragOverlayContent, type DragOverlayVariant } from './DragOverlayContent.js';
 import { dragSourceFor, resolveDropTarget, type DragSource } from './drop-resolver.js';
+import { DroppableRemeasure } from './DroppableRemeasure.js';
 import { ListAutoScroller } from './ListAutoScroller.js';
 import {
   DragPreviewContext,
@@ -107,15 +111,6 @@ const screenReaderInstructions = {
     'or press Escape to cancel. With a pointer, drag an item out of the list to remove it.',
 };
 
-/** Whether the dragged item was released below the midpoint of the row it is over. */
-function droppedAfter(active: Active, over: Over): boolean {
-  const translated = active.rect.current.translated;
-  if (translated === null) {
-    return false;
-  }
-  return translated.top + translated.height / 2 > over.rect.top + over.rect.height / 2;
-}
-
 /** The list the droppable under the pointer belongs to. */
 function containerOfOver(over: Over): ListContainer | null {
   const data = readItemData(over);
@@ -138,9 +133,9 @@ function containerOfOver(over: Over): ListContainer | null {
 
 /**
  * Drag and drop for the configuration page. Pointer, touch and keyboard sensors are enabled.
- * While an item is dragged into another list the page renders a preview view with the item
- * already there, so the placeholder shows where it will land; inside one list dnd-kit's sortable
- * strategy previews the move. The draft only changes when the drag ends.
+ * While an item is dragged the page renders a preview view with the item already where it would
+ * land, inside its own list or another one, so the placeholder shows the drop; the preview is
+ * kept in sync on every move. The draft only changes when the drag ends.
  */
 export function ViewDndContext({
   view,
@@ -151,6 +146,16 @@ export function ViewDndContext({
   onBeforeDrop,
   children,
 }: ViewDndContextProps) {
+  // Direction of the last keyboard move; the drop hint has no pointer to read for those.
+  const keyboardDownRef = useRef<boolean | null>(null);
+  const keyboardCoordinates = useCallback<KeyboardCoordinateGetter>((event, args) => {
+    if (event.code === 'ArrowDown' || event.code === 'ArrowRight') {
+      keyboardDownRef.current = true;
+    } else if (event.code === 'ArrowUp' || event.code === 'ArrowLeft') {
+      keyboardDownRef.current = false;
+    }
+    return viewKeyboardCoordinates(event, args);
+  }, []);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
@@ -161,7 +166,7 @@ export function ViewDndContext({
         tolerance: TOUCH_ACTIVATION_TOLERANCE_PX,
       },
     }),
-    useSensor(KeyboardSensor, { coordinateGetter: viewKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
   );
   const [drag, setDrag] = useState<DragState | null>(null);
   // Drag handlers read the latest state without waiting for a render.
@@ -200,6 +205,7 @@ export function ViewDndContext({
 
   const handleDragStart = ({ active, activatorEvent }: DragStartEvent) => {
     pointerRef.current = eventPoint(activatorEvent);
+    keyboardDownRef.current = null;
     if (view === null) {
       return;
     }
@@ -212,7 +218,15 @@ export function ViewDndContext({
     update({ startView: view, source, label: labelOf(active), preview: null, removing: false });
   };
 
-  const handleDragOver = ({ active, over }: DragOverEvent) => {
+  /** Where the dragged item lands if released over `over` now. */
+  const hintFor = (over: Over, sameList: boolean) =>
+    dropHintFor(pointerRef.current, over.rect, keyboardDownRef.current, sameList);
+
+  /**
+   * Moves the placeholder to where the item would land. Runs on every move as well as every
+   * `over` change, because the target also changes when the pointer crosses a row's midline.
+   */
+  const syncPreview = (active: Active, over: Over | null) => {
     const state = dragRef.current;
     if (state === null) {
       return;
@@ -234,14 +248,12 @@ export function ViewDndContext({
     if (to === null) {
       return;
     }
-    // Inside one list the sortable strategy previews the move, except for root slots: they name
-    // a position no row covers, so the placeholder has to move there explicitly.
-    if (sameContainer(from, to) && readItemData(over)?.kind !== 'slot') {
+    const sameList = sameContainer(from, to);
+    // The container of the list the item already sits in names no other place for it.
+    if (sameList && readItemData(over)?.kind === 'groupzone') {
       return;
     }
-    const target = resolveDropTarget(currentView, currentSource, over.id, {
-      after: droppedAfter(active, over),
-    });
+    const target = resolveDropTarget(currentView, currentSource, over.id, hintFor(over, sameList));
     if (target === null) {
       return;
     }
@@ -258,19 +270,26 @@ export function ViewDndContext({
     });
   };
 
-  const handleDragMove = () => {
+  const handleDragOver = ({ active, over }: DragOverEvent) => {
+    syncPreview(active, over);
+  };
+
+  const handleDragMove = ({ active, over }: DragMoveEvent) => {
     const state = dragRef.current;
     const list = listRef.current;
-    if (state === null || state.source.kind === 'available' || list === null) {
+    if (state === null) {
       return;
     }
-    const pointer = pointerRef.current;
-    const removing =
-      pointer !== null &&
-      pointerOutside(pointer, list.getBoundingClientRect(), REMOVE_DRAG_THRESHOLD_PX);
-    if (removing !== state.removing) {
-      update({ ...state, removing });
+    if (state.source.kind !== 'available' && list !== null) {
+      const pointer = pointerRef.current;
+      const removing =
+        pointer !== null &&
+        pointerOutside(pointer, list.getBoundingClientRect(), REMOVE_DRAG_THRESHOLD_PX);
+      if (removing !== state.removing) {
+        update({ ...state, removing });
+      }
     }
+    syncPreview(active, over);
   };
 
   const finalViewFor = (state: DragState, active: Active, over: Over | null): View | null => {
@@ -280,7 +299,12 @@ export function ViewDndContext({
     if (over === null) {
       return null;
     }
-    const hint = { after: droppedAfter(active, over) };
+    const currentView = state.preview?.view ?? state.startView;
+    const currentSource = state.preview?.source ?? state.source;
+    const hint = hintFor(
+      over,
+      sameContainer(containerOf(currentView, currentSource), containerOfOver(over)),
+    );
     if (state.preview !== null) {
       return settlePreview(state.preview, active.id, over.id, hint);
     }
@@ -310,14 +334,16 @@ export function ViewDndContext({
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     const state = dragRef.current;
-    pointerRef.current = null;
     if (state === null) {
+      pointerRef.current = null;
       update(null);
       return;
     }
     setDropAnimation(dropAnimationFor(state.source, state.removing));
     update(null);
+    // The hint still reads the pointer, so it is cleared after the drop is resolved.
     const finalView = finalViewFor(state, active, over);
+    pointerRef.current = null;
     if (finalView === null) {
       return;
     }
@@ -409,6 +435,7 @@ export function ViewDndContext({
       <DragPreviewContext.Provider value={previewState}>
         {children}
         <ListAutoScroller listRef={listRef} pointerRef={pointerRef} />
+        <DroppableRemeasure trigger={drag?.preview?.view} />
         <DragOverlay dropAnimation={dropAnimation}>
           {overlay === null ? null : <DragOverlayContent {...overlay} />}
         </DragOverlay>

@@ -62,6 +62,7 @@ export function SortableChannelRow({
     data,
     disabled: saving,
     animateLayoutChanges: () => false,
+    transition: null,
   });
   const style = {
     '--channel-row-accent': channelColor(kind, reference.color),

@@ -152,6 +152,31 @@ export function settlePreview(
   return settled ?? view;
 }
 
+/** The geometry a drop hint is read against: the droppable rectangle the drag is over. */
+export interface OverRect {
+  top: number;
+  height: number;
+}
+
+/**
+ * Whether the dragged item goes after the row (or block) it is over. Pointer and touch drags
+ * read the pointer against the row's midline, so the same position means the same target in
+ * every list and from either direction. Keyboard drags have no pointer: inside one list an arrow
+ * down lands after the next row and an arrow up before it, and a row entering another list lands
+ * before the row it reaches.
+ */
+export function dropHintFor(
+  pointer: Point | null,
+  over: OverRect,
+  keyboardDown: boolean | null,
+  sameList: boolean,
+): DropHint {
+  if (pointer !== null) {
+    return { after: pointer.y > over.top + over.height / 2 };
+  }
+  return { after: sameList && keyboardDown === true };
+}
+
 /**
  * How the drag overlay leaves the screen: rows and groups fly to the row they became, an
  * AVAILABLE channel turns into its placeholder in place, and a removed item just disappears.

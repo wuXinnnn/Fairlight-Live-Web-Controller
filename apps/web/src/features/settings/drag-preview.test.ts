@@ -5,6 +5,7 @@ import {
   containerOf,
   containerOfTarget,
   dropAnimationFor,
+  dropHintFor,
   eventPoint,
   pointerOutside,
   previewFor,
@@ -178,22 +179,60 @@ describe('settlePreview', () => {
     expect(names(preview.view)).toEqual(['A', 'B', 'C', 'D']);
   });
 
-  it('settles against the row the item is released over inside its list', () => {
-    const settled = settlePreview(preview, activeId, 'channel:channel:C:channel/C#0', hint);
-    expect(names(settled)).toEqual(['B', 'C', 'A', 'D']);
-    expect(settled.channels[2]?.groupId).toBe('g1');
+  it('settles before or after the row the item is released over inside its list', () => {
+    const overC = 'channel:channel:C:channel/C#0';
+    const above = settlePreview(preview, activeId, overC, { after: false });
+    expect(names(above)).toEqual(['B', 'A', 'C', 'D']);
+    expect(above.channels[1]?.groupId).toBe('g1');
+    const below = settlePreview(preview, activeId, overC, { after: true });
+    expect(names(below)).toEqual(['B', 'C', 'A', 'D']);
+    expect(below.channels[2]?.groupId).toBe('g1');
   });
 
-  it('appends when released over another group container', () => {
+  it('joins another group container first or last', () => {
     // g3 is the empty group at the end of the view, so A becomes its first member after D.
-    const settled = settlePreview(preview, activeId, 'groupzone:g3', hint);
+    const settled = settlePreview(preview, activeId, 'groupzone:g3', { after: true });
     expect(names(settled)).toEqual(['B', 'C', 'D', 'A']);
     expect(settled.channels[3]?.groupId).toBe('g3');
+    // D previewed at the top of the root list: D | A | g1(B, C). Its upper half of g1's block
+    // (the header) makes it the first member, the lower half the last.
+    const atTop = previewFor(view, { kind: 'channel', index: 3 }, { kind: 'root', position: 0 });
+    expect(atTop).not.toBeNull();
+    const dId = 'channel:channel:D:channel/D#0';
+    const first = settlePreview(atTop as NonNullable<typeof atTop>, dId, 'groupzone:g1', {
+      after: false,
+    });
+    expect(names(first)).toEqual(['A', 'D', 'B', 'C']);
+    expect(first.channels[1]?.groupId).toBe('g1');
+    const last = settlePreview(atTop as NonNullable<typeof atTop>, dId, 'groupzone:g1', {
+      after: true,
+    });
+    expect(names(last)).toEqual(['A', 'B', 'C', 'D']);
+    expect(last.channels[3]?.groupId).toBe('g1');
   });
 
   it('keeps the preview when the drop target cannot be resolved', () => {
     expect(settlePreview(preview, activeId, 'available:aux/1', hint)).toBe(preview.view);
     expect(settlePreview(preview, activeId, 'group:g1', hint)).toBe(preview.view);
+  });
+});
+
+describe('dropHintFor', () => {
+  const over = { top: 100, height: 40 };
+
+  it('reads the pointer against the midline of the row', () => {
+    expect(dropHintFor({ x: 0, y: 110 }, over, null, true)).toEqual({ after: false });
+    expect(dropHintFor({ x: 0, y: 120 }, over, null, true)).toEqual({ after: false });
+    expect(dropHintFor({ x: 0, y: 121 }, over, null, false)).toEqual({ after: true });
+    // The pointer wins over any keyboard direction that was recorded earlier.
+    expect(dropHintFor({ x: 0, y: 110 }, over, true, true)).toEqual({ after: false });
+  });
+
+  it('follows the arrow direction inside one list and lands before the row across lists', () => {
+    expect(dropHintFor(null, over, true, true)).toEqual({ after: true });
+    expect(dropHintFor(null, over, false, true)).toEqual({ after: false });
+    expect(dropHintFor(null, over, true, false)).toEqual({ after: false });
+    expect(dropHintFor(null, over, null, true)).toEqual({ after: false });
   });
 });
 

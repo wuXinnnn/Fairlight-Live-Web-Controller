@@ -8,7 +8,8 @@ import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
 import { pickUp, press } from './keyboard-drag.js';
-import { stubListLayout } from './stub-layout.js';
+import { pointerDown, pointerMoveTo, pointerUp } from './pointer-drag.js';
+import { STUB_LIST_PADDING, STUB_ROW_HEIGHT, stubListLayout } from './stub-layout.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -135,12 +136,13 @@ describe('settings drag and drop (keyboard sensor)', () => {
     ]);
 
     // With no ungrouped row left, the group starts the list, so a root slot above it lets a
-    // member leave the group to the top: two steps reorder inside the group, the third reaches
-    // the slot.
+    // member leave the group to the top: two steps reorder inside the group (the list already
+    // shows the previewed order), the third reaches the slot.
     await pickUp(page.handle('FX'));
     await press('ArrowUp');
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'BASS']);
     await press('ArrowUp');
-    expect(page.memberNames('g1')).toEqual(['MAIN', 'BASS', 'FX']);
+    expect(page.memberNames('g1')).toEqual(['FX', 'MAIN', 'BASS']);
     expect(page.container.querySelector('[data-root-slot="0"]')).toBeInTheDocument();
     await press('ArrowUp');
     // The placeholder now sits above the group; the slot stays drawn right below it, so
@@ -367,5 +369,94 @@ describe('settings drag and drop (keyboard sensor)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ungroup Rhythm' }));
     expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']);
     expect(within(page.list()).getAllByRole('button', { name: /^Drag / })).toHaveLength(3);
+  });
+});
+
+describe('settings drag and drop (pointer sensor)', () => {
+  let restoreLayout: () => void;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetMixerStore();
+    resetMeterStore();
+    resetViewStore();
+    restoreLayout = stubListLayout();
+  });
+
+  afterEach(() => {
+    restoreLayout();
+  });
+
+  // The stub stacks the list below its padding: a group block is its header plus one row per
+  // member, every row STUB_ROW_HEIGHT tall. `rowY(n, fraction)` is a point inside the n-th row
+  // of that stack (the header counts as row 0), `fraction` of the way down.
+  const X = 700;
+  const rowY = (row: number, fraction: number) =>
+    STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
+
+  it('reaches the last member of a group and the row right after it from below', async () => {
+    // Rows: header | MAIN | FX | BASS | SUB
+    const page = await openSettings({
+      id: 'below',
+      name: 'Below',
+      channels: [{ ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }, BASS, SUB],
+      groups: [RHYTHM],
+    });
+    await pointerDown(page.handle('SUB'), X, rowY(4, 0.5));
+    await pointerMoveTo(X, rowY(4, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('SUB'));
+    // Upper half of BASS: SUB lands before it, as the first ungrouped row after the group.
+    await pointerMoveTo(X, rowY(3, 0.25));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']));
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'FX']);
+    // Lower half of FX: SUB joins the group as its last member and the list stays put.
+    await pointerMoveTo(X, rowY(2, 0.75));
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']));
+    await pointerMoveTo(X, rowY(2, 0.9));
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']);
+    await pointerUp(X, rowY(2, 0.9));
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']));
+    expect(await page.savedChannels()).toEqual([
+      { ...MAIN, groupId: 'g1' },
+      { ...FX, groupId: 'g1' },
+      { ...SUB, groupId: 'g1' },
+      BASS,
+    ]);
+  });
+
+  it('reaches the same two places from above, entering the group at its top', async () => {
+    // Rows: SUB | header | MAIN | FX | BASS
+    const page = await openSettings({
+      id: 'above',
+      name: 'Above',
+      channels: [SUB, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }, BASS],
+      groups: [RHYTHM],
+    });
+    await pointerDown(page.handle('SUB'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('SUB'));
+    // The group header (upper half of the block, below the root slot band): SUB becomes the
+    // first member, and the list moves up so the placeholder sits under the pointer.
+    await pointerMoveTo(X, rowY(1, 0.75));
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['SUB', 'MAIN', 'FX']));
+    // Rows now: header | SUB | MAIN | FX | BASS. Lower half of MAIN, then lower half of FX.
+    await pointerMoveTo(X, rowY(2, 0.75));
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'SUB', 'FX']));
+    await pointerMoveTo(X, rowY(3, 0.75));
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']));
+    // Upper half of BASS: SUB leaves the group and stands right after it.
+    await pointerMoveTo(X, rowY(4, 0.25));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']));
+    expect(page.memberNames('g1')).toEqual(['MAIN', 'FX']);
+    await pointerUp(X, rowY(4, 0.25));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']);
+    expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('');
+    expect(await page.savedChannels()).toEqual([
+      { ...MAIN, groupId: 'g1' },
+      { ...FX, groupId: 'g1' },
+      SUB,
+      BASS,
+    ]);
   });
 });

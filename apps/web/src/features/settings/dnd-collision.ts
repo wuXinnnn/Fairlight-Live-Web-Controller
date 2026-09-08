@@ -7,7 +7,14 @@ import {
   type KeyboardCoordinateGetter,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
+import type { SortingStrategy } from '@dnd-kit/sortable';
 import { readItemData, type DndItemData, type DndItemKind } from './dnd-ids.js';
+
+/**
+ * The lists render the preview view, which already has the dragged item where it would land,
+ * so dnd-kit must not displace rows on top of that: the strategy moves nothing.
+ */
+export const previewSortingStrategy: SortingStrategy = () => null;
 
 /**
  * Which droppables a dragged item may land on. Channels (from the list or the AVAILABLE list)

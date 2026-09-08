@@ -2,7 +2,7 @@ import type { UniqueIdentifier } from '@dnd-kit/core';
 import type { View, ViewChannelRef } from '@flwc/shared';
 import { parseDndId } from './dnd-ids.js';
 import { channelRowKeys } from './row-keys.js';
-import { memberIndices, nonEmptyBlocks, type DropTarget } from './view-order.js';
+import { memberIndices, nonEmptyBlocks, type DropTarget, type ViewBlock } from './view-order.js';
 
 /** What is being dragged, resolved against the view the drag started from. */
 export type DragSource =
@@ -11,7 +11,7 @@ export type DragSource =
   | { kind: 'available'; channelId: string };
 
 export interface DropHint {
-  /** True when the dragged item was released below the midpoint of the row it is over. */
+  /** True when the pointer is below the midline of the row or group block it is over. */
   after: boolean;
 }
 
@@ -22,14 +22,21 @@ function knownGroupId(view: View, reference: ViewChannelRef | undefined): string
     : undefined;
 }
 
-function singlePosition(view: View, index: number): number {
-  return nonEmptyBlocks(view).findIndex(
+/** Top-level blocks of `view`, without the dragged group's own block when a group is dragged. */
+function restBlocks(view: View, draggedGroupId: string | undefined): ViewBlock[] {
+  return nonEmptyBlocks(view).filter(
+    (block) => block.kind !== 'group' || block.group.id !== draggedGroupId,
+  );
+}
+
+function singlePosition(view: View, draggedGroupId: string | undefined, index: number): number {
+  return restBlocks(view, draggedGroupId).findIndex(
     (block) => block.kind === 'single' && block.index === index,
   );
 }
 
-function groupPosition(view: View, groupId: string): number {
-  return nonEmptyBlocks(view).findIndex(
+function groupPosition(view: View, draggedGroupId: string | undefined, groupId: string): number {
+  return restBlocks(view, draggedGroupId).findIndex(
     (block) => block.kind === 'group' && block.group.id === groupId,
   );
 }
@@ -52,10 +59,12 @@ export function dragSourceFor(view: View, activeId: UniqueIdentifier): DragSourc
 }
 
 /**
- * Turns the droppable the drag ended over into a `DropTarget`. Inside one list the dragged item
- * takes the slot of the row it is over (the preview dnd-kit shows while sorting); across lists
- * it lands before that row, or after it when `hint.after` is set. Group containers append, and
- * root slots place the channel as an ungrouped row at the block boundary they mark.
+ * Turns the droppable the drag is over into a `DropTarget`. The rule is the same inside one list
+ * and across lists: the dragged item lands before the row (or group block) it is over, or after
+ * it when `hint.after` is set. A group container puts the channel first when hit in its upper
+ * half (the header) and last when hit in its lower half (the bottom edge), and root slots place
+ * the channel as an ungrouped row at the block boundary they mark. Positions count the view
+ * without the dragged item, as `moveChannelTo` and `moveGroupTo` expect.
  */
 export function resolveDropTarget(
   view: View,
@@ -90,16 +99,18 @@ export function resolveDropTarget(
     return {
       kind: 'group',
       groupId: over.groupId,
-      position: memberIndices(base, over.groupId).length,
+      position: hint.after ? memberIndices(base, over.groupId).length : 0,
     };
   }
+
+  const offset = hint.after ? 1 : 0;
 
   if (over.kind === 'group') {
     if (source.kind !== 'group' || source.groupId === over.groupId) {
       return null;
     }
-    const position = groupPosition(view, over.groupId);
-    return position < 0 ? null : { kind: 'root', position };
+    const position = groupPosition(base, source.groupId, over.groupId);
+    return position < 0 ? null : { kind: 'root', position: position + offset };
   }
 
   const overIndex = channelRowKeys(view).indexOf(over.rowKey);
@@ -112,25 +123,12 @@ export function resolveDropTarget(
     if (overGroup !== undefined) {
       return null;
     }
-    return { kind: 'root', position: singlePosition(view, overIndex) };
+    return { kind: 'root', position: singlePosition(base, source.groupId, overIndex) + offset };
   }
 
-  const sourceGroup =
-    source.kind === 'channel' ? knownGroupId(view, view.channels[source.index]) : undefined;
-  if (source.kind === 'channel' && sourceGroup === overGroup) {
-    return overGroup === undefined
-      ? { kind: 'root', position: singlePosition(view, overIndex) }
-      : {
-          kind: 'group',
-          groupId: overGroup,
-          position: memberIndices(view, overGroup).indexOf(overIndex),
-        };
-  }
-
-  const offset = hint.after ? 1 : 0;
   const baseIndex = inBase(overIndex);
   return overGroup === undefined
-    ? { kind: 'root', position: singlePosition(base, baseIndex) + offset }
+    ? { kind: 'root', position: singlePosition(base, undefined, baseIndex) + offset }
     : {
         kind: 'group',
         groupId: overGroup,

@@ -39,22 +39,36 @@ describe('dragSourceFor', () => {
 });
 
 describe('resolveDropTarget', () => {
-  it('takes the slot of the row it is over inside the same list', () => {
+  it('lands before or after the row it is over inside the same list', () => {
+    // Positions count the blocks and members without the dragged row: A | g1(B, C) | D | g2(E)
+    // becomes g1(B, C) | D | g2(E) while A is dragged, so D's upper half is root position 1.
     const a = { kind: 'channel', index: 0 } as const;
-    expect(resolveDropTarget(view, a, row('D'), before)).toEqual({ kind: 'root', position: 2 });
+    expect(resolveDropTarget(view, a, row('D'), before)).toEqual({ kind: 'root', position: 1 });
+    expect(resolveDropTarget(view, a, row('D'), after)).toEqual({ kind: 'root', position: 2 });
     const d = { kind: 'channel', index: 3 } as const;
-    expect(resolveDropTarget(view, d, row('A'), after)).toEqual({ kind: 'root', position: 0 });
+    expect(resolveDropTarget(view, d, row('A'), before)).toEqual({ kind: 'root', position: 0 });
+    expect(resolveDropTarget(view, d, row('A'), after)).toEqual({ kind: 'root', position: 1 });
     const b = { kind: 'channel', index: 1 } as const;
     expect(resolveDropTarget(view, b, row('C'), before)).toEqual({
+      kind: 'group',
+      groupId: 'g1',
+      position: 0,
+    });
+    expect(resolveDropTarget(view, b, row('C'), after)).toEqual({
       kind: 'group',
       groupId: 'g1',
       position: 1,
     });
     const c = { kind: 'channel', index: 2 } as const;
-    expect(resolveDropTarget(view, c, row('B'), after)).toEqual({
+    expect(resolveDropTarget(view, c, row('B'), before)).toEqual({
       kind: 'group',
       groupId: 'g1',
       position: 0,
+    });
+    expect(resolveDropTarget(view, c, row('B'), after)).toEqual({
+      kind: 'group',
+      groupId: 'g1',
+      position: 1,
     });
   });
 
@@ -84,9 +98,14 @@ describe('resolveDropTarget', () => {
     expect(resolveDropTarget(view, e, row('D'), after)).toEqual({ kind: 'root', position: 3 });
   });
 
-  it('appends to a group container and refuses containers for group drags', () => {
+  it('puts a channel first or last in a group container and refuses containers for group drags', () => {
     const a = { kind: 'channel', index: 0 } as const;
     expect(resolveDropTarget(view, a, 'groupzone:g1', before)).toEqual({
+      kind: 'group',
+      groupId: 'g1',
+      position: 0,
+    });
+    expect(resolveDropTarget(view, a, 'groupzone:g1', after)).toEqual({
       kind: 'group',
       groupId: 'g1',
       position: 2,
@@ -96,8 +115,13 @@ describe('resolveDropTarget', () => {
       groupId: 'g3',
       position: 0,
     });
+    expect(resolveDropTarget(view, a, 'groupzone:g3', after)).toEqual({
+      kind: 'group',
+      groupId: 'g3',
+      position: 0,
+    });
     const b = { kind: 'channel', index: 1 } as const;
-    expect(resolveDropTarget(view, b, 'groupzone:g1', before)).toEqual({
+    expect(resolveDropTarget(view, b, 'groupzone:g1', after)).toEqual({
       kind: 'group',
       groupId: 'g1',
       position: 1,
@@ -118,6 +142,11 @@ describe('resolveDropTarget', () => {
       position: 1,
     });
     expect(resolveDropTarget(view, fx, 'groupzone:g2', before)).toEqual({
+      kind: 'group',
+      groupId: 'g2',
+      position: 0,
+    });
+    expect(resolveDropTarget(view, fx, 'groupzone:g2', after)).toEqual({
       kind: 'group',
       groupId: 'g2',
       position: 1,
@@ -141,10 +170,16 @@ describe('resolveDropTarget', () => {
     expect(resolveDropTarget(view, { kind: 'group', groupId: 'g1' }, 'slot:0', before)).toBeNull();
   });
 
-  it('moves groups over root rows and other groups only', () => {
+  it('moves groups before or after root rows and other groups only', () => {
+    // Without g1 the blocks are A | D | g2(E).
     const g1 = { kind: 'group', groupId: 'g1' } as const;
-    expect(resolveDropTarget(view, g1, row('D'), before)).toEqual({ kind: 'root', position: 2 });
-    expect(resolveDropTarget(view, g1, 'group:g2', before)).toEqual({ kind: 'root', position: 3 });
+    expect(resolveDropTarget(view, g1, row('D'), before)).toEqual({ kind: 'root', position: 1 });
+    expect(resolveDropTarget(view, g1, row('D'), after)).toEqual({ kind: 'root', position: 2 });
+    expect(resolveDropTarget(view, g1, 'group:g2', before)).toEqual({ kind: 'root', position: 2 });
+    expect(resolveDropTarget(view, g1, 'group:g2', after)).toEqual({ kind: 'root', position: 3 });
+    const g2 = { kind: 'group', groupId: 'g2' } as const;
+    expect(resolveDropTarget(view, g2, row('A'), before)).toEqual({ kind: 'root', position: 0 });
+    expect(resolveDropTarget(view, g2, 'group:g1', after)).toEqual({ kind: 'root', position: 2 });
     expect(resolveDropTarget(view, g1, row('E'), before)).toBeNull();
     expect(resolveDropTarget(view, g1, 'group:g1', before)).toBeNull();
     expect(resolveDropTarget(view, g1, 'group:g3', before)).toBeNull();

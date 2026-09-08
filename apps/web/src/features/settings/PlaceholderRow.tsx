@@ -35,6 +35,7 @@ export function PlaceholderRow({
     id: availableDndId(channelId),
     data,
     animateLayoutChanges: () => false,
+    transition: null,
   });
   const style = {
     '--channel-row-accent': channelTypeColor(kind),

@@ -1,11 +1,12 @@
 import { useDndContext, useDroppable } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { View, ViewGroup } from '@flwc/shared';
 import type { CSSProperties, ReactNode } from 'react';
 import { channelColor, channelTypeColor } from '../mixer/channel-colors.js';
 import type { ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { pad } from './channel-labels.js';
+import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
@@ -110,6 +111,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
     data: { kind: 'group', label: `group ${group.name}`, groupId: group.id },
     disabled: saving,
     animateLayoutChanges: () => false,
+    transition: null,
   });
   const { setNodeRef: setZoneRef } = useDroppable({
     id: groupZoneDndId(group.id),
@@ -145,7 +147,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
           />
         }
       />
-      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+      <SortableContext items={itemIds} strategy={previewSortingStrategy}>
         <ol className="view-group__members">
           {entries.map((entry, position) => renderRow(entry, rowKeys[position] ?? ''))}
         </ol>
