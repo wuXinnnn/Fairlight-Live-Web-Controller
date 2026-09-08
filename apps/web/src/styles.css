@@ -1531,10 +1531,15 @@ html.fader-cap-dragging * {
   cursor: pointer;
 }
 
+/*
+ * The VIEWS column follows the viewport instead of holding a fixed share of it. On a laptop it is
+ * still the full 21rem; on a tablet held landscape it gives the editor back the space that made
+ * the CHANNEL ORDER rows wrap.
+ */
 .settings-workbench {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(17rem, 21rem) 1fr;
+  grid-template-columns: minmax(0, clamp(12rem, 20vw, 21rem)) minmax(0, 1fr);
   background:
     linear-gradient(90deg, rgb(255 255 255 / 1.2%) 1px, transparent 1px) 0 0 / 7rem 100%,
     var(--surface-0);
@@ -1545,6 +1550,26 @@ html.fader-cap-dragging * {
   padding: 1.4rem;
   border-right: 1px solid var(--line-strong);
   background: rgb(23 26 32 / 94%);
+}
+
+/*
+ * At 1200px the clamp above puts the column at 15rem, and it only gets narrower from there, so the
+ * padding and the row heights are what is left to give back. A container query cannot do this: it
+ * would have to style the very container it is asking about.
+ */
+@media (max-width: 1200px) {
+  .view-index {
+    padding: 1rem 0.8rem;
+  }
+
+  .new-view-form {
+    margin: 1rem 0 0.8rem;
+  }
+
+  .view-list > button {
+    gap: 0.45rem;
+    padding: 0.55rem 0.5rem;
+  }
 }
 
 .workbench-label {
