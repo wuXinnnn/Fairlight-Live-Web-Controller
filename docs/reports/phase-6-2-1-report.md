@@ -169,11 +169,23 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 - **建议回写文档**:无踩坑类条目需要写入 `docs/fairlight-ember.md`;本批次架构变化已写入 `docs/architecture.md`。
 - **`docs/development-plan.md` 的 6.2 与 6.2.1 验收框未勾选**,由用户在真机验收后处理。
 
-## 10. 提交记录
+## 10. 评审后的修订
+
+**Cursor Bugbot(`2f399af`,1 条 Low)**:*Collapsed state survives empty groups* —— `collapsedGroupIds` 只在切换 view、`DISCARD` 与 `UNGROUP` 时清理,用 AVAILABLE 勾选框或 `CLEAR INVALID` 把一个折叠中的组清空后,组 id 仍留在集合里;之后再用 `GROUP` 下拉把通道放回该组,组会以折叠态渲染,新成员被卸载、看不见。
+
+已复现并确认属实,且范围比报告的更宽:拖走最后一个成员、`GROUP` 下拉把最后一个成员移走,同样会留下过期 id。修法没有逐个路径打补丁(那需要动五处,且以后每加一条编辑路径都要记得),而是补上通往组内的另一条路:`handleAssignGroup` 在通道进入某个组时先 `expandGroup(groupId)`,与拖放里「占位行预览进折叠组即展开」同一条规则。两条入组路径(下拉、拖放)都保证「放进去的东西看得见」,过期 id 因此再也无法生效——空组本身不显示折叠按钮,所以没有别的控件能让它以折叠态复活。顺带修掉了 Bugbot 没提的一种情形:直接用下拉把通道放进一个折叠的组,原本也会被藏起来。
+
+回归用例 `settings-groups.integration.test.tsx > does not fold a group shut again after it has been emptied and refilled`:折叠 → 用勾选框清空 → 下拉放回一个通道 → 断言成员可见且 `aria-expanded="true"`。移除该修复后用例失败(`[]` vs `['FX']`),加回后通过。
+
+> 中途试过在 `SettingsPage` 用 `useEffect` 把折叠集合按草稿裁剪(「没有成员的组不可折叠」),被 `react-hooks/set-state-in-effect` 拒绝——该规则是对的,这里本来就不需要 effect。最终的入组即展开既符合 lint,也与既有语义一致。
+
+## 11. 提交记录
 
 分支 `claude/phase-6-2-1-4pm0av`(基于 `c3ecab3 docs: add the Phase 6.2.1 follow-up batch and its execution prompt`),本批次新增提交:
 
 ```text
+2f399af docs: record the pre-existing timeout seen under a parallel test run
+4433ea1 docs: add the Phase 6.2.1 execution report
 2569b16 fix(web): let the empty-view drop slot take the space the list has left
 132cdbd feat: give groups a colour and let channels follow it
 d21cd31 feat(web): collapse and expand groups in the view editor
@@ -182,4 +194,6 @@ d21cd31 feat(web): collapse and expand groups in the view editor
 c796a62 refactor(web): drive settings drag and drop with mouse and touch sensors
 ```
 
-合计 34 个文件、+1607 / −186 行(不含本报告)。
+评审后追加(第 10 节):`fix(web): reveal a group when a channel is assigned into it`。
+
+不含本报告本身,合计 34 个文件、+1626 / −186 行。

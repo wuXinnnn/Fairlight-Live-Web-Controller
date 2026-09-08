@@ -151,15 +151,6 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       }),
     [],
   );
-  const forgetCollapsed = (groupId: string) =>
-    setCollapsedGroupIds((current) => {
-      if (!current.has(groupId)) {
-        return current;
-      }
-      const next = new Set(current);
-      next.delete(groupId);
-      return next;
-    });
 
   useEffect(() => {
     setNavigationGuard((route) => {
@@ -375,6 +366,12 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   };
 
   const handleAssignGroup = (index: number, groupId: string | undefined) => {
+    // Same rule as a drag: a channel put into a collapsed group has to be visible where it
+    // landed. It also keeps a group that was emptied while folded from swallowing the first
+    // channel put back into it, since being empty hides the control that would reopen it.
+    if (groupId !== undefined) {
+      expandGroup(groupId);
+    }
     editDraft((source) => assignGroup(source, index, groupId));
   };
 
@@ -634,10 +631,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       onRenameGroup={(groupId, name) =>
                         editDraft((source) => renameGroup(source, groupId, name))
                       }
-                      onRemoveGroup={(groupId) => {
-                        forgetCollapsed(groupId);
-                        editDraft((source) => removeGroup(source, groupId));
-                      }}
+                      onRemoveGroup={(groupId) =>
+                        editDraft((source) => removeGroup(source, groupId))
+                      }
                       onToggleCollapse={toggleCollapse}
                       onSetGroupColor={(groupId, color) =>
                         editDraft((source) => setGroupColor(source, groupId, color))

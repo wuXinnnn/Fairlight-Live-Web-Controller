@@ -126,6 +126,29 @@ describe('settings group collapse', () => {
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['BASS', 'MAIN']));
   });
 
+  it('does not fold a group shut again after it has been emptied and refilled', async () => {
+    const page = await openSettings([grouped]);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse group Rhythm' }));
+    expect(page.memberNames('g1')).toEqual([]);
+
+    // Emptying the group through the AVAILABLE checkboxes leaves it with nothing to fold.
+    for (const name of ['BASS', 'MAIN']) {
+      fireEvent.click(screen.getByRole('checkbox', { name: new RegExp(name) }));
+    }
+    expect(page.orderedNames()).toEqual(['FX']);
+    expect(screen.getByText('ASSIGN CHANNELS BELOW')).toBeInTheDocument();
+
+    // Putting a channel back must show it rather than hide it inside a still-collapsed group.
+    fireEvent.change(screen.getByRole('combobox', { name: 'FX group' }), {
+      target: { value: 'g1' },
+    });
+    expect(page.memberNames('g1')).toEqual(['FX']);
+    expect(screen.getByRole('button', { name: 'Collapse group Rhythm' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
   it('keeps every header control usable while a group is collapsed', async () => {
     const page = await openSettings([grouped]);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse group Rhythm' }));
