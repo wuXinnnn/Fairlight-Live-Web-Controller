@@ -580,29 +580,25 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                         </button>
                       </div>
                     )}
-                    {activeDraft.channels.length === 0 && activeDraft.groups.length === 0 ? (
-                      <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
-                    ) : (
-                      <ChannelOrderList
-                        listRef={listRef}
-                        flipRef={flipRef}
-                        view={activeDraft}
-                        channels={availableChannels}
-                        duplicateNames={duplicateNames}
-                        channelInventoryLoaded={channelInventoryLoaded}
-                        saving={saving}
-                        onMoveChannel={handleMoveChannel}
-                        onMoveGroup={handleMoveGroup}
-                        onAssignGroup={handleAssignGroup}
-                        onSetColor={setChannelColor}
-                        onRenameGroup={(groupId, name) =>
-                          editDraft((source) => renameGroup(source, groupId, name))
-                        }
-                        onRemoveGroup={(groupId) =>
-                          editDraft((source) => removeGroup(source, groupId))
-                        }
-                      />
-                    )}
+                    <ChannelOrderList
+                      listRef={listRef}
+                      flipRef={flipRef}
+                      view={activeDraft}
+                      channels={availableChannels}
+                      duplicateNames={duplicateNames}
+                      channelInventoryLoaded={channelInventoryLoaded}
+                      saving={saving}
+                      onMoveChannel={handleMoveChannel}
+                      onMoveGroup={handleMoveGroup}
+                      onAssignGroup={handleAssignGroup}
+                      onSetColor={setChannelColor}
+                      onRenameGroup={(groupId, name) =>
+                        editDraft((source) => renameGroup(source, groupId, name))
+                      }
+                      onRemoveGroup={(groupId) =>
+                        editDraft((source) => removeGroup(source, groupId))
+                      }
+                    />
                   </section>
                 </div>
               </ViewDndContext>

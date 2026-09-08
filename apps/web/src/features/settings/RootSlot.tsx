@@ -10,6 +10,12 @@ interface RootSlotProps {
   label: string;
   /** True when the dragged row already sits here; keyboard moves skip it, pointers stay put. */
   current: boolean;
+  /**
+   * True for the slot of a view with no ordered blocks. It takes the space the list has left
+   * instead of overlaying the block below, so an empty view has somewhere to drop the first
+   * channel while any empty groups above it stay reachable in their own right.
+   */
+  fill?: boolean;
 }
 
 /**
@@ -19,16 +25,17 @@ interface RootSlotProps {
  * the boundary, so slots appearing and disappearing never shift the rows under the pointer.
  * Hovering the band previews the channel there as an ungrouped row, which replaces the slot.
  */
-export function RootSlot({ position, label, current }: RootSlotProps) {
+export function RootSlot({ position, label, current, fill = false }: RootSlotProps) {
   const data: DndItemData = { kind: 'slot', label, position, current };
   const { setNodeRef, isOver } = useDroppable({ id: rootSlotDndId(position), data });
   return (
-    <li className="root-slot" aria-hidden="true">
+    <li className={`root-slot ${fill ? 'root-slot--fill' : ''}`} aria-hidden="true">
       <div
         ref={setNodeRef}
         className={`root-slot__band ${isOver ? 'is-over' : ''}`}
         data-root-slot={position}
-        style={{ height: ROOT_SLOT_HEIGHT_PX } as CSSProperties}
+        data-root-slot-fill={fill ? '' : undefined}
+        style={fill ? undefined : ({ height: ROOT_SLOT_HEIGHT_PX } as CSSProperties)}
       />
     </li>
   );

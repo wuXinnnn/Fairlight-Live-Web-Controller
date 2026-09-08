@@ -2326,6 +2326,26 @@ html.fader-cap-dragging * {
   left: 0;
 }
 
+/*
+ * The slot of a view with nothing ordered in it takes the space the list has left, so the first
+ * channel can be dropped anywhere below the (possibly empty) groups rather than on a 16px band.
+ */
+.root-slot--fill {
+  flex: 1 1 auto;
+  min-height: 4rem;
+}
+
+.root-slot--fill .root-slot__band {
+  position: static;
+  height: 100%;
+}
+
+/* The list always renders, so its empty notice is a row of the list rather than a sibling. */
+.view-channel-list > .panel-empty {
+  display: block;
+  flex: 0 0 auto;
+}
+
 .root-slot__band::before {
   position: absolute;
   top: 0;

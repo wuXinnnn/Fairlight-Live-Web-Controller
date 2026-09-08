@@ -147,9 +147,27 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       />
     );
   const lastOrdered = ordered[ordered.length - 1];
+  // A view whose draft has no ordered block (no channels, or only empty groups) still needs a
+  // place to drop the first channel. The slot is decided by the draft, not by the preview: were
+  // it gated on the rendered view it would unmount the moment a placeholder appeared, leaving
+  // the pointer over nothing, which clears the preview and brings the slot back, frame by frame.
+  const emptyDraft = nonEmptyBlocks(props.view).length === 0;
+  const fillSlot =
+    dragging && sourceKind !== 'group' && emptyDraft ? (
+      <RootSlot
+        key="slot:fill"
+        position={remaining.length}
+        label="the start of the list"
+        current={false}
+        fill
+      />
+    ) : null;
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>
+        {view.channels.length === 0 && view.groups.length === 0 && (
+          <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>
+        )}
         {blocks.map((block) => {
           const slotBefore = slotAt(slotBeforeBlock.get(block));
           const slotAfter = block === lastOrdered ? slotAt(slotAfterLast) : null;
@@ -191,6 +209,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             </Fragment>
           );
         })}
+        {fillSlot}
       </ol>
     </SortableContext>
   );

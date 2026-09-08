@@ -143,6 +143,47 @@ describe('settings drag and drop (keyboard sensor)', () => {
     flip.stop();
   });
 
+  it('takes the first channel of an empty view from AVAILABLE', async () => {
+    const page = await openSettings({ id: 'new', name: 'New', channels: [], groups: [] });
+    expect(screen.getByText('THIS VIEW HAS NO CHANNELS')).toBeInTheDocument();
+    expect(page.list()).not.toBeNull();
+
+    // The slot that fills the empty list is the only target, so the pickup already previews there.
+    await pickUp(page.availableHandle('channel/1'));
+    expect(page.orderedNames()).toEqual(['BASS']);
+    expect(screen.queryByText('THIS VIEW HAS NO CHANNELS')).toBeNull();
+    await press('Space');
+
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
+    expect(await page.savedChannels()).toEqual([BASS]);
+  });
+
+  it('moves a channel between an empty group and the empty list around it', async () => {
+    const page = await openSettings({
+      id: 'groups',
+      name: 'Groups',
+      channels: [],
+      groups: [RHYTHM],
+    });
+    expect(page.orderedNames()).toEqual([]);
+
+    // The empty group block sits above the fill slot, so the pickup previews into the group.
+    await pickUp(page.availableHandle('channel/1'));
+    expect(page.memberNames('g1')).toEqual(['BASS']);
+    // Down from there is the slot filling the rest of the list: the channel leaves the group.
+    await press('ArrowDown');
+    expect(page.memberNames('g1')).toEqual([]);
+    expect(page.orderedNames()).toEqual(['BASS']);
+    // And back up into the group again.
+    await press('ArrowUp');
+    expect(page.memberNames('g1')).toEqual(['BASS']);
+
+    await press('Space');
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['BASS']));
+    expect(await page.savedChannels()).toEqual([{ ...BASS, groupId: 'g1' }]);
+  });
+
   it('reorders ungrouped rows and saves the new order', async () => {
     const page = await openSettings({
       id: 'flat',
@@ -461,6 +502,25 @@ describe('settings drag and drop (mouse sensor)', () => {
   const X = 700;
   const rowY = (row: number, fraction: number) =>
     STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
+
+  it('takes the first channel of an empty view from AVAILABLE', async () => {
+    const page = await openSettings({ id: 'new', name: 'New', channels: [], groups: [] });
+    const handle = page.availableHandle('channel/1');
+
+    await pointerDown(handle, 0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 0.5);
+    // The first move only satisfies the activation distance; the sensor ignores its position.
+    await pointerMoveTo(0, STUB_LIST_PADDING + STUB_ROW_HEIGHT);
+    // Anywhere inside the slot that fills the empty list previews the channel as the first row.
+    await pointerMoveTo(X, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    expect(screen.queryByText('THIS VIEW HAS NO CHANNELS')).toBeNull();
+
+    await pointerUp(X, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(page.orderedNames()).toEqual(['BASS']);
+    expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
+    expect(await page.savedChannels()).toEqual([BASS]);
+  });
 
   it('reaches the last member of a group and the row right after it from below', async () => {
     // Rows: header | MAIN | FX | BASS | SUB

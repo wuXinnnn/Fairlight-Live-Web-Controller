@@ -12,6 +12,12 @@ export const STUB_ROW_WIDTH = 400;
 /** Root slots are short bands overlaying the top of the block below a boundary. */
 export const STUB_SLOT_HEIGHT = 16;
 /**
+ * The slot of an empty view takes the space the list has left. It is laid out below whatever
+ * precedes it and given a few rows' worth of height, so its centre is below every AVAILABLE
+ * entry and a keyboard drag reaches it with ArrowDown.
+ */
+export const STUB_FILL_SLOT_HEIGHT = 3 * STUB_ROW_HEIGHT;
+/**
  * Space the list keeps above its first and below its last row. It is wider than the auto-scroll
  * edge zone, so a pointer over the first or last row does not scroll the list: jsdom accepts any
  * `scrollTop`, and each scroll step would re-measure every droppable.
@@ -55,6 +61,14 @@ function layoutRects(): Map<Element, DOMRect> {
         y += STUB_ROW_HEIGHT;
       }
       rects.set(block, rect(LIST_LEFT, start, STUB_ROW_WIDTH, y - start));
+    } else if (block.classList.contains('root-slot--fill')) {
+      // The empty-view slot is a block of its own: it follows what came before and takes space.
+      rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_FILL_SLOT_HEIGHT));
+      const band = block.querySelector('.root-slot__band');
+      if (band !== null) {
+        rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_FILL_SLOT_HEIGHT));
+      }
+      y += STUB_FILL_SLOT_HEIGHT;
     } else if (block.classList.contains('root-slot')) {
       // The slot takes no space; its band overlays the top of whatever follows.
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, 0));
@@ -62,6 +76,10 @@ function layoutRects(): Map<Element, DOMRect> {
       if (band !== null) {
         rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_SLOT_HEIGHT));
       }
+    } else if (block.classList.contains('panel-empty')) {
+      // The empty notice is a row of the list, but nothing ever drops on it.
+      rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
+      y += STUB_ROW_HEIGHT;
     } else {
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
       y += STUB_ROW_HEIGHT;
