@@ -15,6 +15,7 @@ import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
+import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
 import { groupRowKey } from './row-keys.js';
 import { useDragPreview } from './use-drag-preview.js';
 import { moveGroup, type MoveDirection } from './view-order.js';
@@ -91,6 +92,24 @@ function GroupHeader({
 }) {
   const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
   const { dragging } = useDragPreview();
+  const colorChoices: PaletteChoice<ChannelPaletteKey | undefined>[] = [
+    {
+      id: 'auto',
+      value: undefined,
+      ariaLabel: `Group ${group.name} use automatic color`,
+      title: "First member's type",
+      text: 'AUTO',
+      selected: group.color === undefined,
+    },
+    ...CHANNEL_PALETTE_KEYS.map((color) => ({
+      id: color,
+      value: color,
+      ariaLabel: `Group ${group.name} color ${PALETTE_LABELS[color]}`,
+      title: PALETTE_LABELS[color],
+      swatch: CHANNEL_PALETTE[color],
+      selected: group.color === color,
+    })),
+  ];
   return (
     <div className="view-group__header">
       {handle}
@@ -134,32 +153,12 @@ function GroupHeader({
       >
         UNGROUP
       </button>
-      <div className="palette-control" aria-label={`Group ${group.name} color`}>
-        <button
-          type="button"
-          className={group.color === undefined ? 'is-selected' : ''}
-          aria-label={`Group ${group.name} use automatic color`}
-          title="First member's type"
-          onClick={() => onSetGroupColor(group.id, undefined)}
-          disabled={saving}
-        >
-          AUTO
-        </button>
-        {CHANNEL_PALETTE_KEYS.map((color) => (
-          <button
-            type="button"
-            key={color}
-            className={group.color === color ? 'is-selected' : ''}
-            aria-label={`Group ${group.name} color ${PALETTE_LABELS[color]}`}
-            title={PALETTE_LABELS[color]}
-            style={{ '--swatch': CHANNEL_PALETTE[color] } as CSSProperties}
-            onClick={() => onSetGroupColor(group.id, color)}
-            disabled={saving}
-          >
-            <span aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+      <PaletteControl
+        choices={colorChoices}
+        menuLabel={`Group ${group.name} color menu`}
+        disabled={saving}
+        onSelect={(color) => onSetGroupColor(group.id, color)}
+      />
     </div>
   );
 }

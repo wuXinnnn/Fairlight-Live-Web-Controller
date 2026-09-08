@@ -14,6 +14,7 @@ import { KIND_LABELS, PALETTE_LABELS, pad } from './channel-labels.js';
 import { channelDndId, type DndItemData } from './dnd-ids.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
+import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
 import { moveChannel, type MoveDirection } from './view-order.js';
 
 export interface ChannelRowHandlers {
@@ -81,6 +82,38 @@ export function SortableChannelRow({
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;
+  const colorChoices: PaletteChoice<ViewChannelColor | undefined>[] = [
+    {
+      id: 'auto',
+      value: undefined,
+      ariaLabel: `${reference.name} use default color`,
+      title: 'Type default',
+      text: 'AUTO',
+      selected: reference.color === undefined,
+    },
+  ];
+  if (group !== undefined) {
+    // A swatch here would repeat whichever palette colour the group holds, leaving two identical
+    // squares in one row; the abbreviation says what the choice means instead.
+    colorChoices.push({
+      id: 'group',
+      value: 'group',
+      ariaLabel: `${reference.name} use group color`,
+      title: `Group ${group.name}`,
+      text: 'GRP',
+      selected: reference.color === 'group',
+    });
+  }
+  for (const color of CHANNEL_PALETTE_KEYS) {
+    colorChoices.push({
+      id: color,
+      value: color,
+      ariaLabel: `${reference.name} color ${PALETTE_LABELS[color]}`,
+      title: PALETTE_LABELS[color],
+      swatch: CHANNEL_PALETTE[color],
+      selected: reference.color === color,
+    });
+  }
   return (
     <li
       ref={setNodeRef}
@@ -128,43 +161,11 @@ export function SortableChannelRow({
           ))}
         </select>
       </label>
-      <div className="palette-control">
-        <button
-          type="button"
-          className={reference.color === undefined ? 'is-selected' : ''}
-          aria-label={`${reference.name} use default color`}
-          title="Type default"
-          onClick={() => onSetColor(index)}
-        >
-          AUTO
-        </button>
-        {group !== undefined && (
-          <button
-            type="button"
-            // A swatch here would repeat whichever palette colour the group holds, leaving two
-            // identical squares in one row; the abbreviation says what the choice means instead.
-            className={`is-label ${reference.color === 'group' ? 'is-selected' : ''}`}
-            aria-label={`${reference.name} use group color`}
-            title={`Group ${group.name}`}
-            onClick={() => onSetColor(index, 'group')}
-          >
-            GRP
-          </button>
-        )}
-        {CHANNEL_PALETTE_KEYS.map((color) => (
-          <button
-            type="button"
-            key={color}
-            className={reference.color === color ? 'is-selected' : ''}
-            aria-label={`${reference.name} color ${PALETTE_LABELS[color]}`}
-            title={PALETTE_LABELS[color]}
-            style={{ '--swatch': CHANNEL_PALETTE[color] } as CSSProperties}
-            onClick={() => onSetColor(index, color)}
-          >
-            <span aria-hidden="true" />
-          </button>
-        ))}
-      </div>
+      <PaletteControl
+        choices={colorChoices}
+        menuLabel={`${reference.name} color menu`}
+        onSelect={(color) => onSetColor(index, color)}
+      />
     </li>
   );
 }

@@ -2551,9 +2551,38 @@ html.fader-cap-dragging * {
   opacity: 0.3;
 }
 
+/*
+ * The palette ships in two shapes at once: the row of buttons and the menu it collapses into on a
+ * narrow column. The wrapper takes no box of its own, so whichever shape is showing is the grid
+ * item the row lays out, and the hidden one is not a grid item at all.
+ */
+.palette {
+  display: contents;
+}
+
 .palette-control {
   display: flex;
   justify-content: flex-end;
+}
+
+.palette-select {
+  display: none;
+  min-width: 0;
+  min-height: 1.65rem;
+  padding: 0.2rem 1.1rem 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  outline: 0;
+  background: #111318;
+  color: var(--amber-pale);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.palette-select:focus-visible {
+  border-color: var(--amber);
 }
 
 .palette-control button {
