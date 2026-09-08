@@ -1497,11 +1497,11 @@ html.fader-cap-dragging * {
 /* Narrow order column: move the palette onto its own line instead of overflowing sideways. */
 @container (max-width: 44rem) {
   .channel-order .channel-order-row {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto;
   }
 
   .channel-order .channel-order-row .palette-control {
-    grid-column: 3 / 6;
+    grid-column: 4 / 7;
     justify-content: flex-start;
   }
 }
@@ -1807,6 +1807,61 @@ html.fader-cap-dragging * {
   padding: 0.6rem 0.8rem;
 }
 
+/* Unsaved edits: the save button turns amber, a badge sits beside it, and the view gets a dot. */
+.primary-button.is-dirty {
+  border-color: var(--amber);
+  background: #33281a;
+  color: var(--amber-pale);
+  box-shadow: inset 0 0 0 1px rgb(239 169 40 / 40%);
+}
+
+.unsaved-badge {
+  align-self: center;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.view-list > button[data-dirty='true'] {
+  position: relative;
+}
+
+.view-list > button[data-dirty='true']::after {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0.4rem var(--amber);
+  content: '';
+}
+
+.visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.discard-dialog {
+  width: min(24rem, 100%);
+}
+
+.discard-dialog__message {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 .view-editor__grid {
   display: grid;
   min-width: 0;
@@ -1833,13 +1888,18 @@ html.fader-cap-dragging * {
   min-height: 14rem;
   flex: 1;
   align-content: start;
-  overflow: auto;
+  overflow: hidden auto;
+}
+
+/* While a drag is in progress the checklist holds still; only the order list auto-scrolls. */
+.channel-checklist.is-drag-locked {
+  overflow-y: hidden;
 }
 
 .channel-checklist label {
   position: relative;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 2.7rem;
@@ -1955,7 +2015,7 @@ html.fader-cap-dragging * {
   flex-direction: column;
   margin: 0;
   padding: 0;
-  overflow: auto;
+  overflow: hidden auto;
   list-style: none;
 }
 
@@ -1965,7 +2025,7 @@ html.fader-cap-dragging * {
 
 .channel-order-row {
   display: grid;
-  grid-template-columns: auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
   align-items: center;
   gap: 0.65rem;
   min-height: 3.35rem;
@@ -2096,7 +2156,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto minmax(7rem, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2183,50 +2243,174 @@ html.fader-cap-dragging * {
   letter-spacing: 0.1em;
 }
 
-/* Moved rows and groups slide back into place under a short amber flash drawn above their content. */
+/* Rows and groups are positioned so drag transforms and drop highlights stack above neighbours. */
 .channel-order-row,
 .view-group {
   position: relative;
 }
 
-.channel-order-row[data-moved='up'],
-.view-group[data-moved='up'] {
-  animation: order-shift-up calc(var(--motion-medium) * 1.6) ease-out;
+/* Drag handles: the only control that starts a drag; touch-action keeps the page from scrolling. */
+.drag-handle {
+  display: grid;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
 }
 
-.channel-order-row[data-moved='down'],
-.view-group[data-moved='down'] {
-  animation: order-shift-down calc(var(--motion-medium) * 1.6) ease-out;
+.drag-handle svg {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
-.channel-order-row[data-moved]::after,
-.view-group[data-moved]::after {
+.drag-handle:hover:not(:disabled),
+.drag-handle[aria-pressed='true'] {
+  border-color: #9b742d;
+  color: var(--amber-pale);
+}
+
+.drag-handle[aria-pressed='true'] {
+  cursor: grabbing;
+}
+
+.drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.drag-handle.is-placeholder {
+  visibility: hidden;
+}
+
+/* The dragged item stays in the list as a placeholder while its clone follows the pointer. */
+.channel-order-row.is-dragging,
+.view-group.is-dragging,
+.channel-checklist label.is-dragging {
+  opacity: 0.38;
+  outline: 1px dashed var(--amber);
+  outline-offset: -1px;
+  background: #171610;
+}
+
+.channel-order-row.is-placeholder {
+  grid-template-columns: auto auto auto minmax(7rem, 1fr);
+}
+
+/*
+ * Root slots: drop targets at the block boundaries next to groups, shown only while a channel is
+ * dragged. The item is zero height; its band overlays the top of the block below the boundary.
+ */
+.root-slot {
+  position: relative;
+  z-index: 2;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  list-style: none;
+}
+
+.root-slot__band {
   position: absolute;
-  z-index: 1;
-  inset: 0;
-  border: 1px solid rgb(239 169 40 / 75%);
-  background: rgb(239 169 40 / 16%);
-  animation: order-flash calc(var(--motion-medium) * 1.6) ease-out forwards;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.root-slot__band::before {
+  position: absolute;
+  top: 0;
+  right: 0.5rem;
+  left: 0.5rem;
+  border-top: 2px dashed color-mix(in srgb, var(--amber) 55%, transparent);
   content: '';
+}
+
+.root-slot__band.is-over::before {
+  border-top-color: var(--amber);
+}
+
+/* The clone that follows the pointer, drawn in dnd-kit's overlay portal above everything. */
+.drag-overlay {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #9b742d;
+  background: #1d2027;
+  color: var(--text);
+  box-shadow: 0 0.8rem 2rem rgb(0 0 0 / 60%);
+  cursor: grabbing;
   pointer-events: none;
 }
 
-@keyframes order-flash {
-  to {
-    opacity: 0;
-  }
+.drag-overlay__grip {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
+  background:
+    radial-gradient(circle, #9b742d 1px, transparent 1.4px) 0 0 / 50% 33.3%,
+    transparent;
 }
 
-@keyframes order-shift-up {
-  from {
-    transform: translateY(0.55rem);
-  }
+.drag-overlay > strong {
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-@keyframes order-shift-down {
-  from {
-    transform: translateY(-0.55rem);
-  }
+.drag-overlay > small {
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.drag-overlay--group {
+  border-left: 3px solid var(--channel-row-accent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--channel-row-accent) 16%, transparent),
+      transparent 38%
+    ),
+    var(--surface-2);
+}
+
+.drag-overlay.is-removing {
+  border-color: var(--red);
+  background: #2a1716;
+  box-shadow:
+    0 0 0 1px rgb(255 93 85 / 45%),
+    0 0.8rem 2rem rgb(0 0 0 / 60%);
+}
+
+.drag-overlay.is-removing > small {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.view-group.is-drop-target {
+  outline: 1px solid var(--amber);
+  outline-offset: -1px;
+  background: #171610;
 }
 
 .channel-order__index {
@@ -2439,29 +2623,29 @@ html.fader-cap-dragging * {
   }
 
   .channel-order-row {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
   }
 
   .group-control {
-    grid-column: 1 / 3;
+    grid-column: 1 / 4;
   }
 
   .palette-control {
-    grid-column: 3 / 5;
+    grid-column: 4 / 6;
     justify-content: flex-start;
   }
 
   .view-group__header {
-    grid-template-columns: auto auto minmax(7rem, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
   }
 
   .view-group__header .order-buttons {
-    grid-column: 3 / 4;
+    grid-column: 4 / 5;
     justify-self: start;
   }
 
   .view-group__header .utility-button {
-    grid-column: 4 / 5;
+    grid-column: 5 / 6;
   }
 
   .group-toolbar {

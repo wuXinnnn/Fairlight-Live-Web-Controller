@@ -1,16 +1,10 @@
-import {
-  CHANNEL_PALETTE_KEYS,
-  type ChannelKind,
-  type ChannelPaletteKey,
-  type View,
-  type ViewChannelRef,
-  type ViewGroup,
-} from '@flwc/shared';
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { type ChannelPaletteKey, type View, type ViewChannelRef } from '@flwc/shared';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
 import { createLocalId } from '../../lib/ids.js';
+import { navigate, setNavigationGuard } from '../../lib/router.js';
 import type { ViewsClient } from '../../lib/views-api.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import {
@@ -20,16 +14,19 @@ import {
   updateView,
   viewStore,
 } from '../../store/view-store.js';
-import { CHANNEL_PALETTE, channelColor, channelTypeColor } from '../mixer/channel-colors.js';
 import { emptyStateDetail, emptyStateTitle, resolveMixerEmptyState } from '../mixer/empty-state.js';
 import {
-  channelNameKey,
   duplicateChannelNames,
   referenceForChannel,
   resolveViewChannels,
-  type ResolvedViewChannel,
 } from '../mixer/view-resolver.js';
-import { OrderButtons } from './OrderButtons.js';
+import { AvailableChannelList } from './AvailableChannelList.js';
+import { ChannelOrderList } from './ChannelOrderList.js';
+import { pad } from './channel-labels.js';
+import { DiscardChangesDialog, type PendingAction } from './DiscardChangesDialog.js';
+import { useFlipList } from './use-flip-list.js';
+import { isViewDirty } from './view-dirty.js';
+import { ViewDndContext } from './ViewDndContext.js';
 import {
   addGroup,
   assignGroup,
@@ -37,40 +34,13 @@ import {
   moveGroup,
   removeGroup,
   renameGroup,
-  viewBlocks,
   type MoveDirection,
-  type ViewBlock,
 } from './view-order.js';
-
-const KIND_LABELS: Record<ChannelKind, string> = {
-  channel: 'INPUT',
-  main: 'MAIN',
-  sub: 'SUB',
-  aux: 'AUX',
-  mixm: 'MIX MINUS',
-  mtx: 'MATRIX',
-};
-
-const PALETTE_LABELS: Record<ChannelPaletteKey, string> = {
-  green: 'Input Green',
-  red: 'Main Red',
-  teal: 'Sub Teal',
-  navy: 'Aux Navy',
-  lime: 'Mix Minus Lime',
-  purple: 'Matrix Purple',
-};
 
 interface SettingsPageProps {
   viewsClient: ViewsClient;
   onBack(): void;
   onOpenConnection(): void;
-}
-
-/** Marks the row (channel reference or group) that just moved so it can animate once. */
-interface MovedMarker {
-  reference?: ViewChannelRef;
-  groupId?: string;
-  direction: 'up' | 'down';
 }
 
 function copyView(view: View): View {
@@ -93,10 +63,6 @@ function withColor(reference: ViewChannelRef, color?: ChannelPaletteKey): ViewCh
     next.color = color;
   }
   return next;
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, '0');
 }
 
 export function SettingsPage({ viewsClient, onBack, onOpenConnection }: SettingsPageProps) {
@@ -142,18 +108,55 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const [newGroupName, setNewGroupName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [moved, setMoved] = useState<MovedMarker | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const flip = useFlipList(listRef, activeDraft);
+  const dirty = useMemo(
+    () =>
+      draft !== null &&
+      selected !== null &&
+      draft.id === selected.id &&
+      isViewDirty(selected, draft),
+    [draft, selected],
+  );
+  // The navigation guard runs outside React's render cycle, so it reads the latest value here.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+
+  useEffect(() => {
+    setNavigationGuard((route) => {
+      if (!dirtyRef.current) {
+        return true;
+      }
+      setPendingAction({ kind: 'navigate', route });
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) {
+      return undefined;
+    }
+    const warn = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Legacy browsers only show the prompt when returnValue is set.
+      event.returnValue = true;
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const resolved = useMemo(
     () => (activeDraft === null ? [] : resolveViewChannels(activeDraft, availableChannels)),
     [activeDraft, availableChannels],
   );
-  const resolvedByChannelId = useMemo(
+  const assignedChannelIds = useMemo(
     () =>
-      new Map(
-        resolved
-          .filter((entry) => entry.channel !== undefined)
-          .map((entry) => [entry.channel?.id ?? '', entry]),
+      new Set(
+        resolved.map((entry) => entry.channel?.id).filter((id): id is string => id !== undefined),
       ),
     [resolved],
   );
@@ -177,7 +180,6 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     setDraft(copyView(view));
     setConfirmDelete(false);
     setLocalError(null);
-    setMoved(null);
   };
 
   /** Applies a pure update to the draft, sourcing the current draft even before the first edit. */
@@ -191,7 +193,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     });
   };
 
-  const handleCreate = async (event: FormEvent) => {
+  const performCreate = async (name: string) => {
+    const created = await createView(viewsClient, { name, channels: [], groups: [] });
+    if (created !== null) {
+      setNewName('');
+      selectView(created);
+    }
+  };
+
+  const handleCreate = (event: FormEvent) => {
     event.preventDefault();
     const name = newName.trim();
     if (name.length === 0) {
@@ -199,11 +209,11 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       return;
     }
     setLocalError(null);
-    const created = await createView(viewsClient, { name, channels: [], groups: [] });
-    if (created !== null) {
-      setNewName('');
-      selectView(created);
+    if (dirty) {
+      setPendingAction({ kind: 'create', name });
+      return;
     }
+    void performCreate(name);
   };
 
   const handleSave = async () => {
@@ -230,7 +240,16 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     }
   };
 
-  const handleDelete = async () => {
+  const performDelete = async (id: string) => {
+    const deleted = await deleteView(viewsClient, id);
+    if (deleted) {
+      setSelectedId(null);
+      setDraft(null);
+      setConfirmDelete(false);
+    }
+  };
+
+  const handleDelete = () => {
     if (activeDraft === null) {
       return;
     }
@@ -238,13 +257,55 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       setConfirmDelete(true);
       return;
     }
-    const deleted = await deleteView(viewsClient, activeDraft.id);
-    if (deleted) {
-      setSelectedId(null);
-      setDraft(null);
-      setConfirmDelete(false);
+    if (dirty) {
+      setPendingAction({ kind: 'delete' });
+      return;
+    }
+    void performDelete(activeDraft.id);
+  };
+
+  const handleSelectView = (view: View) => {
+    if (view.id === selected?.id) {
+      return;
+    }
+    if (dirty) {
+      setPendingAction({ kind: 'select', view });
+      return;
+    }
+    selectView(view);
+  };
+
+  /** DISCARD: drops the draft first so the guard and the action see a clean view. */
+  const discardPending = () => {
+    if (pendingAction === null || selected === null) {
+      return;
+    }
+    const action = pendingAction;
+    const targetId = selected.id;
+    setPendingAction(null);
+    setDraft(null);
+    setConfirmDelete(false);
+    dirtyRef.current = false;
+    switch (action.kind) {
+      case 'navigate':
+        navigate(action.route);
+        break;
+      case 'select':
+        selectView(action.view);
+        break;
+      case 'delete':
+        void performDelete(targetId);
+        break;
+      case 'create':
+        void performCreate(action.name);
+        break;
     }
   };
+
+  const keepEditing = useCallback(() => {
+    setPendingAction(null);
+    setConfirmDelete(false);
+  }, []);
 
   const toggleChannel = (channelId: string) => {
     const channel = channels[channelId];
@@ -266,41 +327,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   };
 
   const handleMoveChannel = (index: number, direction: MoveDirection) => {
-    editDraft((source) => {
-      const next = moveChannel(source, index, direction);
-      if (next !== null) {
-        setMoved({
-          reference: source.channels[index],
-          direction: direction === -1 ? 'up' : 'down',
-        });
-      }
-      return next;
-    });
+    editDraft((source) => moveChannel(source, index, direction));
   };
 
   const handleMoveGroup = (groupId: string, direction: MoveDirection) => {
-    editDraft((source) => {
-      const next = moveGroup(source, groupId, direction);
-      if (next !== null) {
-        setMoved({ groupId, direction: direction === -1 ? 'up' : 'down' });
-      }
-      return next;
-    });
+    editDraft((source) => moveGroup(source, groupId, direction));
   };
 
   const handleAssignGroup = (index: number, groupId: string | undefined) => {
-    editDraft((source) => {
-      const next = assignGroup(source, index, groupId);
-      if (next === source) {
-        return source;
-      }
-      const movedReference = next.channels.find(
-        (reference) => !source.channels.includes(reference),
-      );
-      const newIndex = movedReference === undefined ? index : next.channels.indexOf(movedReference);
-      setMoved({ reference: movedReference, direction: newIndex < index ? 'up' : 'down' });
-      return next;
-    });
+    editDraft((source) => assignGroup(source, index, groupId));
   };
 
   const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
@@ -333,158 +368,6 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       ...source,
       channels: source.channels.filter((_, index) => !missingIndexes.has(index)),
     }));
-  };
-
-  const renderChannelRow = (entry: ResolvedViewChannel, view: View): ReactNode => {
-    const { reference, channel, index } = entry;
-    const missing = channelInventoryLoaded && channel === undefined;
-    const kind = channel?.kind ?? reference.kind;
-    const duplicate =
-      channel !== undefined && duplicateNames.has(channelNameKey(channel.kind, channel.name));
-    const movedMarker = moved?.reference === reference ? moved.direction : undefined;
-    return (
-      <li
-        key={`${reference.kind}:${reference.name}:${index}`}
-        className={`channel-order-row ${missing ? 'is-missing' : ''}`}
-        data-ordered-channel-id={channel?.id ?? reference.channelId}
-        data-ordered-channel-name={reference.name}
-        data-moved={movedMarker}
-        onAnimationEnd={() => setMoved(null)}
-        style={
-          {
-            '--channel-row-accent': channelColor(kind, reference.color),
-          } as CSSProperties
-        }
-      >
-        <div className="channel-order__index">{pad(index + 1)}</div>
-        <span className="channel-order__accent" aria-hidden="true" />
-        <div className="channel-order__identity">
-          <strong>{channel?.name ?? reference.name}</strong>
-          <small>
-            {!channelInventoryLoaded ? 'WAITING' : missing ? 'MISSING' : KIND_LABELS[kind]}
-            {duplicate && <em className="channel-order__flag">DUPLICATE NAME</em>}
-          </small>
-        </div>
-        <OrderButtons
-          label={reference.name}
-          canMoveUp={moveChannel(view, index, -1) !== null}
-          canMoveDown={moveChannel(view, index, 1) !== null}
-          onMove={(direction) => handleMoveChannel(index, direction)}
-        />
-        <label className="group-control">
-          <span>GROUP</span>
-          <select
-            aria-label={`${reference.name} group`}
-            value={reference.groupId ?? ''}
-            onChange={(event) => handleAssignGroup(index, event.target.value || undefined)}
-          >
-            <option value="">NO GROUP</option>
-            {view.groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="palette-control">
-          <button
-            type="button"
-            className={reference.color === undefined ? 'is-selected' : ''}
-            aria-label={`${reference.name} use default color`}
-            title="Type default"
-            onClick={() => setChannelColor(index)}
-          >
-            AUTO
-          </button>
-          {CHANNEL_PALETTE_KEYS.map((color) => (
-            <button
-              type="button"
-              key={color}
-              className={reference.color === color ? 'is-selected' : ''}
-              aria-label={`${reference.name} color ${PALETTE_LABELS[color]}`}
-              title={PALETTE_LABELS[color]}
-              style={{ '--swatch': CHANNEL_PALETTE[color] } as CSSProperties}
-              onClick={() => setChannelColor(index, color)}
-            >
-              <span aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      </li>
-    );
-  };
-
-  const renderGroupBlock = (
-    group: ViewGroup,
-    indices: number[],
-    view: View,
-    groupNumber: number,
-  ): ReactNode => {
-    const entries = indices.map((index) => resolved[index]).filter((entry) => entry !== undefined);
-    const lead = entries.find((entry) => entry.channel !== undefined) ?? entries[0];
-    const accent =
-      lead === undefined
-        ? channelTypeColor('channel')
-        : channelColor(lead.channel?.kind ?? lead.reference.kind, lead.reference.color);
-    const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
-    return (
-      <li
-        key={group.id}
-        className="view-group"
-        data-view-group-id={group.id}
-        data-moved={moved?.groupId === group.id ? moved.direction : undefined}
-        onAnimationEnd={() => setMoved(null)}
-        style={{ '--channel-row-accent': accent } as CSSProperties}
-      >
-        <div className="view-group__header">
-          <div className="channel-order__index">G{pad(groupNumber)}</div>
-          <span className="channel-order__accent" aria-hidden="true" />
-          <input
-            aria-label={`Group ${groupNumber} name`}
-            value={group.name}
-            onChange={(event) =>
-              editDraft((source) => renameGroup(source, group.id, event.target.value))
-            }
-            disabled={saving}
-          />
-          <small>{pad(presentCount)} CH</small>
-          <OrderButtons
-            label={`group ${group.name}`}
-            canMoveUp={moveGroup(view, group.id, -1) !== null}
-            canMoveDown={moveGroup(view, group.id, 1) !== null}
-            onMove={(direction) => handleMoveGroup(group.id, direction)}
-          />
-          <button
-            type="button"
-            className="utility-button"
-            aria-label={`Ungroup ${group.name}`}
-            onClick={() => editDraft((source) => removeGroup(source, group.id))}
-            disabled={saving}
-          >
-            UNGROUP
-          </button>
-        </div>
-        {entries.length === 0 ? (
-          <p className="view-group__empty">ASSIGN CHANNELS BELOW</p>
-        ) : (
-          <ol className="view-group__members">
-            {entries.map((entry) => renderChannelRow(entry, view))}
-          </ol>
-        )}
-      </li>
-    );
-  };
-
-  const renderBlocks = (view: View): ReactNode => {
-    let groupNumber = 0;
-    return viewBlocks(view).map((block: ViewBlock) => {
-      if (block.kind === 'single') {
-        const entry = resolved[block.index];
-        return entry === undefined ? null : renderChannelRow(entry, view);
-      }
-      groupNumber += 1;
-      return renderGroupBlock(block.group, block.indices, view, groupNumber);
-    });
   };
 
   return (
@@ -556,11 +439,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                   type="button"
                   className={view.id === selected?.id ? 'is-selected' : ''}
                   key={view.id}
-                  onClick={() => selectView(view)}
+                  data-dirty={view.id === selected?.id && dirty ? 'true' : undefined}
+                  onClick={() => handleSelectView(view)}
                 >
                   <span>{pad(index + 1)}</span>
                   <strong>{view.name}</strong>
                   <small>{pad(view.channels.length)} CH</small>
+                  {view.id === selected?.id && dirty && (
+                    <span className="visually-hidden">Unsaved changes</span>
+                  )}
                 </button>
               ))
             )}
@@ -597,118 +484,123 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                   </button>
                   <button
                     type="button"
-                    className="primary-button"
+                    className={`primary-button ${dirty ? 'is-dirty' : ''}`}
                     onClick={handleSave}
                     disabled={saving}
                   >
                     {saving ? 'SAVING' : 'SAVE VIEW'}
                   </button>
+                  {dirty && <span className="unsaved-badge">UNSAVED</span>}
                 </div>
               </header>
 
-              <div className="view-editor__grid">
-                <section className="channel-picker" aria-labelledby="available-channel-heading">
-                  <div className="workbench-label">
-                    <span>02</span>
-                    <h2 id="available-channel-heading">AVAILABLE CHANNELS</h2>
-                  </div>
-                  {availableChannels.length === 0 ? (
-                    <div className="panel-empty" aria-live="polite">
-                      <p>{emptyStateTitle(channelsEmptyState)}</p>
-                      {channelsEmptyDetail !== null && <p>{channelsEmptyDetail}</p>}
-                      {channelsEmptyState.kind === 'ember-offline' &&
-                        channelsEmptyState.lastError !== null && (
-                          <p className="panel-empty__error">{channelsEmptyState.lastError}</p>
-                        )}
-                      {channelsEmptyState.kind === 'ember-offline' && (
-                        <button type="button" className="utility-button" onClick={onOpenConnection}>
-                          CONFIGURE CONNECTION
-                        </button>
-                      )}
+              <ViewDndContext
+                view={activeDraft}
+                channels={channels}
+                assignedChannelIds={assignedChannelIds}
+                listRef={listRef}
+                onDrop={editDraft}
+                onBeforeDrop={flip.capture}
+              >
+                <div className="view-editor__grid">
+                  <section className="channel-picker" aria-labelledby="available-channel-heading">
+                    <div className="workbench-label">
+                      <span>02</span>
+                      <h2 id="available-channel-heading">AVAILABLE CHANNELS</h2>
                     </div>
-                  ) : (
-                    <div className="channel-checklist">
-                      {availableChannels.map((channel) => {
-                        const checked = resolvedByChannelId.has(channel.id);
-                        const duplicate = duplicateNames.has(
-                          channelNameKey(channel.kind, channel.name),
-                        );
-                        return (
-                          <label
-                            key={channel.id}
-                            className={checked ? 'is-checked' : ''}
-                            data-available-channel-id={channel.id}
-                            style={
-                              {
-                                '--channel-row-accent': channelTypeColor(channel.kind),
-                              } as CSSProperties
-                            }
+                    {availableChannels.length === 0 ? (
+                      <div className="panel-empty" aria-live="polite">
+                        <p>{emptyStateTitle(channelsEmptyState)}</p>
+                        {channelsEmptyDetail !== null && <p>{channelsEmptyDetail}</p>}
+                        {channelsEmptyState.kind === 'ember-offline' &&
+                          channelsEmptyState.lastError !== null && (
+                            <p className="panel-empty__error">{channelsEmptyState.lastError}</p>
+                          )}
+                        {channelsEmptyState.kind === 'ember-offline' && (
+                          <button
+                            type="button"
+                            className="utility-button"
+                            onClick={onOpenConnection}
                           >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleChannel(channel.id)}
-                            />
-                            <span className="channel-checklist__box" aria-hidden="true" />
-                            <span className="channel-checklist__accent" aria-hidden="true" />
-                            <strong>{channel.name}</strong>
-                            <small>
-                              {KIND_LABELS[channel.kind]}
-                              {duplicate && <em className="channel-order__flag">DUPLICATE NAME</em>}
-                            </small>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                <section className="channel-order" aria-labelledby="channel-order-heading">
-                  <div className="workbench-label channel-order__label">
-                    <span>03</span>
-                    <h2 id="channel-order-heading">CHANNEL ORDER &amp; COLOR</h2>
-                    <small>
-                      {pad(activeDraft.channels.length)} ASSIGNED / {pad(activeDraft.groups.length)}{' '}
-                      GROUPS
-                    </small>
-                  </div>
-                  <form className="group-toolbar" onSubmit={handleAddGroup}>
-                    <label htmlFor="new-group-name">NEW GROUP</label>
-                    <div>
-                      <input
-                        id="new-group-name"
-                        value={newGroupName}
-                        onChange={(event) => setNewGroupName(event.target.value)}
-                        placeholder="Rhythm section"
-                        disabled={saving}
-                      />
-                      <button type="submit" disabled={saving}>
-                        ADD GROUP
-                      </button>
-                    </div>
-                  </form>
-                  {missingEntries.length > 0 && (
-                    <div className="missing-warning" role="status">
-                      <div>
-                        <strong>{missingEntries.length} MISSING</strong>
-                        <span>Clear invalid references, then save the view.</span>
+                            CONFIGURE CONNECTION
+                          </button>
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleCleanup}
-                        disabled={saving || !canCleanMissing}
-                      >
-                        CLEAR INVALID
-                      </button>
+                    ) : (
+                      <AvailableChannelList
+                        channels={availableChannels}
+                        assignedChannelIds={assignedChannelIds}
+                        duplicateNames={duplicateNames}
+                        saving={saving}
+                        onToggle={toggleChannel}
+                      />
+                    )}
+                  </section>
+
+                  <section className="channel-order" aria-labelledby="channel-order-heading">
+                    <div className="workbench-label channel-order__label">
+                      <span>03</span>
+                      <h2 id="channel-order-heading">CHANNEL ORDER &amp; COLOR</h2>
+                      <small>
+                        {pad(activeDraft.channels.length)} ASSIGNED /{' '}
+                        {pad(activeDraft.groups.length)} GROUPS
+                      </small>
                     </div>
-                  )}
-                  {activeDraft.channels.length === 0 && activeDraft.groups.length === 0 ? (
-                    <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
-                  ) : (
-                    <ol className="view-channel-list">{renderBlocks(activeDraft)}</ol>
-                  )}
-                </section>
-              </div>
+                    <form className="group-toolbar" onSubmit={handleAddGroup}>
+                      <label htmlFor="new-group-name">NEW GROUP</label>
+                      <div>
+                        <input
+                          id="new-group-name"
+                          value={newGroupName}
+                          onChange={(event) => setNewGroupName(event.target.value)}
+                          placeholder="Rhythm section"
+                          disabled={saving}
+                        />
+                        <button type="submit" disabled={saving}>
+                          ADD GROUP
+                        </button>
+                      </div>
+                    </form>
+                    {missingEntries.length > 0 && (
+                      <div className="missing-warning" role="status">
+                        <div>
+                          <strong>{missingEntries.length} MISSING</strong>
+                          <span>Clear invalid references, then save the view.</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCleanup}
+                          disabled={saving || !canCleanMissing}
+                        >
+                          CLEAR INVALID
+                        </button>
+                      </div>
+                    )}
+                    {activeDraft.channels.length === 0 && activeDraft.groups.length === 0 ? (
+                      <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
+                    ) : (
+                      <ChannelOrderList
+                        listRef={listRef}
+                        view={activeDraft}
+                        channels={availableChannels}
+                        duplicateNames={duplicateNames}
+                        channelInventoryLoaded={channelInventoryLoaded}
+                        saving={saving}
+                        onMoveChannel={handleMoveChannel}
+                        onMoveGroup={handleMoveGroup}
+                        onAssignGroup={handleAssignGroup}
+                        onSetColor={setChannelColor}
+                        onRenameGroup={(groupId, name) =>
+                          editDraft((source) => renameGroup(source, groupId, name))
+                        }
+                        onRemoveGroup={(groupId) =>
+                          editDraft((source) => removeGroup(source, groupId))
+                        }
+                      />
+                    )}
+                  </section>
+                </div>
+              </ViewDndContext>
             </>
           )}
         </section>
@@ -719,6 +611,15 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
         <span>ORDERED SIGNAL SURFACE</span>
         <span>NAME-MATCHED REFERENCES</span>
       </footer>
+
+      {pendingAction !== null && selected !== null && (
+        <DiscardChangesDialog
+          viewName={selected.name}
+          action={pendingAction}
+          onDiscard={discardPending}
+          onKeepEditing={keepEditing}
+        />
+      )}
     </main>
   );
 }

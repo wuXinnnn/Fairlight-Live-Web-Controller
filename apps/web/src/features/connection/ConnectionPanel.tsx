@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ConnectionClient } from '../../lib/connection-api.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import { validateEndpoint, type EndpointFieldErrors } from './connection-form.js';
-import { useModalDialog } from './use-modal-dialog.js';
+import { useModalDialog } from '../../components/use-modal-dialog.js';
 
 interface ConnectionPanelProps {
   open: boolean;
