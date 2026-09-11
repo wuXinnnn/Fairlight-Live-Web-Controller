@@ -100,6 +100,17 @@ router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 详细执行提示词见 docs/prompts/phase-6-2-1.md。
 ```
 
+### 6.2.2 配置页 UX 补充二
+
+```
+按 docs/development-plan.md 的 Phase 6.2.2(6.2.1 真机验收后的第二个补充批次):FLIP 补间可续接(测量改为
+减去在途 translate 的自然位置,在途行不被触碰、再次推动时从当前视觉位置起步,dnd-kit droppable 用同一套几何,
+先埋点复现再修);View 模型改为有序块
+(View.items,组块自带 channels,空组有位置、可拖可落,配置版本升 2 并在 shared 读取时迁移);列表末尾
+常驻占满空白区域的根级落槽,通道、AVAILABLE 条目与组头落入即追加到末尾;组色 AUTO 取成员类型众数。
+不新增依赖,覆盖率达标。详细执行提示词见 docs/prompts/phase-6-2-2.md。
+```
+
 ### 6.3 混音页分页
 
 ```
