@@ -1,7 +1,8 @@
-import type { ChannelState, View } from '@flwc/shared';
+import { viewChannelRefs, viewGroups, type ChannelState, type View } from '@flwc/shared';
 import { describe, expect, it } from 'vitest';
 import { defaultDropAnimation } from '@dnd-kit/core';
 import { DROP_ANIMATION_MS } from './dnd-config.js';
+import { groupOfIndex } from './view-order.js';
 import {
   containerOf,
   containerOfTarget,
@@ -15,20 +16,19 @@ import {
   settlePreview,
 } from './drag-preview.js';
 
-function ref(name: string, groupId?: string) {
-  return groupId === undefined
-    ? { kind: 'channel' as const, name, channelId: `channel/${name}` }
-    : { kind: 'channel' as const, name, channelId: `channel/${name}`, groupId };
+function ref(name: string) {
+  return { kind: 'channel' as const, name, channelId: `channel/${name}` };
 }
 
 // A | g1(B, C) | D | g3 (empty)
 const view: View = {
   id: 'v',
   name: 'View',
-  channels: [ref('A'), ref('B', 'g1'), ref('C', 'g1'), ref('D')],
-  groups: [
-    { id: 'g1', name: 'Rhythm' },
-    { id: 'g3', name: 'Empty' },
+  items: [
+    { ...ref('A'), type: 'channel' },
+    { type: 'group', id: 'g1', name: 'Rhythm', channels: [ref('B'), ref('C')] },
+    { ...ref('D'), type: 'channel' },
+    { type: 'group', id: 'g3', name: 'Empty', channels: [] },
   ],
 };
 
@@ -41,7 +41,7 @@ const fx: ChannelState = {
   meterDb: -60,
 };
 
-const names = (candidate: View) => candidate.channels.map((reference) => reference.name);
+const names = (candidate: View) => viewChannelRefs(candidate).map((reference) => reference.name);
 
 describe('containers', () => {
   it('locates the dragged item and compares containers', () => {
@@ -115,11 +115,10 @@ describe('previewFor', () => {
       fx,
     );
     expect(names(preview?.view as View)).toEqual(['A', 'B', 'C', 'D', 'FX']);
-    expect(preview?.view.channels[4]).toEqual({
+    expect(viewChannelRefs(preview?.view as View)[4]).toEqual({
       kind: 'aux',
       name: 'FX',
       channelId: 'aux/1',
-      groupId: 'g3',
       color: 'group',
     });
     expect(preview?.source).toEqual({ kind: 'channel', index: 4 });
@@ -135,7 +134,7 @@ describe('removalFor', () => {
     expect(names(removalFor(view, { kind: 'channel', index: 2 }) as View)).toEqual(['A', 'B', 'D']);
     const withoutGroup = removalFor(view, { kind: 'group', groupId: 'g1' }) as View;
     expect(names(withoutGroup)).toEqual(['A', 'D']);
-    expect(withoutGroup.groups.map((group) => group.id)).toEqual(['g3']);
+    expect(viewGroups(withoutGroup).map((group) => group.id)).toEqual(['g3']);
     expect(removalFor(view, { kind: 'group', groupId: 'nope' })).toBeNull();
     expect(removalFor(view, { kind: 'channel', index: 9 })).toBeNull();
     expect(removalFor(view, { kind: 'available', channelId: 'aux/1' })).toBeNull();
@@ -185,17 +184,17 @@ describe('settlePreview', () => {
     const overC = 'channel:channel:C:channel/C#0';
     const above = settlePreview(preview, activeId, overC, { after: false });
     expect(names(above)).toEqual(['B', 'A', 'C', 'D']);
-    expect(above.channels[1]?.groupId).toBe('g1');
+    expect(groupOfIndex(above, 1)?.id).toBe('g1');
     const below = settlePreview(preview, activeId, overC, { after: true });
     expect(names(below)).toEqual(['B', 'C', 'A', 'D']);
-    expect(below.channels[2]?.groupId).toBe('g1');
+    expect(groupOfIndex(below, 2)?.id).toBe('g1');
   });
 
   it('joins another group container first or last', () => {
     // g3 is the empty group at the end of the view, so A becomes its first member after D.
     const settled = settlePreview(preview, activeId, 'groupzone:g3', { after: true });
     expect(names(settled)).toEqual(['B', 'C', 'D', 'A']);
-    expect(settled.channels[3]?.groupId).toBe('g3');
+    expect(groupOfIndex(settled, 3)?.id).toBe('g3');
     // D previewed at the top of the root list: D | A | g1(B, C). Its upper half of g1's block
     // (the header) makes it the first member, the lower half the last.
     const atTop = previewFor(view, { kind: 'channel', index: 3 }, { kind: 'root', position: 0 });
@@ -205,12 +204,12 @@ describe('settlePreview', () => {
       after: false,
     });
     expect(names(first)).toEqual(['A', 'D', 'B', 'C']);
-    expect(first.channels[1]?.groupId).toBe('g1');
+    expect(groupOfIndex(first, 1)?.id).toBe('g1');
     const last = settlePreview(atTop as NonNullable<typeof atTop>, dId, 'groupzone:g1', {
       after: true,
     });
     expect(names(last)).toEqual(['A', 'B', 'C', 'D']);
-    expect(last.channels[3]?.groupId).toBe('g1');
+    expect(groupOfIndex(last, 3)?.id).toBe('g1');
   });
 
   it('keeps the preview when the drop target cannot be resolved', () => {

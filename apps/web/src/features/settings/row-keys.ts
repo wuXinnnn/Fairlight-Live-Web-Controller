@@ -1,17 +1,17 @@
-import type { View, ViewChannelRef } from '@flwc/shared';
+import { viewChannelRefs, type View, type ViewChannelRef } from '@flwc/shared';
 
 function referenceKey(reference: ViewChannelRef): string {
   return `${reference.kind}:${reference.name}:${reference.channelId ?? ''}`;
 }
 
 /**
- * One stable key per `view.channels` entry. Equal references (same kind, name and channel id)
- * are told apart by their occurrence ordinal, so a key follows its row while the row moves and
- * only changes when an earlier duplicate is removed.
+ * One stable key per channel of the view, in display order. Equal references (same kind, name
+ * and channel id) are told apart by their occurrence ordinal, so a key follows its row while the
+ * row moves and only changes when an earlier duplicate is removed.
  */
-export function channelRowKeys(view: Pick<View, 'channels'>): string[] {
+export function channelRowKeys(view: Pick<View, 'items'>): string[] {
   const seen = new Map<string, number>();
-  return view.channels.map((reference) => {
+  return viewChannelRefs(view).map((reference) => {
     const base = referenceKey(reference);
     const ordinal = seen.get(base) ?? 0;
     seen.set(base, ordinal + 1);

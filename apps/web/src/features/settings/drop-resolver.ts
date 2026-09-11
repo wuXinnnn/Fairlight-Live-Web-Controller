@@ -1,8 +1,15 @@
 import type { UniqueIdentifier } from '@dnd-kit/core';
-import type { View, ViewChannelRef } from '@flwc/shared';
+import { viewGroups, type View } from '@flwc/shared';
 import { parseDndId } from './dnd-ids.js';
 import { channelRowKeys } from './row-keys.js';
-import { memberIndices, nonEmptyBlocks, type DropTarget, type ViewBlock } from './view-order.js';
+import {
+  groupOfIndex,
+  memberIndices,
+  removeChannel,
+  viewBlocks,
+  type DropTarget,
+  type ViewBlock,
+} from './view-order.js';
 
 /** What is being dragged, resolved against the view the drag started from. */
 export type DragSource =
@@ -15,18 +22,15 @@ export interface DropHint {
   after: boolean;
 }
 
-function knownGroupId(view: View, reference: ViewChannelRef | undefined): string | undefined {
-  const groupId = reference?.groupId;
-  return groupId !== undefined && view.groups.some((group) => group.id === groupId)
-    ? groupId
-    : undefined;
-}
-
 /** Top-level blocks of `view`, without the dragged group's own block when a group is dragged. */
 function restBlocks(view: View, draggedGroupId: string | undefined): ViewBlock[] {
-  return nonEmptyBlocks(view).filter(
+  return viewBlocks(view).filter(
     (block) => block.kind !== 'group' || block.group.id !== draggedGroupId,
   );
+}
+
+function hasGroup(view: View, groupId: string): boolean {
+  return viewGroups(view).some((group) => group.id === groupId);
 }
 
 function singlePosition(view: View, draggedGroupId: string | undefined, index: number): number {
@@ -77,23 +81,20 @@ export function resolveDropTarget(
     return null;
   }
   const removed = source.kind === 'channel' ? source.index : null;
-  const base =
-    removed === null
-      ? view
-      : { ...view, channels: view.channels.filter((_, index) => index !== removed) };
+  const base = removed === null ? view : (removeChannel(view, removed) ?? view);
   const inBase = (index: number): number =>
     removed !== null && index > removed ? index - 1 : index;
 
   if (over.kind === 'slot') {
     // Slots already count the blocks of the view without the dragged channel.
-    if (source.kind === 'group' || over.position > nonEmptyBlocks(base).length) {
+    if (source.kind === 'group' || over.position > base.items.length) {
       return null;
     }
     return { kind: 'root', position: over.position };
   }
 
   if (over.kind === 'groupzone') {
-    if (source.kind === 'group' || !view.groups.some((group) => group.id === over.groupId)) {
+    if (source.kind === 'group' || !hasGroup(view, over.groupId)) {
       return null;
     }
     return {
@@ -117,7 +118,7 @@ export function resolveDropTarget(
   if (overIndex < 0 || overIndex === removed) {
     return null;
   }
-  const overGroup = knownGroupId(view, view.channels[overIndex]);
+  const overGroup = groupOfIndex(view, overIndex)?.id;
 
   if (source.kind === 'group') {
     if (overGroup !== undefined) {

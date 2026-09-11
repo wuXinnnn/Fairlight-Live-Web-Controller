@@ -1,68 +1,247 @@
-import type { ChannelPaletteKey, View, ViewChannelRef, ViewGroup } from '@flwc/shared';
-import { sameChannelReference } from './view-dirty.js';
+import {
+  viewChannelRefs,
+  type ChannelPaletteKey,
+  type View,
+  type ViewChannelColor,
+  type ViewChannelItem,
+  type ViewChannelRef,
+  type ViewGroup,
+  type ViewGroupItem,
+  type ViewItem,
+} from '@flwc/shared';
+import { sameViewItems } from './view-dirty.js';
 
 export type MoveDirection = -1 | 1;
 
 /**
- * A block is what the configuration page shows as one row group: either a contiguous run of
- * channels that share a group, or a single ungrouped channel. Groups without members are
- * listed after the channels so they stay visible until a channel is assigned.
+ * A block is what the configuration page shows as one row group: a group with its members, or a
+ * single ungrouped channel. Blocks are the view's items, so a group without members is a block
+ * like any other and keeps its place in the order.
  */
 export type ViewBlock =
   { kind: 'group'; group: ViewGroup; indices: number[] } | { kind: 'single'; index: number };
 
-function groupById(view: View, groupId: string | undefined): ViewGroup | undefined {
-  return groupId === undefined ? undefined : view.groups.find((group) => group.id === groupId);
+/**
+ * Where a channel sits in the items: which item, and which member of it when that item is a
+ * group. The page addresses rows by their flat index, and this is how that is resolved.
+ */
+export interface ChannelLocation {
+  item: number;
+  member?: number;
 }
 
-/** Splits `view.channels` into blocks in display order, followed by empty groups. */
-export function viewBlocks(view: View): ViewBlock[] {
-  const blocks: ViewBlock[] = [];
-  const seenGroups = new Set<string>();
-  view.channels.forEach((reference, index) => {
-    const group = groupById(view, reference.groupId);
-    if (group === undefined) {
-      blocks.push({ kind: 'single', index });
-      return;
+/** Where a dragged item lands. `position` counts members of the group, or top-level blocks. */
+export type DropTarget =
+  { kind: 'group'; groupId: string; position: number } | { kind: 'root'; position: number };
+
+/** A completed placement: the new view, and the flat index the reference ended up at. */
+export interface Placement {
+  view: View;
+  index: number;
+}
+
+function itemsWith(view: View, items: ViewItem[]): View {
+  return { ...view, items };
+}
+
+function countOf(item: ViewItem): number {
+  return item.type === 'channel' ? 1 : item.channels.length;
+}
+
+/** The items as blocks, with each group block carrying the flat indices of its members. */
+export function viewBlocks(view: Pick<View, 'items'>): ViewBlock[] {
+  let index = 0;
+  return view.items.map((item) => {
+    if (item.type === 'channel') {
+      const block = { kind: 'single' as const, index };
+      index += 1;
+      return block;
     }
-    seenGroups.add(group.id);
-    const last = blocks[blocks.length - 1];
-    if (last?.kind === 'group' && last.group.id === group.id) {
-      last.indices.push(index);
-    } else {
-      blocks.push({ kind: 'group', group, indices: [index] });
-    }
+    const indices = item.channels.map(() => {
+      const current = index;
+      index += 1;
+      return current;
+    });
+    return { kind: 'group' as const, group: item, indices };
   });
-  for (const group of view.groups) {
-    if (!seenGroups.has(group.id)) {
-      blocks.push({ kind: 'group', group, indices: [] });
+}
+
+/** Resolves a flat channel index to the item that holds it; null when it is out of range. */
+export function locateChannel(view: Pick<View, 'items'>, index: number): ChannelLocation | null {
+  if (index < 0) {
+    return null;
+  }
+  let seen = 0;
+  for (let item = 0; item < view.items.length; item += 1) {
+    const entry = view.items[item] as ViewItem;
+    if (entry.type === 'channel') {
+      if (seen === index) {
+        return { item };
+      }
+      seen += 1;
+      continue;
     }
+    if (index < seen + entry.channels.length) {
+      return { item, member: index - seen };
+    }
+    seen += entry.channels.length;
   }
-  return blocks;
+  return null;
 }
 
-function blockIndices(block: ViewBlock): number[] {
-  return block.kind === 'group' ? block.indices : [block.index];
+/** Flat index of the channel at `at`, counting the items before it. */
+function flatIndexOf(view: Pick<View, 'items'>, at: ChannelLocation): number {
+  let seen = 0;
+  for (let item = 0; item < at.item; item += 1) {
+    seen += countOf(view.items[item] as ViewItem);
+  }
+  return seen + (at.member ?? 0);
 }
 
-function flatten(view: View, blocks: ViewBlock[]): View {
-  const channels = blocks.flatMap((block) =>
-    blockIndices(block).map((index) => view.channels[index] as ViewChannelRef),
-  );
-  return { ...view, channels };
+function itemAt(view: Pick<View, 'items'>, at: ChannelLocation): ViewItem | undefined {
+  return view.items[at.item];
 }
 
-function swapBlocks(view: View, blocks: ViewBlock[], from: number, to: number): View | null {
-  if (to < 0 || to >= blocks.length) {
+function referenceAt(view: Pick<View, 'items'>, at: ChannelLocation): ViewChannelRef | undefined {
+  const item = itemAt(view, at);
+  if (item === undefined) {
+    return undefined;
+  }
+  return item.type === 'channel' ? item : item.channels[at.member ?? 0];
+}
+
+/** The group a flat index belongs to, or undefined when the row sits at the root. */
+export function groupOfIndex(view: Pick<View, 'items'>, index: number): ViewGroup | undefined {
+  const at = locateChannel(view, index);
+  if (at === null) {
+    return undefined;
+  }
+  const item = itemAt(view, at);
+  return item?.type === 'group' ? item : undefined;
+}
+
+function groupIdAt(view: Pick<View, 'items'>, at: ChannelLocation): string | undefined {
+  const item = itemAt(view, at);
+  return item?.type === 'group' ? item.id : undefined;
+}
+
+function groupItemIndex(view: Pick<View, 'items'>, groupId: string): number {
+  return view.items.findIndex((item) => item.type === 'group' && item.id === groupId);
+}
+
+/**
+ * Removes the reference at `at`. A group that loses its last member stays behind as an empty
+ * block: it still holds a position, and both the rendered list and the drop resolver count it.
+ */
+function removeAt(view: View, at: ChannelLocation): View {
+  const item = itemAt(view, at);
+  if (item === undefined) {
+    return view;
+  }
+  if (item.type === 'channel') {
+    return itemsWith(
+      view,
+      view.items.filter((_, candidate) => candidate !== at.item),
+    );
+  }
+  const items = [...view.items];
+  items[at.item] = {
+    ...item,
+    channels: item.channels.filter((_, candidate) => candidate !== at.member),
+  };
+  return itemsWith(view, items);
+}
+
+/** Takes item `from` out and puts it back at `position` among the rest; null for a no-op. */
+function moveItemTo(view: View, from: number, position: number): View | null {
+  const moved = view.items[from];
+  if (moved === undefined) {
     return null;
   }
-  const target = blocks[to] as ViewBlock;
-  if (target.kind === 'group' && target.indices.length === 0) {
+  const rest = view.items.filter((_, candidate) => candidate !== from);
+  if (position < 0 || position > rest.length || position === from) {
     return null;
   }
-  const next = [...blocks];
-  [next[from], next[to]] = [target, blocks[from] as ViewBlock];
-  return flatten(view, next);
+  return itemsWith(view, [...rest.slice(0, position), moved, ...rest.slice(position)]);
+}
+
+/** A reference as a root-level item, without the `type` key a member must not carry. */
+function asChannelItem(reference: ViewChannelRef): ViewChannelItem {
+  return { ...reference, type: 'channel' };
+}
+
+/** A root-level item as a plain reference; members never carry a `type`. */
+function asReference(reference: ViewChannelRef): ViewChannelRef {
+  const next = { ...reference } as ViewChannelRef & { type?: unknown };
+  delete next.type;
+  return next;
+}
+
+/**
+ * Moves a reference between groups and applies the colour rules that go with it: joining a group
+ * turns an automatic colour into "follow the group", leaving one turns it back, and a colour
+ * picked by hand is never touched. Moving inside the same group changes nothing.
+ */
+export function colorForMembership(
+  reference: ViewChannelRef,
+  from: string | undefined,
+  to: string | undefined,
+): ViewChannelRef {
+  const next = asReference(reference);
+  if (from === to) {
+    return next;
+  }
+  if (to !== undefined && next.color === undefined) {
+    next.color = 'group';
+  } else if (to === undefined && next.color === 'group') {
+    delete next.color;
+  }
+  return next;
+}
+
+/**
+ * Inserts `moved` (already absent from `base`) at `target`, coming from group `from`. Root
+ * positions count items, group positions count that group's members, so a reference only ever
+ * lands on an item boundary or inside the run of its own group.
+ */
+function placeReference(
+  base: View,
+  moved: ViewChannelRef,
+  from: string | undefined,
+  target: DropTarget,
+): Placement | null {
+  if (target.kind === 'group') {
+    const item = groupItemIndex(base, target.groupId);
+    const group = base.items[item];
+    if (group === undefined || group.type !== 'group') {
+      return null;
+    }
+    if (target.position < 0 || target.position > group.channels.length) {
+      return null;
+    }
+    const reference = colorForMembership(moved, from, group.id);
+    const channels = [
+      ...group.channels.slice(0, target.position),
+      reference,
+      ...group.channels.slice(target.position),
+    ];
+    const items = [...base.items];
+    items[item] = { ...group, channels };
+    return {
+      view: itemsWith(base, items),
+      index: flatIndexOf(base, { item, member: target.position }),
+    };
+  }
+  if (target.position < 0 || target.position > base.items.length) {
+    return null;
+  }
+  const reference = asChannelItem(colorForMembership(moved, from, undefined));
+  const items = [
+    ...base.items.slice(0, target.position),
+    reference,
+    ...base.items.slice(target.position),
+  ];
+  return { view: itemsWith(base, items), index: flatIndexOf(base, { item: target.position }) };
 }
 
 /**
@@ -70,149 +249,116 @@ function swapBlocks(view: View, blocks: ViewBlock[], from: number, to: number): 
  * neighbouring blocks. Returns null when the move is not possible.
  */
 export function moveChannel(view: View, index: number, direction: MoveDirection): View | null {
-  const reference = view.channels[index];
-  if (reference === undefined) {
+  const at = locateChannel(view, index);
+  if (at === null) {
     return null;
   }
-  const group = groupById(view, reference.groupId);
-  if (group !== undefined) {
-    const target = index + direction;
-    const neighbour = view.channels[target];
-    if (neighbour === undefined || neighbour.groupId !== group.id) {
+  const item = itemAt(view, at);
+  if (item?.type === 'group') {
+    const member = at.member ?? 0;
+    const target = member + direction;
+    const neighbour = item.channels[target];
+    const moved = item.channels[member];
+    if (neighbour === undefined || moved === undefined) {
       return null;
     }
-    const channels = [...view.channels];
-    channels[index] = neighbour;
-    channels[target] = reference;
-    return { ...view, channels };
+    const channels = [...item.channels];
+    channels[member] = neighbour;
+    channels[target] = moved;
+    const items = [...view.items];
+    items[at.item] = { ...item, channels };
+    return itemsWith(view, items);
   }
-  const blocks = viewBlocks(view);
-  const position = blocks.findIndex((block) => block.kind === 'single' && block.index === index);
-  return swapBlocks(view, blocks, position, position + direction);
+  return moveItemTo(view, at.item, at.item + direction);
 }
 
 /** Moves a whole group block past the neighbouring block. Returns null when not possible. */
 export function moveGroup(view: View, groupId: string, direction: MoveDirection): View | null {
-  const blocks = viewBlocks(view);
-  const position = blocks.findIndex(
-    (block) => block.kind === 'group' && block.group.id === groupId && block.indices.length > 0,
-  );
-  if (position < 0) {
-    return null;
-  }
-  return swapBlocks(view, blocks, position, position + direction);
+  const from = groupItemIndex(view, groupId);
+  return from < 0 ? null : moveItemTo(view, from, from + direction);
 }
 
 /**
- * Moves a reference into `groupId` (or out of every group) and applies the colour rules that go
- * with it: joining a group turns an automatic colour into "follow the group", leaving one turns
- * it back, and a colour picked by hand is never touched. Moving inside the same group changes
- * nothing. It always returns a fresh object, because the drag preview locates the moved
- * reference by identity.
- */
-export function colorForMembership(
-  reference: ViewChannelRef,
-  groupId: string | undefined,
-): ViewChannelRef {
-  const next: ViewChannelRef = { ...reference };
-  const joined = groupId !== undefined && reference.groupId !== groupId;
-  const left = groupId === undefined && reference.groupId !== undefined;
-  if (groupId === undefined) {
-    delete next.groupId;
-  } else {
-    next.groupId = groupId;
-  }
-  if (joined && next.color === undefined) {
-    next.color = 'group';
-  } else if (left && next.color === 'group') {
-    delete next.color;
-  }
-  return next;
-}
-
-/**
- * Assigns a channel to a group (or removes it from one). The channel joins the end of the
- * target group's run, or lands right after its former group when ungrouped.
+ * Assigns a channel to a group (or removes it from one). The channel joins the end of the target
+ * group's members, or lands right after the block it left when ungrouped.
  */
 export function assignGroup(view: View, index: number, groupId: string | undefined): View {
-  const reference = view.channels[index];
-  if (reference === undefined || reference.groupId === groupId) {
+  const at = locateChannel(view, index);
+  if (at === null) {
     return view;
   }
-  const remaining = view.channels.filter((_, candidate) => candidate !== index);
-  const moved = colorForMembership(reference, groupId);
-  const anchorGroup = groupId ?? reference.groupId;
-  let insertAt = remaining.length;
-  for (let candidate = remaining.length - 1; candidate >= 0; candidate -= 1) {
-    if (remaining[candidate]?.groupId === anchorGroup) {
-      insertAt = candidate + 1;
-      break;
+  const from = groupIdAt(view, at);
+  const moved = referenceAt(view, at);
+  if (from === groupId || moved === undefined) {
+    return view;
+  }
+  const base = removeAt(view, at);
+  if (groupId !== undefined) {
+    const item = groupItemIndex(base, groupId);
+    const group = base.items[item];
+    if (group === undefined || group.type !== 'group') {
+      return view;
     }
+    const target = { kind: 'group' as const, groupId, position: group.channels.length };
+    return placeReference(base, moved, from, target)?.view ?? view;
   }
-  if (groupId === undefined && insertAt === remaining.length) {
-    // Former group has no other members: keep the channel where it was.
-    insertAt = index;
-  }
-  const channels = [...remaining.slice(0, insertAt), moved, ...remaining.slice(insertAt)];
-  return { ...view, channels };
+  // Leaving a group lands the row just after the block it came from, which is where it already
+  // was; an ungrouped row that is not moving anywhere keeps its own place for the same reason.
+  return placeReference(base, moved, from, { kind: 'root', position: at.item + 1 })?.view ?? view;
 }
 
-export function addGroup(view: View, group: ViewGroup): View {
-  return { ...view, groups: [...view.groups, group] };
+/** Adds an empty group at the end of the list. */
+export function addGroup(view: View, group: Omit<ViewGroup, 'channels'>): View {
+  return itemsWith(view, [...view.items, { ...group, type: 'group', channels: [] }]);
+}
+
+function mapGroup(
+  view: View,
+  groupId: string,
+  update: (group: ViewGroupItem) => ViewGroupItem,
+): View {
+  return itemsWith(
+    view,
+    view.items.map((item) => (item.type === 'group' && item.id === groupId ? update(item) : item)),
+  );
 }
 
 export function renameGroup(view: View, groupId: string, name: string): View {
-  return {
-    ...view,
-    groups: view.groups.map((group) => (group.id === groupId ? { ...group, name } : group)),
-  };
+  return mapGroup(view, groupId, (group) => ({ ...group, name }));
 }
 
-/** Deletes a group; its members stay in place as ungrouped channels. */
+/** Dissolves a group; its members stay where they are, as ungrouped rows. */
 export function removeGroup(view: View, groupId: string): View {
-  return {
-    ...view,
-    groups: view.groups.filter((group) => group.id !== groupId),
-    channels: view.channels.map((reference) =>
-      reference.groupId === groupId ? colorForMembership(reference, undefined) : reference,
-    ),
-  };
+  const item = groupItemIndex(view, groupId);
+  const group = view.items[item];
+  if (group === undefined || group.type !== 'group') {
+    return view;
+  }
+  const members = group.channels.map((reference) =>
+    asChannelItem(colorForMembership(reference, groupId, undefined)),
+  );
+  return itemsWith(view, [...view.items.slice(0, item), ...members, ...view.items.slice(item + 1)]);
 }
 
-/** Overrides a group's colour, or clears the override so it follows its first present member. */
+/** Overrides a group's colour, or clears the override so it follows its members' types. */
 export function setGroupColor(view: View, groupId: string, color?: ChannelPaletteKey): View {
-  return {
-    ...view,
-    groups: view.groups.map((group) => {
-      if (group.id !== groupId) {
-        return group;
-      }
-      const next = { ...group };
-      if (color === undefined) {
-        delete next.color;
-      } else {
-        next.color = color;
-      }
-      return next;
-    }),
-  };
-}
-
-/** Where a dragged channel lands. `position` counts members of the group, or top-level blocks. */
-export type DropTarget =
-  { kind: 'group'; groupId: string; position: number } | { kind: 'root'; position: number };
-
-/** Blocks that take part in top-level ordering: singles and groups that have members. */
-export function nonEmptyBlocks(view: View): ViewBlock[] {
-  return viewBlocks(view).filter((block) => block.kind === 'single' || block.indices.length > 0);
+  return mapGroup(view, groupId, (group) => {
+    const next = { ...group };
+    if (color === undefined) {
+      delete next.color;
+    } else {
+      next.color = color;
+    }
+    return next;
+  });
 }
 
 /**
- * Root positions that need an explicit drop slot while a channel is dragged: the boundaries
- * where a group starts the list, two groups touch, or a group ends the list. Every other block
- * boundary has an ungrouped row next to it, which already offers its upper and lower half.
- * `blocks` are the ordered blocks of the view without the dragged channel, so the slots (and the
- * positions they resolve to) do not move while the dragged row is previewed among them.
+ * Root positions that need an explicit drop slot while an item is dragged: the boundaries where
+ * a group starts the list or two groups touch. Every other boundary has an ungrouped row next to
+ * it, which already offers its upper and lower half, and the end of the list has a slot of its
+ * own that is always there. `blocks` are the blocks of the view without the dragged one, so the
+ * slots do not move while the dragged row is previewed among them.
  */
 export function rootSlotPositionsFor(blocks: ViewBlock[]): number[] {
   const positions: number[] = [];
@@ -222,105 +368,55 @@ export function rootSlotPositionsFor(blocks: ViewBlock[]): number[] {
       positions.push(position);
     }
   });
-  if (blocks[blocks.length - 1]?.kind === 'group') {
-    positions.push(blocks.length);
-  }
   return positions;
 }
 
-/** `rootSlotPositionsFor` over the non-empty blocks of a view. */
-export function rootSlotPositions(view: View): number[] {
-  return rootSlotPositionsFor(nonEmptyBlocks(view));
+/** `rootSlotPositionsFor` over the blocks of a view. */
+export function rootSlotPositions(view: Pick<View, 'items'>): number[] {
+  return rootSlotPositionsFor(viewBlocks(view));
 }
 
-/** Indices of the references that belong to `groupId`, in channel order. */
-export function memberIndices(view: View, groupId: string): number[] {
-  return view.channels.flatMap((reference, index) =>
-    reference.groupId === groupId ? [index] : [],
+/** Flat indices of the references that belong to `groupId`, in display order. */
+export function memberIndices(view: Pick<View, 'items'>, groupId: string): number[] {
+  const block = viewBlocks(view).find(
+    (candidate) => candidate.kind === 'group' && candidate.group.id === groupId,
   );
-}
-
-function firstIndexOf(block: ViewBlock): number {
-  return block.kind === 'single' ? block.index : (block.indices[0] ?? 0);
+  return block?.kind === 'group' ? block.indices : [];
 }
 
 /**
- * Inserts `moved` into `base` (which must not contain it) at `target`. Root positions count the
- * non-empty blocks of `base`, group positions count that group's members, so the reference only
- * ever lands on a block boundary or inside its own group's run and runs stay contiguous.
+ * Moves the channel at `index` to `target`, joining or leaving a group as the target implies,
+ * and reports where it landed. The source is removed before the target position is interpreted.
+ * Returns null when the target is invalid or the move changes nothing.
  */
-function placeReference(base: View, moved: ViewChannelRef, target: DropTarget): View | null {
-  let reference: ViewChannelRef;
-  let at: number;
-  if (target.kind === 'group') {
-    const group = groupById(base, target.groupId);
-    if (group === undefined) {
-      return null;
-    }
-    const members = memberIndices(base, group.id);
-    if (target.position < 0 || target.position > members.length) {
-      return null;
-    }
-    reference = colorForMembership(moved, group.id);
-    const last = members[members.length - 1];
-    const slot = members[target.position];
-    at =
-      last === undefined
-        ? base.channels.length
-        : target.position === members.length
-          ? last + 1
-          : (slot ?? base.channels.length);
-  } else {
-    const blocks = nonEmptyBlocks(base);
-    if (target.position < 0 || target.position > blocks.length) {
-      return null;
-    }
-    reference = colorForMembership(moved, undefined);
-    const block = blocks[target.position];
-    at = block === undefined ? base.channels.length : firstIndexOf(block);
+export function moveChannelToAt(view: View, index: number, target: DropTarget): Placement | null {
+  const at = locateChannel(view, index);
+  const moved = at === null ? undefined : referenceAt(view, at);
+  if (at === null || moved === undefined) {
+    return null;
   }
-  const channels = [...base.channels.slice(0, at), reference, ...base.channels.slice(at)];
-  return { ...base, channels };
+  const placed = placeReference(removeAt(view, at), moved, groupIdAt(view, at), target);
+  if (placed === null || sameViewItems(placed.view, view)) {
+    return null;
+  }
+  return placed;
 }
 
-function sameChannels(a: View, b: View): boolean {
-  return (
-    a.channels.length === b.channels.length &&
-    a.channels.every((reference, index) => {
-      const other = b.channels[index];
-      return other !== undefined && sameChannelReference(reference, other);
-    })
-  );
-}
-
-/**
- * Moves `view.channels[index]` to `target`, joining or leaving a group as the target implies.
- * The source is removed before the target position is interpreted. Returns null when the target
- * is invalid or the move changes nothing.
- */
+/** `moveChannelToAt` without the landing index. */
 export function moveChannelTo(view: View, index: number, target: DropTarget): View | null {
-  const reference = view.channels[index];
-  if (reference === undefined) {
-    return null;
-  }
-  const base = { ...view, channels: view.channels.filter((_, candidate) => candidate !== index) };
-  const next = placeReference(base, reference, target);
-  if (next === null || sameChannels(next, view)) {
-    return null;
-  }
-  return next;
+  return moveChannelToAt(view, index, target)?.view ?? null;
 }
 
 /**
- * Inserts a reference that is not yet in the view at `target`. Returns null when a reference
- * with the same kind, name and channel id already exists.
+ * Inserts a reference that is not yet in the view at `target`, reporting where it landed.
+ * Returns null when a reference with the same kind, name and channel id already exists.
  */
-export function insertChannelAt(
+export function insertChannelAtAt(
   view: View,
   reference: ViewChannelRef,
   target: DropTarget,
-): View | null {
-  const exists = view.channels.some(
+): Placement | null {
+  const exists = viewChannelRefs(view).some(
     (candidate) =>
       candidate.kind === reference.kind &&
       candidate.name === reference.name &&
@@ -329,44 +425,96 @@ export function insertChannelAt(
   if (exists) {
     return null;
   }
-  return placeReference(view, reference, target);
+  return placeReference(view, reference, undefined, target);
+}
+
+/** `insertChannelAtAt` without the landing index. */
+export function insertChannelAt(
+  view: View,
+  reference: ViewChannelRef,
+  target: DropTarget,
+): View | null {
+  return insertChannelAtAt(view, reference, target)?.view ?? null;
 }
 
 /**
- * Moves a non-empty group block to `position` among the top-level blocks, counted with the
- * group's own block removed. Returns null for empty or unknown groups, out-of-range positions
- * and drops in place.
+ * Moves a group block to `position` among the top-level blocks, counted with the group's own
+ * block removed. Returns null for unknown groups, out-of-range positions and drops in place.
  */
 export function moveGroupTo(view: View, groupId: string, position: number): View | null {
-  const blocks = nonEmptyBlocks(view);
-  const from = blocks.findIndex((block) => block.kind === 'group' && block.group.id === groupId);
-  if (from < 0) {
-    return null;
-  }
-  const rest = blocks.filter((_, candidate) => candidate !== from);
-  if (position < 0 || position > rest.length || position === from) {
-    return null;
-  }
-  const moved = blocks[from] as ViewBlock;
-  return flatten(view, [...rest.slice(0, position), moved, ...rest.slice(position)]);
+  const from = groupItemIndex(view, groupId);
+  return from < 0 ? null : moveItemTo(view, from, position);
 }
 
 /** Removes the reference at `index`; null when the index is out of range. */
 export function removeChannel(view: View, index: number): View | null {
-  if (view.channels[index] === undefined) {
-    return null;
+  const at = locateChannel(view, index);
+  return at === null ? null : removeAt(view, at);
+}
+
+/** Removes several references at once, by flat index. */
+export function removeChannels(view: View, indices: ReadonlySet<number>): View {
+  if (indices.size === 0) {
+    return view;
   }
-  return { ...view, channels: view.channels.filter((_, candidate) => candidate !== index) };
+  let index = 0;
+  const keep = (): boolean => {
+    const drop = indices.has(index);
+    index += 1;
+    return !drop;
+  };
+  return itemsWith(
+    view,
+    view.items.flatMap((item) => {
+      if (item.type === 'channel') {
+        return keep() ? [item] : [];
+      }
+      return [{ ...item, channels: item.channels.filter(keep) }];
+    }),
+  );
+}
+
+/** Appends a reference as the last row of the list. */
+export function appendChannel(view: View, reference: ViewChannelRef): View {
+  return itemsWith(view, [...view.items, asChannelItem(reference)]);
+}
+
+/** Sets or clears the colour override of the channel at `index`. */
+export function setChannelColor(view: View, index: number, color?: ViewChannelColor): View {
+  const at = locateChannel(view, index);
+  const current = at === null ? undefined : referenceAt(view, at);
+  if (at === null || current === undefined) {
+    return view;
+  }
+  const next = asReference(current);
+  if (color === undefined) {
+    delete next.color;
+  } else {
+    next.color = color;
+  }
+  const item = itemAt(view, at);
+  const items = [...view.items];
+  if (item?.type === 'group') {
+    items[at.item] = {
+      ...item,
+      channels: item.channels.map((reference, candidate) =>
+        candidate === at.member ? next : reference,
+      ),
+    };
+  } else {
+    items[at.item] = asChannelItem(next);
+  }
+  return itemsWith(view, items);
 }
 
 /** Deletes a group together with every reference that belongs to it; null for unknown groups. */
 export function removeGroupWithMembers(view: View, groupId: string): View | null {
-  if (!view.groups.some((group) => group.id === groupId)) {
+  const item = groupItemIndex(view, groupId);
+  if (item < 0) {
     return null;
   }
-  return {
-    ...view,
-    groups: view.groups.filter((group) => group.id !== groupId),
-    channels: view.channels.filter((reference) => reference.groupId !== groupId),
-  };
+  return itemsWith(
+    view,
+    view.items.filter((_, candidate) => candidate !== item),
+  );
 }

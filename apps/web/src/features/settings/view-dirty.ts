@@ -1,45 +1,47 @@
-import type { View, ViewChannelRef } from '@flwc/shared';
+import type { View, ViewChannelRef, ViewItem } from '@flwc/shared';
 
 /** Structural equality of two references; a missing key and an `undefined` value are equal. */
 export function sameChannelReference(a: ViewChannelRef, b: ViewChannelRef): boolean {
   return (
-    a.kind === b.kind &&
+    a.kind === b.kind && a.name === b.name && a.channelId === b.channelId && a.color === b.color
+  );
+}
+
+function sameItem(a: ViewItem, b: ViewItem): boolean {
+  if (a.type !== b.type) {
+    return false;
+  }
+  if (a.type === 'channel' || b.type === 'channel') {
+    return sameChannelReference(a as ViewChannelRef, b as ViewChannelRef);
+  }
+  return (
+    a.id === b.id &&
     a.name === b.name &&
-    a.channelId === b.channelId &&
-    a.groupId === b.groupId &&
-    a.color === b.color
+    a.color === b.color &&
+    a.channels.length === b.channels.length &&
+    a.channels.every((reference, index) => {
+      const other = b.channels[index];
+      return other !== undefined && sameChannelReference(reference, other);
+    })
   );
 }
 
 /**
- * Reports whether the draft differs from the saved view: name, channel references (order and
- * every field), and groups (order, id, name and colour) are compared structurally.
+ * Structural equality of two views' items: the order of the blocks, what each block is, and
+ * every field of every reference. An empty group counts like any other block, so moving one is
+ * a change even though no channel went anywhere.
  */
-export function isViewDirty(saved: View, draft: View): boolean {
-  if (saved.name !== draft.name) {
-    return true;
-  }
-  if (saved.channels.length !== draft.channels.length) {
-    return true;
-  }
-  if (
-    saved.channels.some((reference, index) => {
-      const other = draft.channels[index];
-      return other === undefined || !sameChannelReference(reference, other);
+export function sameViewItems(a: Pick<View, 'items'>, b: Pick<View, 'items'>): boolean {
+  return (
+    a.items.length === b.items.length &&
+    a.items.every((item, index) => {
+      const other = b.items[index];
+      return other !== undefined && sameItem(item, other);
     })
-  ) {
-    return true;
-  }
-  if (saved.groups.length !== draft.groups.length) {
-    return true;
-  }
-  return saved.groups.some((group, index) => {
-    const other = draft.groups[index];
-    return (
-      other === undefined ||
-      group.id !== other.id ||
-      group.name !== other.name ||
-      group.color !== other.color
-    );
-  });
+  );
+}
+
+/** Reports whether the draft differs from the saved view, by name or by structure. */
+export function isViewDirty(saved: View, draft: View): boolean {
+  return saved.name !== draft.name || !sameViewItems(saved, draft);
 }
