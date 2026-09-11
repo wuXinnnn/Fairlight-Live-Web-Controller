@@ -136,6 +136,9 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 | `apps/web/tests/settings-groups.integration.test.tsx` | 新增:折叠 6 例 + 颜色 4 例(第 12 节再补 `GRP` 字样一条断言) |
 | `apps/web/src/features/settings/PaletteControl.tsx` | 第 12 节新增:按钮排与下拉菜单两套形态共用的调色控件 |
 | `apps/web/tests/settings-palette.integration.test.tsx` | 第 12 节新增:下拉菜单写入行色与组色 3 例 |
+| `apps/web/src/features/settings/DeleteButton.tsx` | 第 13 节新增:行与组头共用的删除键 |
+| `apps/web/src/features/settings/RowMenu.tsx` | 第 13 节新增:极限窄屏把整行控件收进去的原生命令菜单 |
+| `apps/web/tests/settings-row-controls.integration.test.tsx` | 第 13 节新增:删除按钮 3 例 + 命令菜单 5 例 |
 | `docs/architecture.md` | 传感器、FLIP、空态落槽、折叠、键盘收敛、颜色模型与持久化示例 |
 | `docs/reports/phase-6-2-1-report.md` | 本报告 |
 
@@ -220,6 +223,8 @@ c796a62 refactor(web): drive settings drag and drop with mouse and touch sensors
 | 2 | 容器 ≤ **42rem** | 去掉通道名列的 7rem 下限(名字本来就带省略号),行内 `gap` 0.65→0.45rem、左右 `padding` 0.7→0.5rem |
 | 3 | 容器 ≤ **34rem** | 隐藏 6 个色块改用下拉菜单;隐藏 `GROUP` 下拉前面的字样(`<select>` 自带可访问名) |
 
+> 第 13 节给每行加了删除按钮,两个阈值随之全部重测、并加了第四档;**以第 13.2 节的表为准**,本表是这一轮当时的状态。
+
 两个阈值是**实测**的,不是算出来的:在 Chromium 里把行钉在某一形态上、从 1600px 起每 4px 缩窄视口,记录该形态第一次「高度超过一行或内容溢出行宽」的位置——形态 1 撑到 40.13rem 的列宽,形态 2 撑到 32.71rem;阈值取在其上(42 / 34),保证换挡时上一形态仍然放得下,不会出现两档之间的空隙。
 
 实现按用户选定的方案:按钮排与 `<select>` **两套控件始终都渲染**,由容器查询 `display: none` 只显示一套。浏览器里被 `display: none` 的那套不进无障碍树、也不是栅格项,所以栅格列定义不用为第三档改动;切换不需要 `ResizeObserver`、不引入状态、拖动中不会重排。两处调色板因此抽成共用的 `PaletteControl.tsx`,可访问名仍由调用方构造,菜单另取 `<name> color menu` / `Group <name> color menu` 以免与按钮重名。jsdom 不求值容器查询,两套在测试里都在 DOM 中:既有用例查的是 button 角色,新增的 `settings-palette.integration.test.tsx` 查 `combobox`,互不干扰。
@@ -270,4 +275,115 @@ feat(web): label the group colour choice GRP instead of a swatch
 refactor(web): share one palette control between rows and group headers
 feat(web): let the views column narrow with the viewport
 feat(web): keep settings rows on one line as the column narrows
+```
+
+## 13. 第二轮真机验收后的 UX 调整
+
+用户在平板与手机上验收 PR #16 后又提出两项,同样只动配置页的呈现层与草稿编辑,不涉及数据模型、拖放语义与服务端。
+
+### 13.1 行级删除按钮
+
+**问题**:列表里删不掉东西。此前把一条通道移出 view 只有三条路,每条都有缺口:
+
+| 既有路径 | 缺口 |
+| --- | --- |
+| AVAILABLE CHANNELS 取消勾选 | **失配引用(`MISSING`)在清单里根本没有条目**,无从取消 |
+| 把行拖出列表可见区 `REMOVE_DRAG_THRESHOLD_PX` | 只对鼠标与触屏生效;`ViewDndContext` 的屏读提示本来就写明「With a pointer…」,**键盘没有任何删除手段** |
+| `CLEAR INVALID` | 只清失配,且是批量 |
+
+**改动**:每个通道行与每个组头的最右侧加一个删除按钮(自绘 ×,`DeleteButton.tsx`),行是 `Remove <name>`、组头是 `Delete group <name>`。
+
+- 调用的是**已经存在且已被单测覆盖**的两个纯函数:`removeChannel(view, index)` 与 `removeGroupWithMembers(view, groupId)`(`view-order.test.ts:389-398`),两者的 `null` 返回正好被 `editDraft` 的 `?? source` 吃掉。本项零新增业务逻辑。
+- **组头的语义由用户选定:连同成员一起删除**。`UNGROUP` 保留,两者并列而相反——`UNGROUP` 只解散组、成员原位留为无组行。可访问名 `Ungroup <name>` 与 `Delete group <name>` 完全不同,既有断言(`views.integration.test.tsx:650`)不受影响。空分组同样有删除按钮。
+- **不做二次确认**,也由用户选定:删除只改草稿,`SAVE VIEW` 之前都能用 `DISCARD CHANGES` 整体撤销。
+- 拖动期间禁用(`saving || dragging`,`dragging` 由 `ChannelOrderList` 已有的 `useDragPreview()` 作为 prop 下发,不在行里新开订阅)。这不是保险而是必须的:列表这时渲染的是**预览视图**,行拿到的是预览索引,按它删会删错行。组头折叠按钮本来就是同样的写法。
+- 删组不清理 `collapsedGroupIds`——`UNGROUP` 今天也不清(只有切换 view 与 `DISCARD` 整体重置),而组 id 出自 `createLocalId('group')` 永不复用,孤儿 id 撞不上新组。
+- 这是仓库里**第一个危险色交互态**:`.delete-button` 平时与 `.drag-handle` 同款,hover 才换成 `--red` / `#ff8c85`。
+
+### 13.2 极限窄屏:整行控件收进汉堡菜单
+
+**问题**:第 12 节的两档只保证「不换行、不溢出」。390×844 时 `.channel-order` 只有 22.88rem,上下按钮 + `GROUP` 下拉 + 颜色菜单挤在一起并不好按,再加一个删除按钮更甚。
+
+**改动**:加第三档,把**上下按钮、`GROUP` 下拉、颜色菜单、`UNGROUP`、删除按钮**一起藏掉,改用行尾一直渲染着的汉堡菜单(`RowMenu.tsx`)。三档合起来:
+
+| 档 | 触发(容器 inline-size) | 让出的东西 | 行 / 组头栅格列数 |
+| --- | --- | --- | --- |
+| 1 | 默认 | —— 通道名列 `minmax(7rem, 1fr)`,调色板是按钮排 | 8 / 10 |
+| 2 | ≤ **45rem** | 去掉通道名列的 7rem 下限,`gap` 0.65→0.45rem、左右 `padding` 0.7→0.5rem | 8 / 10 |
+| 3 | ≤ **36rem** | 隐藏 6 个色块改用 `PaletteControl` 的下拉;隐藏 `GROUP` 前面的字样 | 8 / 10 |
+| 4 | ≤ **26rem** | 上下按钮 / `GROUP` 下拉 / 颜色菜单 / `UNGROUP` / 删除按钮全部收进汉堡菜单 | 5 / 7 |
+
+**形态由用户选定:原生下拉命令菜单**——一个盖在汉堡方块上的透明 `<select>`。理由不只是省事:
+
+- 弹出层由浏览器绘制,不在 DOM 里,**不需要定位、不会被列表裁切、不改行高、不引入状态、拖动中不会重排**,与第 12 节「渲染两套 + 容器查询只显示一套」完全同源;手机上直接得到系统原生选择器。
+- **更关键的是可访问名**。jsdom 不求值容器查询,两套控件在测试里同时在场——第 12 节的 `PaletteControl` 靠按钮与菜单**不重名**才成立。汉堡菜单没有这个余地:只要它再渲染一份叫 `Move BASS up` / `BASS group` / `Ungroup Rhythm` 的控件,约 20 处既有断言就会因「找到多个元素」而失败,其中 `settings-dirty.integration.test.tsx:56` 的 `makeDirty()` 是该文件**每个用例**都走的。原生 `<select>` 的项是 `<option>`(`role="option"`),不与 button / combobox 撞名;菜单自己另取 `<name> menu` / `Group <name> menu`。**既有测试因此一条都没有改。**
+- 命令 id 带前缀(`move:` / `group:` / `color:` / `ungroup` / `delete`),一个扁平的 `onPick` 分发;颜色那一段**直接由调色板已有的 `choices` 数组派生**,两处不可能写歪。菜单没有「当前值」,选中即执行并复位;当前所在组与当前颜色在文本前加 `•` 标出;不可用的移动方向是 `<option disabled>`。
+- 第四档下这个菜单是行上**唯一**的控件,又只出现在没有指针的设备上,所以放大到 **2.75rem(44px)** 的方块——实测原尺寸只有 26×26px,对手指太小。行高随之从 54px 长到 62–63px,组头 50→62px,仍然都是单行。这一条是我在实测中发现并主动加的,**若不需要可以去掉**。
+
+**阈值全部重测**,因为多一个删除按钮把三档的下限都推高了。第 12 节的旧办法有个错误:它用 `!important` 把 `padding-left` 钉成 0.7rem,顺手覆盖掉了组内成员额外的 `padding-left: 1.5rem`,于是量到的是偏乐观的数。**组内成员才是最窄的一种行**(它还带着组缩进),这一轮改为直接扫实况:
+
+| 形态 | 实测撑到的列宽 | 取的阈值 | 余量 |
+| --- | --- | --- | --- |
+| 名字下限 + 色块 + 删除 | **43.51rem** | 45rem | 1.49rem |
+| 截断名字 + 色块 + 删除 | **34.60rem** | 36rem | 1.40rem |
+| 颜色菜单 + 删除 | **21.25rem** | 26rem | —— |
+
+最后一档的 26rem 不是为了放得下(那个形态一路撑到 21.3rem 也就是 360px 视口),而是**为了覆盖手机竖屏**:26rem 对应约 440px 以内的视口,把 iPhone 一类的机型全部包住,而平板横屏 1024px 时该列是 31.63rem,仍留在第三档。
+
+### 13.3 验证
+
+质量门:`pnpm lint` / `typecheck` / `test` / `build` 串行全绿。测试 web **285**(新增 8 例,既有用例零改动)、server 142、shared 34、test-utils 22;覆盖率 web 96.74% / 92.05% / 99.04% / 96.66%,server 92.51% / 85.77%,均未调低门槛、未新增排除项;`git diff pnpm-lock.yaml` 为空。
+
+浏览器实测(`pnpm dev` + Mock Provider + Playwright 驱动预装 Chromium,view 为 5 通道含一个 2 成员的组):
+
+```text
+# 视口从 1600px 每 4px 扫到 320px,共 321 个宽度
+widths swept: 321 ; problems: 0
+switch to colour-menu at viewport 1156 -> column 36.08 rem
+switch to hamburger  at viewport  900 -> column 25.90 rem
+switch to swatches   at viewport  800 -> column 48.50 rem   # 两列堆叠,容器反而变宽
+switch to colour-menu at viewport  600 -> column 36.00 rem
+switch to hamburger  at viewport  440 -> column 26.00 rem
+
+1920x1080  views  336    order 63.89rem  rows [54]     headers [50]  swatches
+1440x900   views  288    order 45.67rem  rows [54]     headers [50]  swatches
+1366x1024  views  273.2  order 43.17rem  rows [54]     headers [50]  swatches
+1280x800   views  256    order 40.27rem  rows [54]     headers [50]  swatches
+1180x820   views  236    order 36.89rem  rows [54]     headers [50]  swatches
+1024x768   views  204.8  order 31.63rem  rows [54]     headers [50]  colour-menu
+ 820x640   views  192    order 24.00rem  rows [63,62]  headers [62]  hamburger
+ 768x1024  views  768    order 46.50rem  rows [54]     headers [50]  swatches
+ 430x932   views  430    order 25.38rem  rows [63,62]  headers [62]  hamburger
+ 390x844   views  390    order 22.88rem  rows [63,62]  headers [62]  hamburger
+ 360x640   views  360    order 21.00rem  rows [63,62]  headers [62]  hamburger
+ 320x568   views  320    order 18.50rem  rows [63,62]  headers [62]  hamburger
+```
+
+321 个宽度里**没有一个**出现换行、行内溢出或整页横向溢出,每个宽度下三套控件恰好可见一套。
+
+第 2 节的五组冒烟在 1400×900 上重跑全部通过(拖动补间 13 次 FLIP 写入、落下零叠加、空 view 拖入、折叠组拖入自动展开、组色联动混音页),1024×768 的那一轮也重跑通过——新增的一列没有碰坏拖放几何。另新写一个 **390×844 手机竖屏**冒烟,全程只用汉堡菜单:
+
+```text
+shape: order buttons=false group select=false swatches=false colour menu=false delete=false hamburger=true
+menu hit box: 44 x 44 px
+row menu offers: ["MOVE UP","MOVE DOWN","• NO GROUP","Rhythm","• AUTO","Input Green","Main Red",
+                  "Sub Teal","Aux Navy","Mix Minus Lime","Matrix Purple","REMOVE FROM VIEW"]
+group menu offers: ["MOVE UP","MOVE DOWN","• AUTO",…,"UNGROUP","DELETE GROUP"]
+move:down   -> MIC-REVERB,MIC,BASS,Anagram-Wet ; one line = true
+group:<id>  -> members MIC                     ; one line = true
+color:lime  -> #55b978 -> #a7cf4d
+group colour through the menu -> row accent #a7cf4d
+delete      -> MIC-REVERB,BASS,Anagram-Wet     ; one line = true
+delete group-> groups left = 0
+saved: ["MIC-REVERB","BASS","Anagram-Wet"] ; groups []
+```
+
+**观感与手感仍由用户在真机上验收**:删除按钮是否好按、误触概率有多大、不做二次确认是否可以接受、手机竖屏下菜单的选项措辞与分组是否清楚、第四档换挡的宽度是否合适、放大到 44px 的汉堡键与随之长高的行是否合适。
+
+### 13.4 本节提交
+
+```text
+feat(web): remove a channel or a group from the order list
+feat(web): fold the row controls into one menu on a narrow column
+docs: record the row delete button and the narrow-column menu
 ```
