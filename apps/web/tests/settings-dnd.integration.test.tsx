@@ -216,20 +216,89 @@ describe('settings drag and drop (keyboard sensor)', () => {
     });
     expect(page.orderedNames()).toEqual([]);
 
-    // The empty group block sits above the fill slot, so the pickup previews into the group.
+    // A group that starts the list has a slot above it, and that is the nearest target here, so
+    // the channel arrives as an ungrouped row above the group.
     await pickUp(page.availableHandle('channel/1'));
+    expect(page.memberNames('g1')).toEqual([]);
+    expect(page.orderedNames()).toEqual(['BASS']);
+    // Down once is the group itself.
+    await press('ArrowDown');
     expect(page.memberNames('g1')).toEqual(['BASS']);
-    // Down from there is the slot filling the rest of the list: the channel leaves the group.
+    // Down again is the slot filling the rest of the list: the channel leaves the group again,
+    // this time below it.
     await press('ArrowDown');
     expect(page.memberNames('g1')).toEqual([]);
     expect(page.orderedNames()).toEqual(['BASS']);
-    // And back up into the group again.
+    // And back up into the group.
     await press('ArrowUp');
     expect(page.memberNames('g1')).toEqual(['BASS']);
 
     await press('Space');
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['BASS']));
     expect(await page.savedItems()).toEqual([grp(RHYTHM, [joined(BASS)])]);
+  });
+
+  it('reaches the end of the list with an arrow and stops there', async () => {
+    // The list ends with a group, so no row stands for the boundary below it: the slot at the
+    // end of the list is the only way to become the last row.
+    const page = await openSettings({
+      id: 'trailing',
+      name: 'Trailing',
+      items: [row(BASS), grp(RHYTHM, [MAIN])],
+    });
+    // dnd-kit keeps its own live region, separate from the page's status line. Every move is
+    // announced there, but the text is replaced again as the geometry settles, so collect it.
+    const announced: string[] = [];
+    const observer = new MutationObserver(() => {
+      const text = document.querySelector('[id^="DndLiveRegion"]')?.textContent ?? '';
+      if (text.length > 0) {
+        announced.push(text);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    await pickUp(page.handle('BASS'));
+    // Down through the group and on to the slot at the end, which is the only target past it.
+    await press('ArrowDown');
+    await press('ArrowDown');
+    expect(announced.join(' | ')).toContain('the end of the list');
+    observer.disconnect();
+
+    // Nothing lies past it, so pressing again leaves the list where it is.
+    const settled = page.orderedNames();
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(settled);
+    await press('Escape');
+  });
+
+  it('skips the end slot when the dragged row is already the last block', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pickUp(page.handle('FX'));
+    // FX already sits at the end, so that slot is where it is: down goes nowhere.
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
+    await press('ArrowUp');
+    expect(page.orderedNames()).toEqual(['BASS', 'FX', 'MAIN']);
+    await press('Escape');
+  });
+
+  it('takes the end slot away once the drag is over', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN)],
+    });
+    expect(page.container.querySelector('.root-slot--fill')).not.toBeInTheDocument();
+    await pickUp(page.handle('BASS'));
+    expect(page.container.querySelector('.root-slot--fill')).toBeInTheDocument();
+    await press('Escape');
+    await waitFor(() =>
+      expect(page.container.querySelector('.root-slot--fill')).not.toBeInTheDocument(),
+    );
   });
 
   it('reorders ungrouped rows and saves the new order', async () => {
@@ -516,6 +585,85 @@ describe('settings drag and drop (mouse sensor)', () => {
   const X = 700;
   const rowY = (row: number, fraction: number) =>
     STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
+
+  // Well below the last block but still inside the list: the empty area the end slot takes.
+  const belowEverything = (blocks: number) =>
+    STUB_LIST_PADDING + blocks * STUB_ROW_HEIGHT + 2.5 * STUB_ROW_HEIGHT;
+
+  it('sends a row dropped in the empty area below the list to the end', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pointerDown(page.handle('BASS'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+
+    await pointerMoveTo(X, belowEverything(3));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']));
+    await pointerUp(X, belowEverything(3));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(await page.savedItems()).toEqual([row(MAIN), row(FX), row(BASS)]);
+  });
+
+  it('appends an AVAILABLE channel dropped in the empty area below the list', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN)],
+    });
+    const handle = page.availableHandle('aux/1');
+    await pointerDown(handle, 0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2.5);
+    await pointerMoveTo(0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2.5 + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('FX'));
+
+    await pointerMoveTo(X, belowEverything(2));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']));
+    await pointerUp(X, belowEverything(2));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(screen.getByRole('checkbox', { name: /FX/ })).toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS), row(MAIN), row(FX)]);
+  });
+
+  it('sends a whole group dropped in the empty area below the list to the end', async () => {
+    const page = await openSettings({
+      id: 'grouped',
+      name: 'Grouped',
+      items: [grp(RHYTHM, [MAIN, FX]), row(BASS)],
+    });
+    // Rows: header | MAIN | FX | BASS
+    await pointerDown(page.handle('group Rhythm'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() =>
+      expect(document.querySelector('.drag-overlay')).toHaveTextContent('Rhythm'),
+    );
+
+    await pointerMoveTo(X, belowEverything(4));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']));
+    await pointerUp(X, belowEverything(4));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(await page.savedItems()).toEqual([row(BASS), grp(RHYTHM, [MAIN, FX])]);
+  });
+
+  it('drops a channel after an empty group that ends the list', async () => {
+    const page = await openSettings({
+      id: 'trailing',
+      name: 'Trailing',
+      items: [row(BASS), row(MAIN), grp(RHYTHM)],
+    });
+    await pointerDown(page.handle('BASS'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+
+    // The empty group is two rows tall, so the area below it starts at row 4.
+    await pointerMoveTo(X, belowEverything(4));
+    await pointerUp(X, belowEverything(4));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    // Below the group, not inside it: BASS is an ungrouped row again, after the block.
+    expect(page.memberNames('g1')).toEqual([]);
+    expect(await page.savedItems()).toEqual([row(MAIN), grp(RHYTHM), row(BASS)]);
+  });
 
   it('takes the first channel of an empty view from AVAILABLE', async () => {
     const page = await openSettings({ id: 'new', name: 'New', items: [] });

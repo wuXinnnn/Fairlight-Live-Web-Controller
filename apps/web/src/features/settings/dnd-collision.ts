@@ -31,7 +31,10 @@ export function isEligibleTarget(source: DndItemKind, candidate: DndItemData): b
     case 'group':
       return (
         (candidate.kind === 'channel' && candidate.groupId === undefined) ||
-        candidate.kind === 'group'
+        candidate.kind === 'group' ||
+        // The end of the list is somewhere a group can go; the other slots are boundaries it
+        // would already be standing next to.
+        (candidate.kind === 'slot' && candidate.fill)
       );
     default:
       return false;

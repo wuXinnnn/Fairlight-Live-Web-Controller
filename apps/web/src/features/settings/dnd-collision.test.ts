@@ -62,7 +62,13 @@ describe('isEligibleTarget', () => {
       isEligibleTarget('available', { kind: 'groupzone', label: 'g', groupId: 'g1', empty: false }),
     ).toBe(true);
     expect(isEligibleTarget('channel', { kind: 'group', label: 'g', groupId: 'g1' })).toBe(false);
-    const slot = { kind: 'slot', label: 'start', position: 0, current: false } as const;
+    const slot = {
+      kind: 'slot',
+      label: 'start',
+      position: 0,
+      current: false,
+      fill: false,
+    } as const;
     expect(isEligibleTarget('channel', slot)).toBe(true);
     expect(isEligibleTarget('available', slot)).toBe(true);
     expect(isEligibleTarget('group', slot)).toBe(false);
@@ -103,11 +109,15 @@ describe('viewCollisionDetection', () => {
         { kind: 'groupzone', label: 'group Rhythm', groupId: 'g1', empty: false },
         rect(40, 120),
       ],
-      ['slot:1', { kind: 'slot', label: 'the gap', position: 1, current: true }, rect(40, 16)],
+      [
+        'slot:1',
+        { kind: 'slot', label: 'the gap', position: 1, current: true, fill: false },
+        rect(40, 16),
+      ],
       ['channel:b', { kind: 'channel', label: 'B', groupId: 'g1' }, rect(80)],
       [
         'slot:2',
-        { kind: 'slot', label: 'the end of the list', position: 2, current: false },
+        { kind: 'slot', label: 'the end of the list', position: 2, current: false, fill: false },
         rect(160, 16),
       ],
       [

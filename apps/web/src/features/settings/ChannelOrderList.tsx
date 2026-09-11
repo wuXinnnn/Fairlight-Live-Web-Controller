@@ -159,21 +159,20 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         current={position === currentPosition}
       />
     );
-  // A view with no blocks at all still needs a place to drop the first channel, and so does the
-  // space below the last block. The slot is decided by the draft, not by the preview: were it
-  // gated on the rendered view it would unmount the moment a placeholder appeared, leaving the
-  // pointer over nothing, which clears the preview and brings the slot back, frame by frame.
-  const emptyDraft = props.view.items.length === 0;
-  const fillSlot =
-    dragging && sourceKind !== 'group' && emptyDraft ? (
-      <RootSlot
-        key="slot:fill"
-        position={remaining.length}
-        label="the start of the list"
-        current={false}
-        fill
-      />
-    ) : null;
+  // The space under the last block is a drop target for the whole of a drag: it takes whatever
+  // height the list has left, so dropping anywhere in the empty area below the rows appends to
+  // the end. It is there for every kind of drag and for the whole of one, which is also what
+  // stops it flickering - a slot that came and went as the preview changed would unmount under
+  // the pointer, clear the preview, and come straight back, frame after frame.
+  const fillSlot = dragging ? (
+    <RootSlot
+      key="slot:fill"
+      position={remaining.length}
+      label="the end of the list"
+      current={remaining.length === currentPosition}
+      fill
+    />
+  ) : null;
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>

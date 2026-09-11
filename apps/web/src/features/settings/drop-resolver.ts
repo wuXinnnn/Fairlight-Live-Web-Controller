@@ -86,8 +86,13 @@ export function resolveDropTarget(
     removed !== null && index > removed ? index - 1 : index;
 
   if (over.kind === 'slot') {
-    // Slots already count the blocks of the view without the dragged channel.
-    if (source.kind === 'group' || over.position > base.items.length) {
+    // Slots already count the blocks of the view without the dragged item.
+    if (over.position > base.items.length) {
+      return null;
+    }
+    // A group can only use the slot at the end of the list; the others mark boundaries it would
+    // already be standing next to, where moving it would change nothing.
+    if (source.kind === 'group' && !over.fill) {
       return null;
     }
     return { kind: 'root', position: over.position };

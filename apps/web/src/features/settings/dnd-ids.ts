@@ -6,7 +6,7 @@ export type DndId =
   | { kind: 'group'; groupId: string }
   | { kind: 'groupzone'; groupId: string }
   | { kind: 'available'; channelId: string }
-  | { kind: 'slot'; position: number };
+  | { kind: 'slot'; position: number; fill: boolean };
 
 /**
  * Data attached to every draggable and droppable so collision detection and announcements can
@@ -30,6 +30,12 @@ export type DndItemData =
       position: number;
       /** True when the dragged row already sits at this position. */
       current: boolean;
+      /**
+       * True for the slot that always sits at the end of the list and takes the space left
+       * over. It is the only slot a whole group can be dropped on, because it is the only one
+       * that is not a boundary a group could already be standing at.
+       */
+      fill: boolean;
     };
 
 export type DndItemKind = DndItemData['kind'];
@@ -58,11 +64,13 @@ export function availableDndId(channelId: string): string {
 }
 
 /**
- * Droppable id of a root slot: a block boundary next to a group where a channel can be dropped
- * as an ungrouped row. `position` counts the non-empty blocks before the boundary.
+ * Droppable id of a root slot: a place a channel can be dropped as an ungrouped row.
+ * `position` counts the blocks before it. The `fill` slot at the end of the list is marked in
+ * the identifier because it is the only one a whole group can be dropped on, and the drop
+ * resolver has nothing but the identifier to go on.
  */
-export function rootSlotDndId(position: number): string {
-  return `slot:${position}`;
+export function rootSlotDndId(position: number, fill = false): string {
+  return fill ? `slot:fill:${position}` : `slot:${position}`;
 }
 
 /** Splits an identifier on its first colon; anything unknown yields null. */
@@ -87,8 +95,12 @@ export function parseDndId(id: UniqueIdentifier): DndId | null {
     case 'available':
       return { kind: 'available', channelId: rest };
     case 'slot': {
-      const position = Number(rest);
-      return Number.isInteger(position) && position >= 0 ? { kind: 'slot', position } : null;
+      const fill = rest.startsWith('fill:');
+      const digits = fill ? rest.slice('fill:'.length) : rest;
+      // Number('') is 0, so an identifier with nothing where the position should be would
+      // otherwise parse as the top of the list.
+      const position = digits.length === 0 ? Number.NaN : Number(digits);
+      return Number.isInteger(position) && position >= 0 ? { kind: 'slot', position, fill } : null;
     }
     default:
       return null;

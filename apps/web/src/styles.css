@@ -2541,12 +2541,13 @@ html.fader-cap-dragging * {
 }
 
 /*
- * The slot of a view with nothing ordered in it takes the space the list has left, so the first
- * channel can be dropped anywhere below the (possibly empty) groups rather than on a 16px band.
+ * The slot at the end of the list takes the space the list has left, so anything dropped in the
+ * empty area below the last block goes to the end rather than having to find a 16px band. Its
+ * minimum height comes from ROOT_SLOT_HEIGHT_PX inline, so a list that has overflowed and has
+ * no space left over still leaves it that much to hit.
  */
 .view-channel-list > .root-slot--fill {
   flex: 1 1 auto;
-  min-height: 4rem;
 }
 
 .root-slot--fill .root-slot__band {
