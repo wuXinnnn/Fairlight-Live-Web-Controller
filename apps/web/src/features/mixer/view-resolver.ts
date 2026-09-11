@@ -90,6 +90,14 @@ export function referenceForChannel(channel: ChannelState): ViewChannelRef {
   return { kind: channel.kind, name: channel.name, channelId: channel.id };
 }
 
+/**
+ * Kind of the first entry that resolved to a live channel. A group with no colour of its own
+ * takes the type colour of this channel, so members that follow the group all read the same.
+ */
+export function leadChannelKind(entries: ResolvedViewChannel[]): ChannelKind | undefined {
+  return entries.find((entry) => entry.channel !== undefined)?.channel?.kind;
+}
+
 export interface ViewSegment {
   /** The group shared by every entry, or undefined for a run of ungrouped channels. */
   group: ViewGroup | undefined;

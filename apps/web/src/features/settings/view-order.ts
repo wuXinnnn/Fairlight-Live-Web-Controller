@@ -1,4 +1,4 @@
-import type { View, ViewChannelRef, ViewGroup } from '@flwc/shared';
+import type { ChannelPaletteKey, View, ViewChannelRef, ViewGroup } from '@flwc/shared';
 import { sameChannelReference } from './view-dirty.js';
 
 export type MoveDirection = -1 | 1;
@@ -104,6 +104,33 @@ export function moveGroup(view: View, groupId: string, direction: MoveDirection)
 }
 
 /**
+ * Moves a reference into `groupId` (or out of every group) and applies the colour rules that go
+ * with it: joining a group turns an automatic colour into "follow the group", leaving one turns
+ * it back, and a colour picked by hand is never touched. Moving inside the same group changes
+ * nothing. It always returns a fresh object, because the drag preview locates the moved
+ * reference by identity.
+ */
+export function colorForMembership(
+  reference: ViewChannelRef,
+  groupId: string | undefined,
+): ViewChannelRef {
+  const next: ViewChannelRef = { ...reference };
+  const joined = groupId !== undefined && reference.groupId !== groupId;
+  const left = groupId === undefined && reference.groupId !== undefined;
+  if (groupId === undefined) {
+    delete next.groupId;
+  } else {
+    next.groupId = groupId;
+  }
+  if (joined && next.color === undefined) {
+    next.color = 'group';
+  } else if (left && next.color === 'group') {
+    delete next.color;
+  }
+  return next;
+}
+
+/**
  * Assigns a channel to a group (or removes it from one). The channel joins the end of the
  * target group's run, or lands right after its former group when ungrouped.
  */
@@ -113,12 +140,7 @@ export function assignGroup(view: View, index: number, groupId: string | undefin
     return view;
   }
   const remaining = view.channels.filter((_, candidate) => candidate !== index);
-  const moved: ViewChannelRef = { ...reference };
-  if (groupId === undefined) {
-    delete moved.groupId;
-  } else {
-    moved.groupId = groupId;
-  }
+  const moved = colorForMembership(reference, groupId);
   const anchorGroup = groupId ?? reference.groupId;
   let insertAt = remaining.length;
   for (let candidate = remaining.length - 1; candidate >= 0; candidate -= 1) {
@@ -151,13 +173,27 @@ export function removeGroup(view: View, groupId: string): View {
   return {
     ...view,
     groups: view.groups.filter((group) => group.id !== groupId),
-    channels: view.channels.map((reference) => {
-      if (reference.groupId !== groupId) {
-        return reference;
+    channels: view.channels.map((reference) =>
+      reference.groupId === groupId ? colorForMembership(reference, undefined) : reference,
+    ),
+  };
+}
+
+/** Overrides a group's colour, or clears the override so it follows its first present member. */
+export function setGroupColor(view: View, groupId: string, color?: ChannelPaletteKey): View {
+  return {
+    ...view,
+    groups: view.groups.map((group) => {
+      if (group.id !== groupId) {
+        return group;
       }
-      const ungrouped = { ...reference };
-      delete ungrouped.groupId;
-      return ungrouped;
+      const next = { ...group };
+      if (color === undefined) {
+        delete next.color;
+      } else {
+        next.color = color;
+      }
+      return next;
     }),
   };
 }
@@ -208,12 +244,6 @@ function firstIndexOf(block: ViewBlock): number {
   return block.kind === 'single' ? block.index : (block.indices[0] ?? 0);
 }
 
-function withoutGroup(reference: ViewChannelRef): ViewChannelRef {
-  const copy = { ...reference };
-  delete copy.groupId;
-  return copy;
-}
-
 /**
  * Inserts `moved` into `base` (which must not contain it) at `target`. Root positions count the
  * non-empty blocks of `base`, group positions count that group's members, so the reference only
@@ -231,7 +261,7 @@ function placeReference(base: View, moved: ViewChannelRef, target: DropTarget): 
     if (target.position < 0 || target.position > members.length) {
       return null;
     }
-    reference = { ...moved, groupId: group.id };
+    reference = colorForMembership(moved, group.id);
     const last = members[members.length - 1];
     const slot = members[target.position];
     at =
@@ -245,7 +275,7 @@ function placeReference(base: View, moved: ViewChannelRef, target: DropTarget): 
     if (target.position < 0 || target.position > blocks.length) {
       return null;
     }
-    reference = withoutGroup(moved);
+    reference = colorForMembership(moved, undefined);
     const block = blocks[target.position];
     at = block === undefined ? base.channels.length : firstIndexOf(block);
   }

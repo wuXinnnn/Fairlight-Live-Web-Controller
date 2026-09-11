@@ -1,4 +1,4 @@
-import { type ChannelPaletteKey, type View, type ViewChannelRef } from '@flwc/shared';
+import { type View, type ViewChannelColor, type ViewChannelRef } from '@flwc/shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -24,7 +24,7 @@ import { AvailableChannelList } from './AvailableChannelList.js';
 import { ChannelOrderList } from './ChannelOrderList.js';
 import { pad } from './channel-labels.js';
 import { DiscardChangesDialog, type PendingAction } from './DiscardChangesDialog.js';
-import { useFlipList } from './use-flip-list.js';
+import type { FlipListHandle } from './use-flip-list.js';
 import { isViewDirty } from './view-dirty.js';
 import { ViewDndContext } from './ViewDndContext.js';
 import {
@@ -32,8 +32,11 @@ import {
   assignGroup,
   moveChannel,
   moveGroup,
+  removeChannel,
   removeGroup,
+  removeGroupWithMembers,
   renameGroup,
+  setGroupColor,
   type MoveDirection,
 } from './view-order.js';
 
@@ -51,7 +54,7 @@ function copyView(view: View): View {
   };
 }
 
-function withColor(reference: ViewChannelRef, color?: ChannelPaletteKey): ViewChannelRef {
+function withColor(reference: ViewChannelRef, color?: ViewChannelColor): ViewChannelRef {
   const next: ViewChannelRef = { kind: reference.kind, name: reference.name };
   if (reference.channelId !== undefined) {
     next.channelId = reference.channelId;
@@ -109,7 +112,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const [localError, setLocalError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
-  const flip = useFlipList(listRef, activeDraft);
+  // The FLIP list lives inside ChannelOrderList, which is the component that renders the drag
+  // preview; the page only reaches in to re-baseline before a drop and to skip a view switch.
+  const flipRef = useRef<FlipListHandle | null>(null);
   const dirty = useMemo(
     () =>
       draft !== null &&
@@ -124,6 +129,30 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     dirtyRef.current = dirty;
   }, [dirty]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  // Which groups are folded shut. Editor state only: it never reaches the view or the server.
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const toggleCollapse = (groupId: string) =>
+    setCollapsedGroupIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(groupId)) {
+        next.add(groupId);
+      }
+      return next;
+    });
+  const expandGroup = useCallback(
+    (groupId: string) =>
+      setCollapsedGroupIds((current) => {
+        if (!current.has(groupId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(groupId);
+        return next;
+      }),
+    [],
+  );
 
   useEffect(() => {
     setNavigationGuard((route) => {
@@ -176,7 +205,10 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   const channelsEmptyDetail = emptyStateDetail(channelsEmptyState);
 
   const selectView = (view: View) => {
+    // Two views can share row keys; without this the shared rows would fly to their new places.
+    flipRef.current?.skipNext();
     setSelectedId(view.id);
+    setCollapsedGroupIds(new Set());
     setDraft(copyView(view));
     setConfirmDelete(false);
     setLocalError(null);
@@ -284,6 +316,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
     const targetId = selected.id;
     setPendingAction(null);
     setDraft(null);
+    setCollapsedGroupIds(new Set());
     setConfirmDelete(false);
     dirtyRef.current = false;
     switch (action.kind) {
@@ -335,10 +368,16 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   };
 
   const handleAssignGroup = (index: number, groupId: string | undefined) => {
+    // Same rule as a drag: a channel put into a collapsed group has to be visible where it
+    // landed. It also keeps a group that was emptied while folded from swallowing the first
+    // channel put back into it, since being empty hides the control that would reopen it.
+    if (groupId !== undefined) {
+      expandGroup(groupId);
+    }
     editDraft((source) => assignGroup(source, index, groupId));
   };
 
-  const setChannelColor = (index: number, color?: ChannelPaletteKey) => {
+  const setChannelColor = (index: number, color?: ViewChannelColor) => {
     editDraft((source) => ({
       ...source,
       channels: source.channels.map((reference, candidate) =>
@@ -500,7 +539,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                 assignedChannelIds={assignedChannelIds}
                 listRef={listRef}
                 onDrop={editDraft}
-                onBeforeDrop={flip.capture}
+                onBeforeDrop={() => flipRef.current?.capture()}
+                collapsedGroupIds={collapsedGroupIds}
+                onExpandGroup={expandGroup}
               >
                 <div className="view-editor__grid">
                   <section className="channel-picker" aria-labelledby="available-channel-heading">
@@ -576,28 +617,36 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                         </button>
                       </div>
                     )}
-                    {activeDraft.channels.length === 0 && activeDraft.groups.length === 0 ? (
-                      <p className="panel-empty">THIS VIEW HAS NO CHANNELS</p>
-                    ) : (
-                      <ChannelOrderList
-                        listRef={listRef}
-                        view={activeDraft}
-                        channels={availableChannels}
-                        duplicateNames={duplicateNames}
-                        channelInventoryLoaded={channelInventoryLoaded}
-                        saving={saving}
-                        onMoveChannel={handleMoveChannel}
-                        onMoveGroup={handleMoveGroup}
-                        onAssignGroup={handleAssignGroup}
-                        onSetColor={setChannelColor}
-                        onRenameGroup={(groupId, name) =>
-                          editDraft((source) => renameGroup(source, groupId, name))
-                        }
-                        onRemoveGroup={(groupId) =>
-                          editDraft((source) => removeGroup(source, groupId))
-                        }
-                      />
-                    )}
+                    <ChannelOrderList
+                      listRef={listRef}
+                      flipRef={flipRef}
+                      view={activeDraft}
+                      channels={availableChannels}
+                      duplicateNames={duplicateNames}
+                      channelInventoryLoaded={channelInventoryLoaded}
+                      saving={saving}
+                      collapsedGroupIds={collapsedGroupIds}
+                      onMoveChannel={handleMoveChannel}
+                      onMoveGroup={handleMoveGroup}
+                      onAssignGroup={handleAssignGroup}
+                      onSetColor={setChannelColor}
+                      onRenameGroup={(groupId, name) =>
+                        editDraft((source) => renameGroup(source, groupId, name))
+                      }
+                      onRemoveGroup={(groupId) =>
+                        editDraft((source) => removeGroup(source, groupId))
+                      }
+                      onDeleteChannel={(index) =>
+                        editDraft((source) => removeChannel(source, index))
+                      }
+                      onDeleteGroup={(groupId) =>
+                        editDraft((source) => removeGroupWithMembers(source, groupId))
+                      }
+                      onToggleCollapse={toggleCollapse}
+                      onSetGroupColor={(groupId, color) =>
+                        editDraft((source) => setGroupColor(source, groupId, color))
+                      }
+                    />
                   </section>
                 </div>
               </ViewDndContext>

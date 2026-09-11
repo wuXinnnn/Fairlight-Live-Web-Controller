@@ -47,6 +47,7 @@ export function PlaceholderRow({
       ref={setNodeRef}
       className="channel-order-row is-dragging is-placeholder"
       data-flip-key={rowKey}
+      data-flip-skip=""
       data-ordered-channel-id={channelId}
       data-ordered-channel-name={name}
       data-placeholder="true"

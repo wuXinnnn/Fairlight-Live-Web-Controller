@@ -15,7 +15,14 @@ export type DndId =
 export type DndItemData =
   | { kind: 'channel'; label: string; groupId?: string }
   | { kind: 'group'; label: string; groupId: string }
-  | { kind: 'groupzone'; label: string; groupId: string; empty: boolean }
+  | {
+      kind: 'groupzone';
+      label: string;
+      groupId: string;
+      empty: boolean;
+      /** True while the group is collapsed, so its members are not rendered. */
+      collapsed?: boolean;
+    }
   | { kind: 'available'; label: string; channelId: string; groupId?: string }
   | {
       kind: 'slot';

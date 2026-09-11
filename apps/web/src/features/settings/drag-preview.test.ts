@@ -1,6 +1,7 @@
 import type { ChannelState, View } from '@flwc/shared';
 import { describe, expect, it } from 'vitest';
 import { defaultDropAnimation } from '@dnd-kit/core';
+import { DROP_ANIMATION_MS } from './dnd-config.js';
 import {
   containerOf,
   containerOfTarget,
@@ -119,6 +120,7 @@ describe('previewFor', () => {
       name: 'FX',
       channelId: 'aux/1',
       groupId: 'g3',
+      color: 'group',
     });
     expect(preview?.source).toEqual({ kind: 'channel', index: 4 });
     expect(preview?.placeholderChannelId).toBe('aux/1');
@@ -238,8 +240,14 @@ describe('dropHintFor', () => {
 
 describe('dropAnimationFor', () => {
   it('animates rows and groups but not AVAILABLE channels or removals', () => {
-    expect(dropAnimationFor({ kind: 'channel', index: 0 }, false)).toBe(defaultDropAnimation);
-    expect(dropAnimationFor({ kind: 'group', groupId: 'g1' }, false)).toBe(defaultDropAnimation);
+    expect(dropAnimationFor({ kind: 'channel', index: 0 }, false)).toEqual({
+      ...defaultDropAnimation,
+      duration: DROP_ANIMATION_MS,
+    });
+    expect(dropAnimationFor({ kind: 'group', groupId: 'g1' }, false)).toEqual({
+      ...defaultDropAnimation,
+      duration: DROP_ANIMATION_MS,
+    });
     expect(dropAnimationFor({ kind: 'available', channelId: 'aux/1' }, false)).toBeNull();
     expect(dropAnimationFor({ kind: 'channel', index: 0 }, true)).toBeNull();
     expect(dropAnimationFor({ kind: 'group', groupId: 'g1' }, true)).toBeNull();

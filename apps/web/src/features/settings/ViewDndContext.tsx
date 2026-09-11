@@ -2,7 +2,7 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -15,7 +15,7 @@ import {
   type KeyboardCoordinateGetter,
   type Over,
 } from '@dnd-kit/core';
-import type { ChannelState, View } from '@flwc/shared';
+import type { ChannelKind, ChannelState, View } from '@flwc/shared';
 import {
   useCallback,
   useEffect,
@@ -25,12 +25,12 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { channelColor, channelTypeColor } from '../mixer/channel-colors.js';
+import { channelAccent, channelTypeColor, groupAccent } from '../mixer/channel-colors.js';
 import { referenceForChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, pad } from './channel-labels.js';
 import { viewCollisionDetection, viewKeyboardCoordinates } from './dnd-collision.js';
 import {
-  POINTER_ACTIVATION_DISTANCE_PX,
+  MOUSE_ACTIVATION_DISTANCE_PX,
   REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
@@ -74,6 +74,10 @@ interface ViewDndContextProps {
   onDrop(update: (source: View) => View | null): void;
   /** Called right before the draft changes, while the list still shows the drag state. */
   onBeforeDrop?(): void;
+  /** Ids of the groups whose members are hidden. */
+  collapsedGroupIds: ReadonlySet<string>;
+  /** Reveals a collapsed group the drag is about to drop into. */
+  onExpandGroup(groupId: string): void;
   children: ReactNode;
 }
 
@@ -87,6 +91,12 @@ interface DragState {
   pointer: boolean;
   preview: DragPreview | null;
   removing: boolean;
+  /**
+   * Keyboard step the current preview was computed for. Expanding a group or shifting the rows
+   * makes dnd-kit run collision detection again while the drag still aims where the last arrow
+   * put it, and that stale aim can land on a neighbour; one arrow key means one move.
+   */
+  step: number;
 }
 
 function labelOf(entry: Active | Over | null): string {
@@ -134,7 +144,9 @@ function containerOfOver(over: Over): ListContainer | null {
 }
 
 /**
- * Drag and drop for the configuration page. Pointer, touch and keyboard sensors are enabled.
+ * Drag and drop for the configuration page. Mouse, touch and keyboard sensors are enabled, one
+ * per input: the mouse starts a drag after MOUSE_ACTIVATION_DISTANCE_PX, a finger after resting
+ * TOUCH_ACTIVATION_DELAY_MS on the handle, and neither can claim the other's press.
  * While an item is dragged the page renders a preview view with the item already where it would
  * land, inside its own list or another one, so the placeholder shows the drop; the preview is
  * kept in sync on every move. The draft only changes when the drag ends.
@@ -146,11 +158,15 @@ export function ViewDndContext({
   listRef,
   onDrop,
   onBeforeDrop,
+  collapsedGroupIds,
+  onExpandGroup,
   children,
 }: ViewDndContextProps) {
   // Direction of the last keyboard move; the drop hint has no pointer to read for those.
   const keyboardDownRef = useRef<boolean | null>(null);
+  const keyboardStepRef = useRef(0);
   const keyboardCoordinates = useCallback<KeyboardCoordinateGetter>((event, args) => {
+    keyboardStepRef.current += 1;
     if (event.code === 'ArrowDown' || event.code === 'ArrowRight') {
       keyboardDownRef.current = true;
     } else if (event.code === 'ArrowUp' || event.code === 'ArrowLeft') {
@@ -159,8 +175,8 @@ export function ViewDndContext({
     return viewKeyboardCoordinates(event, args);
   }, []);
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: MOUSE_ACTIVATION_DISTANCE_PX },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
@@ -182,14 +198,16 @@ export function ViewDndContext({
   const [dropAnimation, setDropAnimation] = useState<DropAnimation | null>(null);
 
   // The pointer is tracked directly: dnd-kit's deltas include scroll compensation, so they no
-  // longer describe where the finger is once the list auto-scrolls. Only pointer and touch drags
+  // longer describe where the finger is once the list auto-scrolls. Only mouse and touch drags
   // track it: during a keyboard drag an idle mouse must not decide where the row lands.
+  // `mousemove` is what the mouse sensor itself listens for and the only move event jsdom emits;
+  // `pointermove` is kept as well so a browser that only sends pointer events still tracks.
   const pointerRef = useRef<Point | null>(null);
   useEffect(() => {
     if (drag === null || !drag.pointer) {
       return undefined;
     }
-    const onPointerMove = (event: PointerEvent): void => {
+    const onMouseMove = (event: MouseEvent): void => {
       pointerRef.current = { x: event.clientX, y: event.clientY };
     };
     const onTouchMove = (event: TouchEvent): void => {
@@ -198,10 +216,12 @@ export function ViewDndContext({
         pointerRef.current = { x: touch.clientX, y: touch.clientY };
       }
     };
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    window.addEventListener('pointermove', onMouseMove, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: true });
     return () => {
-      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('pointermove', onMouseMove);
       window.removeEventListener('touchmove', onTouchMove);
     };
   }, [drag]);
@@ -209,6 +229,7 @@ export function ViewDndContext({
   const handleDragStart = ({ active, activatorEvent }: DragStartEvent) => {
     pointerRef.current = eventPoint(activatorEvent);
     keyboardDownRef.current = null;
+    keyboardStepRef.current += 1;
     if (view === null) {
       return;
     }
@@ -225,6 +246,7 @@ export function ViewDndContext({
       pointer: pointerRef.current !== null,
       preview: null,
       removing: false,
+      step: keyboardStepRef.current,
     });
   };
 
@@ -239,6 +261,11 @@ export function ViewDndContext({
   const syncPreview = (active: Active, over: Over | null) => {
     const state = dragRef.current;
     if (state === null) {
+      return;
+    }
+    // A keyboard drag only moves when an arrow key was pressed; every other collision it sees is
+    // the geometry settling around the move it just made.
+    if (!state.pointer && state.preview !== null && state.step === keyboardStepRef.current) {
       return;
     }
     const currentView = state.preview?.view ?? state.startView;
@@ -267,6 +294,12 @@ export function ViewDndContext({
     if (target === null) {
       return;
     }
+    // Reveal a collapsed group the moment the placeholder lands in it, so the drop is visible.
+    // The expansion and the preview commit together, so the placeholder is never rendered into
+    // a group that is still closed. It stays open after the drag.
+    if (target.kind === 'group' && collapsedGroupIds.has(target.groupId)) {
+      onExpandGroup(target.groupId);
+    }
     const channel =
       state.source.kind === 'available' ? channels[state.source.channelId] : undefined;
     const next = previewFor(currentView, currentSource, target, channel);
@@ -276,6 +309,7 @@ export function ViewDndContext({
     const placeholderChannelId = next.placeholderChannelId ?? state.preview?.placeholderChannelId;
     update({
       ...state,
+      step: keyboardStepRef.current,
       preview: placeholderChannelId === undefined ? next : { ...next, placeholderChannelId },
     });
   };
@@ -316,7 +350,15 @@ export function ViewDndContext({
       sameContainer(containerOf(currentView, currentSource), containerOfOver(over)),
     );
     if (state.preview !== null) {
-      return settlePreview(state.preview, active.id, over.id, hint);
+      // A keyboard drag settles against whatever collision detection last reported only while
+      // that droppable is in the list the arrows already put the row in, where it can only
+      // refine the position. A target in another list would undo the move the operator can see:
+      // the rows settle after every preview and collision runs again against a stale aim, which
+      // is exactly what the root slot above a collapsed group does the moment the group opens.
+      const settles =
+        state.pointer ||
+        sameContainer(containerOf(currentView, currentSource), containerOfOver(over));
+      return settles ? settlePreview(state.preview, active.id, over.id, hint) : state.preview.view;
     }
     if (over.id === active.id) {
       return null;
@@ -372,6 +414,12 @@ export function ViewDndContext({
     update(null);
   };
 
+  // Expanding a group moves everything below it, and `previewFor` may well return the same view.
+  const remeasureTrigger = useMemo(
+    () => ({ view: drag?.preview?.view, collapsedGroupIds }),
+    [drag?.preview?.view, collapsedGroupIds],
+  );
+
   const previewState = useMemo<DragPreviewState>(
     () =>
       drag === null
@@ -391,6 +439,19 @@ export function ViewDndContext({
       return null;
     }
     const current = drag.preview?.view ?? drag.startView;
+    // Same rule as the list: a group without a colour takes its first present member's type.
+    const leadKindOf = (groupId: string | undefined): ChannelKind | undefined => {
+      if (groupId === undefined) {
+        return undefined;
+      }
+      for (const reference of current.channels) {
+        const live = reference.channelId === undefined ? undefined : channels[reference.channelId];
+        if (reference.groupId === groupId && live !== undefined) {
+          return live.kind;
+        }
+      }
+      return undefined;
+    };
     const variant: DragOverlayVariant =
       drag.source.kind === 'group'
         ? 'group'
@@ -403,22 +464,24 @@ export function ViewDndContext({
         const reference = drag.startView.channels[drag.source.index];
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
+        const group = current.groups.find((candidate) => candidate.id === reference?.groupId);
         return {
           variant,
           label,
-          accent: channelColor(kind, reference?.color),
+          accent: channelAccent(kind, reference?.color, group, leadKindOf(group?.id)),
           detail: KIND_LABELS[kind],
         };
       }
       case 'group': {
         const groupId = drag.source.groupId;
         const members = current.channels.filter((reference) => reference.groupId === groupId);
-        const lead = members[0];
-        const live = lead?.channelId === undefined ? undefined : channels[lead.channelId];
         return {
           variant,
           label,
-          accent: channelColor(live?.kind ?? lead?.kind ?? 'channel', lead?.color),
+          accent: groupAccent(
+            current.groups.find((candidate) => candidate.id === groupId),
+            leadKindOf(groupId),
+          ),
           detail: `${pad(members.length)} CH`,
         };
       }
@@ -445,7 +508,7 @@ export function ViewDndContext({
       <DragPreviewContext.Provider value={previewState}>
         {children}
         <ListAutoScroller listRef={listRef} pointerRef={pointerRef} />
-        <DroppableRemeasure trigger={drag?.preview?.view} />
+        <DroppableRemeasure trigger={remeasureTrigger} />
         <DragOverlay dropAnimation={dropAnimation}>
           {overlay === null ? null : <DragOverlayContent {...overlay} />}
         </DragOverlay>

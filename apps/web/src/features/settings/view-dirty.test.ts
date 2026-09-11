@@ -77,4 +77,22 @@ describe('isViewDirty', () => {
     expect(isViewDirty(twoGroups, reordered)).toBe(true);
     expect(isViewDirty(twoGroups, clone(twoGroups))).toBe(false);
   });
+
+  it('sees a group colour change', () => {
+    const saved: View = {
+      id: 'v',
+      name: 'View',
+      channels: [],
+      groups: [{ id: 'g1', name: 'Rhythm' }],
+    };
+    expect(isViewDirty(saved, { ...saved, groups: [{ id: 'g1', name: 'Rhythm' }] })).toBe(false);
+    expect(
+      isViewDirty(saved, { ...saved, groups: [{ id: 'g1', name: 'Rhythm', color: 'teal' }] }),
+    ).toBe(true);
+    const coloured: View = { ...saved, groups: [{ id: 'g1', name: 'Rhythm', color: 'teal' }] };
+    expect(isViewDirty(coloured, saved)).toBe(true);
+    expect(
+      isViewDirty(coloured, { ...saved, groups: [{ id: 'g1', name: 'Rhythm', color: 'lime' }] }),
+    ).toBe(true);
+  });
 });

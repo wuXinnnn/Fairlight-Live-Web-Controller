@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addGroup,
   assignGroup,
+  colorForMembership,
   insertChannelAt,
   memberIndices,
   moveChannel,
@@ -15,6 +16,7 @@ import {
   removeGroupWithMembers,
   renameGroup,
   rootSlotPositions,
+  setGroupColor,
   viewBlocks,
 } from './view-order.js';
 
@@ -22,6 +24,11 @@ function ref(name: string, groupId?: string) {
   return groupId === undefined
     ? { kind: 'channel' as const, name }
     : { kind: 'channel' as const, name, groupId };
+}
+
+/** A reference that joined a group: an automatic colour becomes "follow the group". */
+function joined(name: string, groupId: string) {
+  return { ...ref(name, groupId), color: 'group' as const };
 }
 
 const view: View = {
@@ -108,7 +115,7 @@ describe('assignGroup', () => {
   it('appends to the target group and keeps the list contiguous', () => {
     const next = assignGroup(view, 0, 'g1');
     expect(names(next)).toEqual(['B', 'C', 'A', 'D', 'E']);
-    expect(next.channels[2]).toEqual(ref('A', 'g1'));
+    expect(next.channels[2]).toEqual(joined('A', 'g1'));
   });
 
   it('places a channel first when its group has no members yet', () => {
@@ -201,7 +208,7 @@ describe('moveChannelTo', () => {
       moveChannelTo(view, 3, { kind: 'group', groupId: 'g1', position: 0 }),
     );
     expect(names(first)).toEqual(['A', 'D', 'B', 'C', 'E']);
-    expect(first.channels[1]).toEqual(ref('D', 'g1'));
+    expect(first.channels[1]).toEqual(joined('D', 'g1'));
     expect(names(moveChannelTo(view, 3, { kind: 'group', groupId: 'g1', position: 1 }))).toEqual([
       'A',
       'B',
@@ -213,7 +220,7 @@ describe('moveChannelTo', () => {
       moveChannelTo(view, 0, { kind: 'group', groupId: 'g1', position: 2 }),
     );
     expect(names(last)).toEqual(['B', 'C', 'A', 'D', 'E']);
-    expect(last.channels[2]).toEqual(ref('A', 'g1'));
+    expect(last.channels[2]).toEqual(joined('A', 'g1'));
   });
 
   it('moves members within their group', () => {
@@ -252,12 +259,12 @@ describe('moveChannelTo', () => {
       moveChannelTo(view, 1, { kind: 'group', groupId: 'g2', position: 1 }),
     );
     expect(names(across)).toEqual(['A', 'C', 'D', 'E', 'B']);
-    expect(across.channels[4]).toEqual(ref('B', 'g2'));
+    expect(across.channels[4]).toEqual(joined('B', 'g2'));
     const empty = expectContiguousGroups(
       moveChannelTo(view, 4, { kind: 'group', groupId: 'g3', position: 0 }),
     );
     expect(names(empty)).toEqual(['A', 'B', 'C', 'D', 'E']);
-    expect(empty.channels[4]).toEqual(ref('E', 'g3'));
+    expect(empty.channels[4]).toEqual(joined('E', 'g3'));
     expect(moveChannelTo(view, 4, { kind: 'group', groupId: 'g3', position: 1 })).toBeNull();
   });
 
@@ -313,12 +320,12 @@ describe('insertChannelAt', () => {
       insertChannelAt(view, fresh, { kind: 'group', groupId: 'g1', position: 1 }),
     );
     expect(names(grouped)).toEqual(['A', 'B', 'F', 'C', 'D', 'E']);
-    expect(grouped.channels[2]).toEqual({ ...fresh, groupId: 'g1' });
+    expect(grouped.channels[2]).toEqual({ ...fresh, groupId: 'g1', color: 'group' });
     const empty = expectContiguousGroups(
       insertChannelAt(view, fresh, { kind: 'group', groupId: 'g3', position: 0 }),
     );
     expect(names(empty)).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
-    expect(empty.channels[5]).toEqual({ ...fresh, groupId: 'g3' });
+    expect(empty.channels[5]).toEqual({ ...fresh, groupId: 'g3', color: 'group' });
   });
 
   it('refuses references that already exist and accepts a different channel id', () => {
@@ -392,5 +399,151 @@ describe('removeChannel and removeGroupWithMembers', () => {
     const snapshot = structuredClone(view);
     removeGroupWithMembers(view, 'g1');
     expect(view).toEqual(snapshot);
+  });
+});
+
+describe('colorForMembership', () => {
+  const base = { kind: 'channel' as const, name: 'A' };
+
+  it('follows the group on the way in and lets go on the way out', () => {
+    // Automatic becomes "follow the group" when the reference joins one, and back again.
+    expect(colorForMembership(base, 'g1')).toEqual({ ...base, groupId: 'g1', color: 'group' });
+    expect(colorForMembership({ ...base, groupId: 'g1', color: 'group' }, undefined)).toEqual(base);
+    // A colour picked by hand survives both directions.
+    expect(colorForMembership({ ...base, color: 'teal' }, 'g1')).toEqual({
+      ...base,
+      groupId: 'g1',
+      color: 'teal',
+    });
+    expect(colorForMembership({ ...base, groupId: 'g1', color: 'teal' }, undefined)).toEqual({
+      ...base,
+      color: 'teal',
+    });
+    // Moving between groups keeps "follow the group"; moving inside one changes nothing.
+    expect(colorForMembership({ ...base, groupId: 'g1', color: 'group' }, 'g2')).toEqual({
+      ...base,
+      groupId: 'g2',
+      color: 'group',
+    });
+    expect(colorForMembership({ ...base, groupId: 'g1' }, 'g1')).toEqual({
+      ...base,
+      groupId: 'g1',
+    });
+    // A legacy reference already in a group is only upgraded when it moves to another one.
+    expect(colorForMembership({ ...base, groupId: 'g1' }, 'g2')).toEqual({
+      ...base,
+      groupId: 'g2',
+      color: 'group',
+    });
+  });
+
+  it('always returns a fresh object, which the drag preview relies on', () => {
+    const reference = { ...base, groupId: 'g1' };
+    expect(colorForMembership(reference, 'g1')).not.toBe(reference);
+    const moved = moveChannelTo(view, 1, { kind: 'group', groupId: 'g1', position: 1 });
+    expect(moved?.channels).not.toContain(view.channels[1]);
+  });
+});
+
+describe('colour conversion through the four entry points', () => {
+  const coloured: View = {
+    id: 'v',
+    name: 'View',
+    channels: [
+      ref('A'),
+      { ...ref('B', 'g1'), color: 'group' },
+      { ...ref('C', 'g1'), color: 'teal' },
+      { ...ref('D'), color: 'navy' },
+    ],
+    groups: [
+      { id: 'g1', name: 'One' },
+      { id: 'g2', name: 'Two' },
+    ],
+  };
+  const colours = (next: View | null) => (next?.channels ?? []).map((entry) => entry.color);
+
+  it('converts on assignGroup in both directions', () => {
+    // A joins g1 (automatic -> group); D keeps its own colour.
+    expect(colours(assignGroup(coloured, 0, 'g1'))).toEqual(['group', 'teal', 'group', 'navy']);
+    expect(colours(assignGroup(coloured, 3, 'g1'))).toEqual([undefined, 'group', 'teal', 'navy']);
+    // B leaves g1 and reverts to automatic; C keeps teal.
+    expect(colours(assignGroup(coloured, 1, undefined))).toEqual([
+      undefined,
+      'teal',
+      undefined,
+      'navy',
+    ]);
+    expect(colours(assignGroup(coloured, 2, undefined))).toEqual([
+      undefined,
+      'group',
+      'teal',
+      'navy',
+    ]);
+  });
+
+  it('converts on moveChannelTo in both directions and leaves same-group moves alone', () => {
+    expect(
+      colours(moveChannelTo(coloured, 0, { kind: 'group', groupId: 'g1', position: 0 })),
+    ).toEqual(['group', 'group', 'teal', 'navy']);
+    // Out of the group as an ungrouped row.
+    expect(colours(moveChannelTo(coloured, 1, { kind: 'root', position: 0 }))).toEqual([
+      undefined,
+      undefined,
+      'teal',
+      'navy',
+    ]);
+    // Across groups keeps "follow the group" (g2 is empty, so B lands at the end).
+    expect(
+      colours(moveChannelTo(coloured, 1, { kind: 'group', groupId: 'g2', position: 0 })),
+    ).toEqual([undefined, 'teal', 'navy', 'group']);
+    // Reordering inside the group changes nothing.
+    expect(
+      colours(moveChannelTo(coloured, 1, { kind: 'group', groupId: 'g1', position: 1 })),
+    ).toEqual([undefined, 'teal', 'group', 'navy']);
+  });
+
+  it('converts on insertChannelAt', () => {
+    const fresh = { kind: 'aux' as const, name: 'FX', channelId: 'aux/1' };
+    expect(
+      colours(insertChannelAt(coloured, fresh, { kind: 'group', groupId: 'g1', position: 0 })),
+    ).toEqual([undefined, 'group', 'group', 'teal', 'navy']);
+    expect(colours(insertChannelAt(coloured, fresh, { kind: 'root', position: 0 }))).toEqual([
+      undefined,
+      undefined,
+      'group',
+      'teal',
+      'navy',
+    ]);
+  });
+
+  it('converts on removeGroup and leaves other groups alone', () => {
+    const ungrouped = removeGroup(coloured, 'g1');
+    expect(colours(ungrouped)).toEqual([undefined, undefined, 'teal', 'navy']);
+    expect(ungrouped.channels[1]?.groupId).toBeUndefined();
+    // removeGroupWithMembers takes the references away entirely, so nothing to convert.
+    expect(colours(removeGroupWithMembers(coloured, 'g1'))).toEqual([undefined, 'navy']);
+  });
+});
+
+describe('setGroupColor', () => {
+  it('sets and clears the override without touching the other groups', () => {
+    const view: View = {
+      id: 'v',
+      name: 'View',
+      channels: [],
+      groups: [
+        { id: 'g1', name: 'One' },
+        { id: 'g2', name: 'Two', color: 'lime' },
+      ],
+    };
+    expect(setGroupColor(view, 'g1', 'purple').groups).toEqual([
+      { id: 'g1', name: 'One', color: 'purple' },
+      { id: 'g2', name: 'Two', color: 'lime' },
+    ]);
+    expect(setGroupColor(view, 'g2', undefined).groups).toEqual([
+      { id: 'g1', name: 'One' },
+      { id: 'g2', name: 'Two' },
+    ]);
+    expect(setGroupColor(view, 'ghost', 'purple').groups).toEqual(view.groups);
   });
 });

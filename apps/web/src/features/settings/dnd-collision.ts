@@ -55,14 +55,15 @@ function eligibleContainers(
 }
 
 /**
- * Keyboard stops: non-empty group containers share their rectangle with their members, so only
- * rows count, and the slot the dragged row already occupies would be a move to nowhere.
+ * Keyboard stops: a group container whose members are rendered shares its rectangle with them,
+ * so only the rows count; an empty or collapsed group has no rows to stand for it and is a stop
+ * in its own right. The slot the dragged row already occupies would be a move to nowhere.
  */
 function keyboardStops(containers: DroppableContainer[]): DroppableContainer[] {
   return containers.filter((container) => {
     const data = readItemData(container);
     if (data?.kind === 'groupzone') {
-      return data.empty;
+      return data.empty || data.collapsed === true;
     }
     return data?.kind !== 'slot' || !data.current;
   });

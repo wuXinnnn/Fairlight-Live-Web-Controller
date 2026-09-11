@@ -1,6 +1,6 @@
 import { SortableContext } from '@dnd-kit/sortable';
-import type { ChannelState, View } from '@flwc/shared';
-import { Fragment, useMemo, type Ref } from 'react';
+import type { ChannelKind, ChannelState, View } from '@flwc/shared';
+import { Fragment, useImperativeHandle, useMemo, type RefObject } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { availableDndId, channelDndId, groupDndId } from './dnd-ids.js';
@@ -14,6 +14,7 @@ import {
   type GroupBlockHandlers,
 } from './SortableGroupBlock.js';
 import { useDragPreview } from './use-drag-preview.js';
+import { useFlipList, type FlipListHandle } from './use-flip-list.js';
 import { nonEmptyBlocks, rootSlotPositionsFor, viewBlocks, type ViewBlock } from './view-order.js';
 
 interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
@@ -23,7 +24,12 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
   duplicateNames: Set<string>;
   channelInventoryLoaded: boolean;
   saving: boolean;
-  listRef?: Ref<HTMLOListElement>;
+  /** Ids of the groups whose members are hidden; editor state, not part of the view. */
+  collapsedGroupIds: ReadonlySet<string>;
+  /** The list element; the FLIP list measures inside it and the page scrolls it. */
+  listRef: RefObject<HTMLOListElement | null>;
+  /** Receives the FLIP handle so the page can re-baseline or skip a tween. */
+  flipRef?: RefObject<FlipListHandle | null>;
 }
 
 /**
@@ -50,14 +56,41 @@ function slotLabel(blocks: ViewBlock[], position: number): string {
   return `the gap between ${name(above)} and ${name(below)}`;
 }
 export function ChannelOrderList(props: ChannelOrderListProps) {
-  const { channels, duplicateNames, channelInventoryLoaded, saving, listRef } = props;
+  const {
+    channels,
+    duplicateNames,
+    channelInventoryLoaded,
+    saving,
+    collapsedGroupIds,
+    listRef,
+    flipRef,
+  } = props;
   const { dragging, sourceKind, source, preview } = useDragPreview();
   const view = preview?.view ?? props.view;
+  // The tween runs on the view that is actually rendered, so a drag preview animates too, and
+  // collapsing a group shifts every row below it.
+  const flipDependency = useMemo(() => ({ view, collapsedGroupIds }), [view, collapsedGroupIds]);
+  const flip = useFlipList(listRef, flipDependency);
+  useImperativeHandle(flipRef, () => flip, [flip]);
   const placeholderIndex =
     preview?.placeholderChannelId === undefined || preview.source.kind !== 'channel'
       ? -1
       : preview.source.index;
   const resolved = useMemo(() => resolveViewChannels(view, channels), [view, channels]);
+  // A group without a colour of its own takes the type colour of its first present member, and
+  // every row set to follow the group needs the same answer. Work it out once for the whole view.
+  const groupLeadKinds = useMemo(() => {
+    const kinds = new Map<string, ChannelKind>();
+    for (const entry of resolved) {
+      const groupId = entry.reference.groupId;
+      if (groupId !== undefined && entry.channel !== undefined && !kinds.has(groupId)) {
+        kinds.set(groupId, entry.channel.kind);
+      }
+    }
+    return kinds;
+  }, [resolved]);
+  const groupOf = (groupId: string | undefined) =>
+    groupId === undefined ? undefined : view.groups.find((group) => group.id === groupId);
   const rowKeys = channelRowKeys(view);
   const rowDndId = (index: number): string =>
     index === placeholderIndex && preview?.placeholderChannelId !== undefined
@@ -84,18 +117,23 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         />
       );
     }
+    const group = groupOf(entry.reference.groupId);
     return (
       <SortableChannelRow
         key={rowKey}
         entry={entry}
         view={view}
         rowKey={rowKey}
+        group={group}
+        groupLeadKind={group === undefined ? undefined : groupLeadKinds.get(group.id)}
         duplicateNames={duplicateNames}
         channelInventoryLoaded={channelInventoryLoaded}
         saving={saving}
+        dragging={dragging}
         onMoveChannel={props.onMoveChannel}
         onAssignGroup={props.onAssignGroup}
         onSetColor={props.onSetColor}
+        onDeleteChannel={props.onDeleteChannel}
       />
     );
   };
@@ -140,9 +178,27 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       />
     );
   const lastOrdered = ordered[ordered.length - 1];
+  // A view whose draft has no ordered block (no channels, or only empty groups) still needs a
+  // place to drop the first channel. The slot is decided by the draft, not by the preview: were
+  // it gated on the rendered view it would unmount the moment a placeholder appeared, leaving
+  // the pointer over nothing, which clears the preview and brings the slot back, frame by frame.
+  const emptyDraft = nonEmptyBlocks(props.view).length === 0;
+  const fillSlot =
+    dragging && sourceKind !== 'group' && emptyDraft ? (
+      <RootSlot
+        key="slot:fill"
+        position={remaining.length}
+        label="the start of the list"
+        current={false}
+        fill
+      />
+    ) : null;
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>
+        {view.channels.length === 0 && view.groups.length === 0 && (
+          <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>
+        )}
         {blocks.map((block) => {
           const slotBefore = slotAt(slotBeforeBlock.get(block));
           const slotAfter = block === lastOrdered ? slotAt(slotAfterLast) : null;
@@ -165,12 +221,16 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             view,
             groupNumber: groupNumbers.get(block.group.id) ?? 0,
             saving,
+            collapsed: collapsedGroupIds.has(block.group.id),
             onMoveGroup: props.onMoveGroup,
             onRenameGroup: props.onRenameGroup,
             onRemoveGroup: props.onRemoveGroup,
+            onDeleteGroup: props.onDeleteGroup,
+            onToggleCollapse: props.onToggleCollapse,
+            onSetGroupColor: props.onSetGroupColor,
           };
           return entries.length === 0 ? (
-            <EmptyGroupBlock key={block.group.id} {...shared} />
+            <EmptyGroupBlock key={block.group.id} {...shared} collapsed={false} />
           ) : (
             <Fragment key={block.group.id}>
               {slotBefore}
@@ -184,6 +244,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             </Fragment>
           );
         })}
+        {fillSlot}
       </ol>
     </SortableContext>
   );

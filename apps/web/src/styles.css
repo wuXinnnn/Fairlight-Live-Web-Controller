@@ -1494,15 +1494,87 @@ html.fader-cap-dragging * {
   container-type: inline-size;
 }
 
-/* Narrow order column: move the palette onto its own line instead of overflowing sideways. */
-@container (max-width: 44rem) {
-  .channel-order .channel-order-row {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto;
+/*
+ * Every row in the CHANNEL ORDER column has to stay on one line: a row that wraps stops reading as
+ * one channel and its controls. Three stages give the width back in the order that costs the least.
+ * First the channel name, which loses only the tail of a name its own truncation already marks.
+ * Then the six swatches, which fold into the menu the palette control already carries beside them.
+ * Last everything that acts on the row — order, group, colour, delete — which folds into the one
+ * menu the row carries for exactly this, leaving the name and the handle it is read and dragged by.
+ * The first two thresholds are measured in Chromium against the column at which each shape starts
+ * to push past the row, and sit above it so each stage takes over while the one before it still
+ * fits: the name floor holds to 43.5rem and the truncating name to 34.6rem. Measure on a group
+ * member, which is the narrowest row there is — it carries the group's indent on top of everything.
+ * The last threshold is not about fitting at all: the menu shape holds down to a 21.3rem column, and
+ * 26rem is where a phone held upright lands (up to a 440px viewport), which is what it is there for.
+ */
+@container (max-width: 45rem) {
+  .channel-order .channel-order-row,
+  .channel-order .view-group__header {
+    gap: 0.45rem;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
   }
 
-  .channel-order .channel-order-row .palette-control {
-    grid-column: 4 / 7;
-    justify-content: flex-start;
+  .channel-order .channel-order-row {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto auto;
+  }
+
+  .channel-order .view-group__header {
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto auto auto auto;
+  }
+}
+
+@container (max-width: 36rem) {
+  .channel-order .palette-control {
+    display: none;
+  }
+
+  .channel-order .palette-select {
+    display: block;
+  }
+
+  /* The menu names itself, so the word in front of it is decoration the row can no longer afford. */
+  .channel-order .group-control {
+    grid-template-columns: minmax(4rem, 1fr);
+  }
+
+  .channel-order .group-control > span {
+    display: none;
+  }
+}
+
+/*
+ * A phone held upright. Every control the row acts through folds into its menu — this block has to
+ * follow the one above, because both decide `.palette-select` at the same specificity.
+ */
+@container (max-width: 26rem) {
+  .channel-order .order-buttons,
+  .channel-order .group-control,
+  .channel-order .palette-control,
+  .channel-order .palette-select,
+  .channel-order .delete-button,
+  .channel-order .view-group__header .utility-button {
+    display: none;
+  }
+
+  /*
+   * The menu is now the only control on the row, on the one device that has no pointer: it gets a
+   * finger-sized square of its own, which the row grows a little to hold.
+   */
+  .channel-order .row-menu,
+  .channel-order .view-group__header .row-menu {
+    display: grid;
+    width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .channel-order .channel-order-row {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .channel-order .view-group__header {
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto;
   }
 }
 
@@ -1522,10 +1594,15 @@ html.fader-cap-dragging * {
   cursor: pointer;
 }
 
+/*
+ * The VIEWS column follows the viewport instead of holding a fixed share of it. On a laptop it is
+ * still the full 21rem; on a tablet held landscape it gives the editor back the space that made
+ * the CHANNEL ORDER rows wrap.
+ */
 .settings-workbench {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(17rem, 21rem) 1fr;
+  grid-template-columns: minmax(0, clamp(12rem, 20vw, 21rem)) minmax(0, 1fr);
   background:
     linear-gradient(90deg, rgb(255 255 255 / 1.2%) 1px, transparent 1px) 0 0 / 7rem 100%,
     var(--surface-0);
@@ -1536,6 +1613,26 @@ html.fader-cap-dragging * {
   padding: 1.4rem;
   border-right: 1px solid var(--line-strong);
   background: rgb(23 26 32 / 94%);
+}
+
+/*
+ * At 1200px the clamp above puts the column at 15rem, and it only gets narrower from there, so the
+ * padding and the row heights are what is left to give back. A container query cannot do this: it
+ * would have to style the very container it is asking about.
+ */
+@media (max-width: 1200px) {
+  .view-index {
+    padding: 1rem 0.8rem;
+  }
+
+  .new-view-form {
+    margin: 1rem 0 0.8rem;
+  }
+
+  .view-list > button {
+    gap: 0.45rem;
+    padding: 0.55rem 0.5rem;
+  }
 }
 
 .workbench-label {
@@ -2025,7 +2122,7 @@ html.fader-cap-dragging * {
 
 .channel-order-row {
   display: grid;
-  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto) auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.35rem;
@@ -2156,7 +2253,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto auto;
+  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2291,6 +2388,123 @@ html.fader-cap-dragging * {
   visibility: hidden;
 }
 
+/* Takes a row, or a whole group, out of the view. The one destructive control on the page. */
+.delete-button {
+  display: grid;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.delete-button svg,
+.row-menu svg {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.delete-button:hover:not(:disabled) {
+  border-color: var(--red);
+  color: #ff8c85;
+}
+
+.delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+/*
+ * The row's controls, folded into one native menu on the narrowest column. The `<select>` lies
+ * transparent over the hamburger so a tap anywhere on the square opens the platform's own picker,
+ * and the square keeps drawing the glyph and the focus ring the `<select>` no longer shows.
+ */
+.row-menu {
+  display: none;
+  position: relative;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.row-menu select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.row-menu:hover:has(select:enabled),
+.row-menu:focus-within {
+  border-color: #9b742d;
+  color: var(--amber-pale);
+}
+
+.row-menu:has(select:disabled) {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.view-group__header .delete-button,
+.view-group__header .row-menu {
+  width: 1.4rem;
+  min-height: 1.4rem;
+}
+
+/* Folds a group shut. Editor state only: it is never saved with the view. */
+.group-collapse {
+  display: grid;
+  width: 1.4rem;
+  min-height: 1.4rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #7c828d;
+  cursor: pointer;
+  transition: color var(--motion-fast) ease;
+}
+
+.group-collapse svg {
+  display: block;
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.group-collapse:hover:not(:disabled) {
+  color: var(--amber-pale);
+}
+
+.group-collapse:focus-visible {
+  border-color: var(--amber);
+  outline: 0;
+}
+
+.group-collapse:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.group-collapse.is-placeholder {
+  visibility: hidden;
+}
+
 /* The dragged item stays in the list as a placeholder while its clone follows the pointer. */
 .channel-order-row.is-dragging,
 .view-group.is-dragging,
@@ -2324,6 +2538,26 @@ html.fader-cap-dragging * {
   top: 0;
   right: 0;
   left: 0;
+}
+
+/*
+ * The slot of a view with nothing ordered in it takes the space the list has left, so the first
+ * channel can be dropped anywhere below the (possibly empty) groups rather than on a 16px band.
+ */
+.view-channel-list > .root-slot--fill {
+  flex: 1 1 auto;
+  min-height: 4rem;
+}
+
+.root-slot--fill .root-slot__band {
+  position: static;
+  height: 100%;
+}
+
+/* The list always renders, so its empty notice is a row of the list rather than a sibling. */
+.view-channel-list > .panel-empty {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .root-slot__band::before {
@@ -2484,9 +2718,38 @@ html.fader-cap-dragging * {
   opacity: 0.3;
 }
 
+/*
+ * The palette ships in two shapes at once: the row of buttons and the menu it collapses into on a
+ * narrow column. The wrapper takes no box of its own, so whichever shape is showing is the grid
+ * item the row lays out, and the hidden one is not a grid item at all.
+ */
+.palette {
+  display: contents;
+}
+
 .palette-control {
   display: flex;
   justify-content: flex-end;
+}
+
+.palette-select {
+  display: none;
+  min-width: 0;
+  min-height: 1.65rem;
+  padding: 0.2rem 1.1rem 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  outline: 0;
+  background: #111318;
+  color: var(--amber-pale);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.palette-select:focus-visible {
+  border-color: var(--amber);
 }
 
 .palette-control button {
@@ -2495,8 +2758,14 @@ html.fader-cap-dragging * {
   border-left: 0;
 }
 
-.palette-control button:first-child {
+/* AUTO and GRP read as words, not swatches: they keep the wider text padding and their own width. */
+.palette-control button:first-child,
+.palette-control button.is-label {
   width: auto;
+  padding: 0.25rem 0.38rem;
+}
+
+.palette-control button:first-child {
   border-left: 1px solid var(--line);
 }
 
@@ -2507,6 +2776,10 @@ html.fader-cap-dragging * {
   margin: auto;
   background: var(--swatch);
   box-shadow: 0 0 0.35rem color-mix(in srgb, var(--swatch) 35%, transparent);
+}
+
+.view-group__header .palette-control button {
+  min-height: 1.4rem;
 }
 
 .palette-control button.is-selected > span {
@@ -2620,32 +2893,6 @@ html.fader-cap-dragging * {
 
   .view-editor__grid {
     grid-template-columns: 1fr;
-  }
-
-  .channel-order-row {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
-  }
-
-  .group-control {
-    grid-column: 1 / 4;
-  }
-
-  .palette-control {
-    grid-column: 4 / 6;
-    justify-content: flex-start;
-  }
-
-  .view-group__header {
-    grid-template-columns: auto auto auto minmax(7rem, 1fr) auto;
-  }
-
-  .view-group__header .order-buttons {
-    grid-column: 4 / 5;
-    justify-self: start;
-  }
-
-  .view-group__header .utility-button {
-    grid-column: 5 / 6;
   }
 
   .group-toolbar {
