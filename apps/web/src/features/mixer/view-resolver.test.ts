@@ -17,10 +17,10 @@ describe('resolveViewChannels', () => {
     const live = [channel('channel/2', 'BASS'), channel('aux/1', 'FX', 'aux')];
     const resolved = resolveViewChannels(
       {
-        channels: [
-          { kind: 'aux', name: 'FX', channelId: 'aux/9' },
-          { kind: 'channel', name: ' BASS ', channelId: 'channel/1' },
-          { kind: 'channel', name: 'FX' },
+        items: [
+          { type: 'channel', kind: 'aux', name: 'FX', channelId: 'aux/9' },
+          { type: 'channel', kind: 'channel', name: ' BASS ', channelId: 'channel/1' },
+          { type: 'channel', kind: 'channel', name: 'FX' },
         ],
       },
       live,
@@ -33,9 +33,9 @@ describe('resolveViewChannels', () => {
     const live = [channel('channel/1', 'MIC'), channel('channel/2', 'MIC')];
     const resolved = resolveViewChannels(
       {
-        channels: [
-          { kind: 'channel', name: 'MIC' },
-          { kind: 'channel', name: 'MIC', channelId: 'channel/1' },
+        items: [
+          { type: 'channel', kind: 'channel', name: 'MIC' },
+          { type: 'channel', kind: 'channel', name: 'MIC', channelId: 'channel/1' },
         ],
       },
       live,
@@ -47,9 +47,9 @@ describe('resolveViewChannels', () => {
     const live = [channel('channel/1', 'MIC')];
     const resolved = resolveViewChannels(
       {
-        channels: [
-          { kind: 'channel', name: 'MIC', channelId: 'channel/1' },
-          { kind: 'channel', name: 'MIC', channelId: 'channel/1' },
+        items: [
+          { type: 'channel', kind: 'channel', name: 'MIC', channelId: 'channel/1' },
+          { type: 'channel', kind: 'channel', name: 'MIC', channelId: 'channel/1' },
         ],
       },
       live,
@@ -60,7 +60,7 @@ describe('resolveViewChannels', () => {
   it('does not fall back to the id when the name changed', () => {
     const live = [channel('channel/1', 'VOCAL')];
     const resolved = resolveViewChannels(
-      { channels: [{ kind: 'channel', name: 'MIC', channelId: 'channel/1' }] },
+      { items: [{ type: 'channel', kind: 'channel', name: 'MIC', channelId: 'channel/1' }] },
       live,
     );
     expect(resolved[0]?.channel).toBeUndefined();
@@ -90,27 +90,24 @@ describe('referenceForChannel', () => {
 });
 
 describe('segmentViewChannels', () => {
-  it('splits entries into contiguous group runs and flat runs', () => {
-    const groups = [
-      { id: 'g1', name: 'Rhythm' },
-      { id: 'g2', name: 'Vocals' },
-    ];
-    const entries = resolveViewChannels(
-      {
-        channels: [
-          { kind: 'channel', name: 'A' },
-          { kind: 'channel', name: 'B', groupId: 'g1' },
-          { kind: 'channel', name: 'C', groupId: 'g1' },
-          { kind: 'channel', name: 'D' },
-          { kind: 'channel', name: 'E' },
-          { kind: 'channel', name: 'F', groupId: 'g2' },
-          { kind: 'channel', name: 'G', groupId: 'g1' },
-        ],
-      },
-      [],
-    );
+  const row = (name: string) => ({ type: 'channel' as const, kind: 'channel' as const, name });
+  const members = (...names: string[]) => names.map((name) => ({ kind: 'channel' as const, name }));
+
+  it('makes one segment per group block and runs the loose rows together', () => {
+    // A group owns its members now, so it is always exactly one segment. Version 1 let the same
+    // group appear twice when its members were not next to each other; that cannot happen here.
+    const view = {
+      items: [
+        row('A'),
+        { type: 'group' as const, id: 'g1', name: 'Rhythm', channels: members('B', 'C') },
+        row('D'),
+        row('E'),
+        { type: 'group' as const, id: 'g2', name: 'Vocals', channels: members('F') },
+        row('G'),
+      ],
+    };
     expect(
-      segmentViewChannels({ groups }, entries).map((segment) => [
+      segmentViewChannels(view, resolveViewChannels(view, [])).map((segment) => [
         segment.group?.name,
         segment.entries.map((entry) => entry.reference.name),
       ]),
@@ -119,7 +116,27 @@ describe('segmentViewChannels', () => {
       ['Rhythm', ['B', 'C']],
       [undefined, ['D', 'E']],
       ['Vocals', ['F']],
-      ['Rhythm', ['G']],
+      [undefined, ['G']],
     ]);
+  });
+
+  it('leaves an empty group out entirely, wherever it sits', () => {
+    const view = {
+      items: [
+        { type: 'group' as const, id: 'g0', name: 'Nothing', channels: [] },
+        row('A'),
+        { type: 'group' as const, id: 'g1', name: 'Empty', channels: [] },
+        row('B'),
+      ],
+    };
+    expect(
+      segmentViewChannels(view, resolveViewChannels(view, [])).map((segment) => [
+        segment.group?.name,
+        segment.entries.map((entry) => entry.reference.name),
+      ]),
+      // An empty group renders nothing here, so the rows on either side of it read as one run
+      // rather than being split by a section the viewer cannot see.
+    ).toEqual([[undefined, ['A', 'B']]]);
+    expect(segmentViewChannels({ items: [] }, [])).toEqual([]);
   });
 });

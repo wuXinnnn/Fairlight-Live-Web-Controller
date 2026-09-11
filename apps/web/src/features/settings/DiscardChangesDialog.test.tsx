@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DiscardChangesDialog, discardMessage } from './DiscardChangesDialog.js';
 
-const other = { id: 'other', name: 'Other', channels: [], groups: [] };
+const other = { id: 'other', name: 'Other', items: [] };
 
 describe('discardMessage', () => {
   it('describes each pending action', () => {

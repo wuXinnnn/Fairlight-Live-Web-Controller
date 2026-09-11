@@ -29,7 +29,7 @@ describe('channel colors', () => {
   });
 
   it('takes a group colour from its override or its first present member', () => {
-    const plain = { id: 'g1', name: 'Rhythm' };
+    const plain = { id: 'g1', name: 'Rhythm', channels: [] };
     expect(groupAccent({ ...plain, color: 'purple' }, 'channel')).toBe(CHANNEL_PALETTE.purple);
     // The override wins even when the lead kind says otherwise, and without one the lead decides.
     expect(groupAccent(plain, 'aux')).toBe(CHANNEL_PALETTE.navy);
@@ -39,8 +39,8 @@ describe('channel colors', () => {
   });
 
   it('resolves a channel colour against its group', () => {
-    const group = { id: 'g1', name: 'Rhythm', color: 'purple' } as const;
-    const plain = { id: 'g1', name: 'Rhythm' };
+    const group = { id: 'g1', name: 'Rhythm', color: 'purple' as const, channels: [] };
+    const plain = { id: 'g1', name: 'Rhythm', channels: [] };
     // Automatic and custom colours never look at the group.
     expect(channelAccent('main', undefined, group, 'aux')).toBe(CHANNEL_PALETTE.red);
     expect(channelAccent('main', 'lime', group, 'aux')).toBe(CHANNEL_PALETTE.lime);

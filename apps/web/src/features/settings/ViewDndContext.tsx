@@ -15,7 +15,7 @@ import {
   type KeyboardCoordinateGetter,
   type Over,
 } from '@dnd-kit/core';
-import type { ChannelKind, ChannelState, View } from '@flwc/shared';
+import { viewChannelRefs, viewGroups, type ChannelState, type View } from '@flwc/shared';
 import {
   useCallback,
   useEffect,
@@ -60,7 +60,7 @@ import {
   IDLE_DRAG_PREVIEW,
   type DragPreviewState,
 } from './use-drag-preview.js';
-import { insertChannelAt, moveChannelTo, moveGroupTo } from './view-order.js';
+import { groupOfIndex, insertChannelAt, moveChannelTo, moveGroupTo } from './view-order.js';
 
 interface ViewDndContextProps {
   /** The draft being edited; null while no view is selected. */
@@ -440,19 +440,6 @@ export function ViewDndContext({
       return null;
     }
     const current = drag.preview?.view ?? drag.startView;
-    // Same rule as the list: a group without a colour takes its first present member's type.
-    const leadKindOf = (groupId: string | undefined): ChannelKind | undefined => {
-      if (groupId === undefined) {
-        return undefined;
-      }
-      for (const reference of current.channels) {
-        const live = reference.channelId === undefined ? undefined : channels[reference.channelId];
-        if (reference.groupId === groupId && live !== undefined) {
-          return live.kind;
-        }
-      }
-      return undefined;
-    };
     const variant: DragOverlayVariant =
       drag.source.kind === 'group'
         ? 'group'
@@ -462,28 +449,25 @@ export function ViewDndContext({
     const label = variant === 'group' ? drag.label.replace(/^group /, '') : drag.label;
     switch (drag.source.kind) {
       case 'channel': {
-        const reference = drag.startView.channels[drag.source.index];
+        const reference = viewChannelRefs(drag.startView)[drag.source.index];
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
-        const group = current.groups.find((candidate) => candidate.id === reference?.groupId);
+        const group = groupOfIndex(current, drag.source.index);
         return {
           variant,
           label,
-          accent: channelAccent(kind, reference?.color, group, leadKindOf(group?.id)),
+          accent: channelAccent(kind, reference?.color, group, undefined),
           detail: KIND_LABELS[kind],
         };
       }
       case 'group': {
         const groupId = drag.source.groupId;
-        const members = current.channels.filter((reference) => reference.groupId === groupId);
+        const group = viewGroups(current).find((candidate) => candidate.id === groupId);
         return {
           variant,
           label,
-          accent: groupAccent(
-            current.groups.find((candidate) => candidate.id === groupId),
-            leadKindOf(groupId),
-          ),
-          detail: `${pad(members.length)} CH`,
+          accent: groupAccent(group, undefined),
+          detail: `${pad(group?.channels.length ?? 0)} CH`,
         };
       }
       case 'available': {

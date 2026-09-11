@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
 /*
  * The palette renders as a row of buttons and as the menu it collapses into once the CHANNEL ORDER
@@ -45,8 +46,7 @@ async function openSettings(views: View[]) {
 const grouped: View = {
   id: 'v1',
   name: 'Stage',
-  channels: [{ ...BASS, groupId: 'g1', color: 'group' }, MAIN],
-  groups: [{ id: 'g1', name: 'Rhythm' }],
+  items: [grp({ id: 'g1', name: 'Rhythm' }, [{ ...BASS, color: 'group' }]), row(MAIN)],
 };
 
 describe('settings palette menu', () => {
@@ -60,22 +60,25 @@ describe('settings palette menu', () => {
     expect(screen.getByRole('button', { name: 'BASS color Mix Minus Lime' })).toHaveClass(
       'is-selected',
     );
-    expect((await page.save())?.channels).toEqual([
-      { ...BASS, groupId: 'g1', color: 'lime' },
-      MAIN,
+    expect((await page.save())?.items).toEqual([
+      grp({ id: 'g1', name: 'Rhythm' }, [{ ...BASS, color: 'lime' }]),
+      row(MAIN),
     ]);
 
     fireEvent.change(menu, { target: { value: 'auto' } });
     expect(screen.getByRole('button', { name: 'BASS use default color' })).toHaveClass(
       'is-selected',
     );
-    expect((await page.save())?.channels).toEqual([{ ...BASS, groupId: 'g1' }, MAIN]);
+    expect((await page.save())?.items).toEqual([
+      grp({ id: 'g1', name: 'Rhythm' }, [BASS]),
+      row(MAIN),
+    ]);
 
     fireEvent.change(menu, { target: { value: 'group' } });
     expect(screen.getByRole('button', { name: 'BASS use group color' })).toHaveClass('is-selected');
-    expect((await page.save())?.channels).toEqual([
-      { ...BASS, groupId: 'g1', color: 'group' },
-      MAIN,
+    expect((await page.save())?.items).toEqual([
+      grp({ id: 'g1', name: 'Rhythm' }, [{ ...BASS, color: 'group' }]),
+      row(MAIN),
     ]);
   });
 
@@ -88,17 +91,23 @@ describe('settings palette menu', () => {
     expect(screen.getByRole('button', { name: 'Group Rhythm color Matrix Purple' })).toHaveClass(
       'is-selected',
     );
-    expect((await page.save())?.groups).toEqual([{ id: 'g1', name: 'Rhythm', color: 'purple' }]);
+    expect((await page.save())?.items).toEqual([
+      grp({ id: 'g1', name: 'Rhythm', color: 'purple' }, [{ ...BASS, color: 'group' }]),
+      row(MAIN),
+    ]);
 
     fireEvent.change(menu, { target: { value: 'auto' } });
     expect(screen.getByRole('button', { name: 'Group Rhythm use automatic color' })).toHaveClass(
       'is-selected',
     );
-    expect((await page.save())?.groups).toEqual([{ id: 'g1', name: 'Rhythm' }]);
+    expect((await page.save())?.items).toEqual([
+      grp({ id: 'g1', name: 'Rhythm' }, [{ ...BASS, color: 'group' }]),
+      row(MAIN),
+    ]);
   });
 
   it('offers no group choice to a row that has no group', async () => {
-    await openSettings([{ id: 'v1', name: 'Stage', channels: [BASS, MAIN], groups: [] }]);
+    await openSettings([{ id: 'v1', name: 'Stage', items: [row(BASS), row(MAIN)] }]);
     const menu = screen.getByRole('combobox', { name: 'BASS color menu' });
     expect([...menu.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
       'AUTO',

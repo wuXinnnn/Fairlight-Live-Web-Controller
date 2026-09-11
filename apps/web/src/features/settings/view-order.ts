@@ -465,7 +465,7 @@ export function removeChannels(view: View, indices: ReadonlySet<number>): View {
   };
   return itemsWith(
     view,
-    view.items.flatMap((item) => {
+    view.items.flatMap<ViewItem>((item) => {
       if (item.type === 'channel') {
         return keep() ? [item] : [];
       }

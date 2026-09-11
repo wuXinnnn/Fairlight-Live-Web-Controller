@@ -1,4 +1,10 @@
-import { CHANNEL_KINDS, type ChannelKind, type ViewGroup } from '@flwc/shared';
+import {
+  CHANNEL_KINDS,
+  viewChannelRefs,
+  viewGroups,
+  type ChannelKind,
+  type ViewGroup,
+} from '@flwc/shared';
 import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -86,14 +92,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const liveIds = new Set(channels.map((channel) => channel.id));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
-  const viewHasGroups = activeView !== null && activeView.groups.length > 0;
+  const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
     socketConnected,
     emberStatus,
     emberLastError,
     channelInventoryLoaded,
     channelCount: renderedChannels.length,
-    viewChannelCount: activeView === null ? null : activeView.channels.length,
+    viewChannelCount: activeView === null ? null : viewChannelRefs(activeView).length,
   });
 
   const renderViewStrip = (

@@ -7,6 +7,7 @@ import { resetMixerStore } from '../src/store/mixer-store.js';
 import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -21,18 +22,18 @@ const snapshot: MixerSnapshot = {
 const grouped: View = {
   id: 'grouped',
   name: 'Grouped',
-  channels: [
-    { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId: 'g1' },
-    { kind: 'main', name: 'MAIN', channelId: 'main/1', groupId: 'g1' },
+  items: [
+    grp({ id: 'g1', name: 'Rhythm' }, [
+      { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+      { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+    ]),
   ],
-  groups: [{ id: 'g1', name: 'Rhythm' }],
 };
 
 const other: View = {
   id: 'other',
   name: 'Other',
-  channels: [{ kind: 'aux', name: 'FX', channelId: 'aux/1' }],
-  groups: [],
+  items: [row({ kind: 'aux', name: 'FX', channelId: 'aux/1' })],
 };
 
 async function openSettings() {

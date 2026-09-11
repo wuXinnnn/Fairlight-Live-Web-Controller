@@ -16,8 +16,7 @@ import {
 const view: View = {
   id: 'foh',
   name: 'FOH',
-  channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
-  groups: [],
+  items: [{ type: 'channel', kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
 };
 
 describe('viewStore', () => {
@@ -54,7 +53,7 @@ describe('viewStore', () => {
   it('creates, updates, and deletes views while preserving order', async () => {
     const client = new FakeViewsClient([view]);
     await loadViews(client);
-    const created = await createView(client, { name: 'Broadcast', channels: [], groups: [] });
+    const created = await createView(client, { name: 'Broadcast', items: [] });
     expect(created?.name).toBe('Broadcast');
     expect(viewStore.getState().views.map((candidate) => candidate.name)).toEqual([
       'FOH',
@@ -63,8 +62,7 @@ describe('viewStore', () => {
 
     const updated = await updateView(client, 'foh', {
       name: 'Front of House',
-      channels: [{ kind: 'main', name: 'Main', channelId: 'main/1', color: 'red' }],
-      groups: [],
+      items: [{ type: 'channel', kind: 'main', name: 'Main', channelId: 'main/1', color: 'red' }],
     });
     expect(updated?.name).toBe('Front of House');
     setActiveView('foh');
@@ -77,12 +75,8 @@ describe('viewStore', () => {
     const client = new FakeViewsClient([view]);
     await loadViews(client);
     client.error = new Error('Service unavailable');
-    await expect(
-      createView(client, { name: 'Failed', channels: [], groups: [] }),
-    ).resolves.toBeNull();
-    await expect(
-      updateView(client, 'foh', { name: 'Failed', channels: [], groups: [] }),
-    ).resolves.toBeNull();
+    await expect(createView(client, { name: 'Failed', items: [] })).resolves.toBeNull();
+    await expect(updateView(client, 'foh', { name: 'Failed', items: [] })).resolves.toBeNull();
     await expect(deleteView(client, 'foh')).resolves.toBe(false);
     expect(viewStore.getState().views).toEqual([view]);
     expect(viewStore.getState().error).toBe('Service unavailable');

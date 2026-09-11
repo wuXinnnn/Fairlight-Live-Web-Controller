@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   CHANNEL_PALETTE_KEYS,
+  viewGroups,
   type ChannelKind,
   type View,
   type ViewChannelColor,
@@ -17,7 +18,7 @@ import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
 import { RowMenu, type RowMenuSection } from './RowMenu.js';
-import { moveChannel, type MoveDirection } from './view-order.js';
+import { groupOfIndex, moveChannel, type MoveDirection } from './view-order.js';
 
 export interface ChannelRowHandlers {
   onMoveChannel(index: number, direction: MoveDirection): void;
@@ -62,9 +63,7 @@ export function SortableChannelRow({
   const kind = channel?.kind ?? reference.kind;
   const duplicate =
     channel !== undefined && duplicateNames.has(channelNameKey(channel.kind, channel.name));
-  const groupId = view.groups.some((group) => group.id === reference.groupId)
-    ? reference.groupId
-    : undefined;
+  const groupId = groupOfIndex(view, index)?.id;
   const data: DndItemData =
     groupId === undefined
       ? { kind: 'channel', label: reference.name }
@@ -136,7 +135,7 @@ export function SortableChannelRow({
       label: 'GROUP',
       items: [
         { id: 'group:', text: 'NO GROUP', selected: groupId === undefined },
-        ...view.groups.map((candidate) => ({
+        ...viewGroups(view).map((candidate) => ({
           id: `group:${candidate.id}`,
           text: candidate.name,
           selected: candidate.id === groupId,
@@ -204,11 +203,11 @@ export function SortableChannelRow({
         <span>GROUP</span>
         <select
           aria-label={`${reference.name} group`}
-          value={reference.groupId ?? ''}
+          value={groupId ?? ''}
           onChange={(event) => onAssignGroup(index, event.target.value || undefined)}
         >
           <option value="">NO GROUP</option>
-          {view.groups.map((group) => (
+          {viewGroups(view).map((group) => (
             <option key={group.id} value={group.id}>
               {group.name}
             </option>

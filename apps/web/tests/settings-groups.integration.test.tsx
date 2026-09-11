@@ -7,6 +7,7 @@ import { resetMixerStore } from '../src/store/mixer-store.js';
 import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 import { pickUp, press } from './keyboard-drag.js';
 import { stubListLayout } from './stub-layout.js';
 import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
@@ -52,10 +53,10 @@ async function openSettings(views: View[]) {
     within(
       container.querySelector(`[data-available-channel-id="${channelId}"]`) as HTMLElement,
     ).getByRole('button', { name: /^Drag / });
-  const savedChannels = async () => {
+  const savedItems = async () => {
     fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
     await waitFor(() => expect(viewsClient.calls.at(-1)?.method).toBe('update'));
-    return viewsClient.calls.at(-1)?.body?.channels;
+    return viewsClient.calls.at(-1)?.body?.items;
   };
   return {
     container,
@@ -65,15 +66,14 @@ async function openSettings(views: View[]) {
     memberNames,
     handle,
     availableHandle,
-    savedChannels,
+    savedItems,
   };
 }
 
 const grouped: View = {
   id: 'v1',
   name: 'Stage',
-  channels: [{ ...BASS, groupId: 'g1' }, { ...MAIN, groupId: 'g1' }, FX],
-  groups: [RHYTHM],
+  items: [grp(RHYTHM, [BASS, MAIN]), row(FX)],
 };
 
 describe('settings group collapse', () => {
@@ -109,13 +109,13 @@ describe('settings group collapse', () => {
   });
 
   it('gives an empty group no collapse button', async () => {
-    await openSettings([{ id: 'v2', name: 'Empty', channels: [], groups: [RHYTHM] }]);
+    await openSettings([{ id: 'v2', name: 'Empty', items: [grp(RHYTHM)] }]);
     expect(screen.queryByRole('button', { name: /^(Collapse|Expand) group Rhythm$/ })).toBeNull();
     expect(screen.getByText('ASSIGN CHANNELS BELOW')).toBeInTheDocument();
   });
 
   it('forgets the collapsed groups when another view is selected', async () => {
-    const other: View = { id: 'v2', name: 'Other', channels: [SUB], groups: [] };
+    const other: View = { id: 'v2', name: 'Other', items: [row(SUB)] };
     const page = await openSettings([grouped, other]);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse group Rhythm' }));
     expect(page.memberNames('g1')).toEqual([]);
@@ -162,10 +162,9 @@ describe('settings group collapse', () => {
 
     // The arrow buttons still move the whole block.
     fireEvent.click(screen.getByRole('button', { name: 'Move group Low End down' }));
-    expect(await page.savedChannels()).toEqual([
-      FX,
-      { ...BASS, groupId: 'g1' },
-      { ...MAIN, groupId: 'g1' },
+    expect(await page.savedItems()).toEqual([
+      row(FX),
+      grp({ ...RHYTHM, name: 'Low End' }, [BASS, MAIN]),
     ]);
 
     // UNGROUP releases the members in place and shows them again.
@@ -181,11 +180,7 @@ describe('settings group collapse', () => {
     await press('ArrowDown');
     await press('Space');
     await waitFor(() =>
-      expect(page.savedChannels()).resolves.toEqual([
-        FX,
-        { ...BASS, groupId: 'g1' },
-        { ...MAIN, groupId: 'g1' },
-      ]),
+      expect(page.savedItems()).resolves.toEqual([row(FX), grp(RHYTHM, [BASS, MAIN])]),
     );
   });
 
@@ -205,11 +200,9 @@ describe('settings group collapse', () => {
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['FX', 'BASS', 'MAIN']));
     // The group stays open after the drop.
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
-    expect(await page.savedChannels()).toEqual([
+    expect(await page.savedItems()).toEqual([
       // FX joined the group, so its automatic colour becomes "follow the group".
-      { ...FX, groupId: 'g1', color: 'group' },
-      { ...BASS, groupId: 'g1' },
-      { ...MAIN, groupId: 'g1' },
+      grp(RHYTHM, [{ ...FX, color: 'group' }, BASS, MAIN]),
     ]);
   });
 });
@@ -233,7 +226,7 @@ describe('settings group colours', () => {
 
   it('switches a row between automatic, group and a colour of its own', async () => {
     const page = await openSettings([
-      { id: 'v1', name: 'Stage', channels: [BASS, MAIN], groups: [RHYTHM] },
+      { id: 'v1', name: 'Stage', items: [row(BASS), row(MAIN), grp(RHYTHM)] },
     ]);
     // Outside a group there is nothing to follow, so GROUP is not offered.
     expect(screen.queryByRole('button', { name: 'BASS use group color' })).toBeNull();
@@ -271,8 +264,13 @@ describe('settings group colours', () => {
     expect(screen.queryByRole('button', { name: 'BASS use group color' })).toBeNull();
     expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.lime);
 
-    // Joining the group moved BASS to the end of its run; leaving it left it there.
-    expect(await page.savedChannels()).toEqual([MAIN, { ...BASS, color: 'lime' }]);
+    // Joining the group moved BASS to the end of its run; leaving it dropped it just below the
+    // group block, which is where the row already was.
+    expect(await page.savedItems()).toEqual([
+      row(MAIN),
+      grp({ ...RHYTHM, color: 'purple' }),
+      row({ ...BASS, color: 'lime' }),
+    ]);
   });
 
   it('drops a row back to automatic when it is dragged out of its group', async () => {
@@ -280,8 +278,7 @@ describe('settings group colours', () => {
       {
         id: 'v1',
         name: 'Stage',
-        channels: [{ ...BASS, groupId: 'g1', color: 'group' }, MAIN],
-        groups: [{ ...RHYTHM, color: 'teal' }],
+        items: [grp({ ...RHYTHM, color: 'teal' }, [{ ...BASS, color: 'group' }]), row(MAIN)],
       },
     ]);
     expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.teal);
@@ -297,7 +294,11 @@ describe('settings group colours', () => {
     );
     expect(accentOf(rowOf(page.container, 'BASS'))).toBe(CHANNEL_PALETTE.green);
     // A keyboard drag into another list lands before the row it reaches.
-    expect(await page.savedChannels()).toEqual([BASS, MAIN]);
+    expect(await page.savedItems()).toEqual([
+      grp({ ...RHYTHM, color: 'teal' }),
+      row(BASS),
+      row(MAIN),
+    ]);
   });
 
   it('clears a group colour back to its first present member', async () => {
@@ -305,15 +306,13 @@ describe('settings group colours', () => {
       {
         id: 'v1',
         name: 'Stage',
-        channels: [{ ...MAIN, groupId: 'g1', color: 'group' }],
-        groups: [{ ...RHYTHM, color: 'lime' }],
+        items: [grp({ ...RHYTHM, color: 'lime' }, [{ ...MAIN, color: 'group' }])],
       },
     ]);
     expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.lime);
     fireEvent.click(screen.getByRole('button', { name: 'Group Rhythm use automatic color' }));
     expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.red);
-    expect(await page.savedChannels()).toEqual([{ ...MAIN, groupId: 'g1', color: 'group' }]);
-    expect(page.viewsClient.calls.at(-1)?.body?.groups).toEqual([{ id: 'g1', name: 'Rhythm' }]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [{ ...MAIN, color: 'group' }])]);
   });
 
   it('paints the mixer group section with the same colour', async () => {
@@ -322,11 +321,12 @@ describe('settings group colours', () => {
       {
         id: 'v1',
         name: 'Stage',
-        channels: [
-          { ...MAIN, groupId: 'g1', color: 'group' },
-          { ...BASS, groupId: 'g1', color: 'group' },
+        items: [
+          grp({ ...RHYTHM, color: 'purple' }, [
+            { ...MAIN, color: 'group' },
+            { ...BASS, color: 'group' },
+          ]),
         ],
-        groups: [{ ...RHYTHM, color: 'purple' }],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);

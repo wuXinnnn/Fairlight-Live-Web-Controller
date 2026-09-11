@@ -15,7 +15,7 @@ describe('createViewsClient', () => {
         {
           id: 'foh',
           name: 'FOH',
-          channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
+          items: [{ type: 'channel', kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
         },
       ]),
     );
@@ -27,11 +27,11 @@ describe('createViewsClient', () => {
   });
 
   it('creates, updates, and deletes through the REST contract', async () => {
-    const body = { name: 'Broadcast', channels: [], groups: [] };
+    const body = { name: 'Broadcast', items: [] };
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ id: 'broadcast', ...body }, 201))
-      .mockResolvedValueOnce(jsonResponse({ id: 'broadcast', name: 'Studio', channels: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'broadcast', name: 'Studio', items: [] }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = createViewsClient(fetcher);
 

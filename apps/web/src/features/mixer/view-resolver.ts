@@ -1,10 +1,17 @@
-import type { ChannelKind, ChannelState, View, ViewChannelRef, ViewGroup } from '@flwc/shared';
+import {
+  viewChannelRefs,
+  type ChannelKind,
+  type ChannelState,
+  type View,
+  type ViewChannelRef,
+  type ViewGroup,
+} from '@flwc/shared';
 
 export interface ResolvedViewChannel {
   reference: ViewChannelRef;
   /** The live channel this reference currently maps to, or undefined when it is missing. */
   channel: ChannelState | undefined;
-  /** Position of the reference inside `view.channels`. */
+  /** Position of the reference in the view's flat channel order. */
   index: number;
 }
 
@@ -19,9 +26,10 @@ export function channelNameKey(kind: ChannelKind, name: string): string {
  * Each live channel is claimed by at most one reference; unresolved references are missing.
  */
 export function resolveViewChannels(
-  view: Pick<View, 'channels'>,
+  view: Pick<View, 'items'>,
   channels: ChannelState[],
 ): ResolvedViewChannel[] {
+  const references = viewChannelRefs(view);
   const candidatesByKey = new Map<string, ChannelState[]>();
   for (const channel of channels) {
     const key = channelNameKey(channel.kind, channel.name);
@@ -34,10 +42,10 @@ export function resolveViewChannels(
   }
 
   const claimed = new Set<string>();
-  const resolved: Array<ChannelState | undefined> = view.channels.map(() => undefined);
+  const resolved: Array<ChannelState | undefined> = references.map(() => undefined);
 
   // Pass one: exact matches on kind, name, and last known id win first.
-  view.channels.forEach((reference, index) => {
+  references.forEach((reference, index) => {
     if (reference.channelId === undefined) {
       return;
     }
@@ -51,7 +59,7 @@ export function resolveViewChannels(
   });
 
   // Pass two: remaining references take the first unclaimed channel with the same kind and name.
-  view.channels.forEach((reference, index) => {
+  references.forEach((reference, index) => {
     if (resolved[index] !== undefined) {
       return;
     }
@@ -64,7 +72,7 @@ export function resolveViewChannels(
     }
   });
 
-  return view.channels.map((reference, index) => ({
+  return references.map((reference, index) => ({
     reference,
     channel: resolved[index],
     index,
@@ -105,22 +113,38 @@ export interface ViewSegment {
 }
 
 /**
- * Splits resolved view entries into contiguous runs: each run of channels sharing a group
- * becomes one segment (rendered like an All Channels type section) and ungrouped channels
- * between them form flat segments.
+ * Splits resolved view entries into segments that mirror the items: each group becomes one
+ * segment (rendered like an All Channels type section) and the ungrouped rows between them form
+ * flat segments. A group with no members produces no segment, so the mixer never shows one.
  */
 export function segmentViewChannels(
-  view: Pick<View, 'groups'>,
+  view: Pick<View, 'items'>,
   entries: ResolvedViewChannel[],
 ): ViewSegment[] {
   const segments: ViewSegment[] = [];
-  for (const entry of entries) {
-    const group = view.groups.find((candidate) => candidate.id === entry.reference.groupId);
-    const last = segments[segments.length - 1];
-    if (last !== undefined && last.group?.id === group?.id) {
-      last.entries.push(entry);
-    } else {
-      segments.push({ group, entries: [entry] });
+  let index = 0;
+  const take = (count: number): ResolvedViewChannel[] => {
+    const taken = entries.slice(index, index + count);
+    index += count;
+    return taken;
+  };
+  for (const item of view.items) {
+    if (item.type === 'channel') {
+      const [entry] = take(1);
+      if (entry === undefined) {
+        continue;
+      }
+      const last = segments[segments.length - 1];
+      if (last !== undefined && last.group === undefined) {
+        last.entries.push(entry);
+      } else {
+        segments.push({ group: undefined, entries: [entry] });
+      }
+      continue;
+    }
+    const members = take(item.channels.length);
+    if (members.length > 0) {
+      segments.push({ group: item, entries: members });
     }
   }
   return segments;
