@@ -8,7 +8,13 @@ import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
 
-/* The delete button beside every channel row and every group header. */
+/*
+ * The delete button beside every row and group header, and the menu every control of a row folds
+ * into once the CHANNEL ORDER column is too narrow to lay them out. jsdom evaluates no container
+ * query, so both shapes are reachable here: the wide one through its buttons and comboboxes, the
+ * narrow one through `<name> menu`. The menu's own items are options, which is why the names the
+ * wide shape owns stay unambiguous.
+ */
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -118,5 +124,75 @@ describe('settings delete button', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Remove GHOST' }));
     expect(page.orderedNames()).toEqual(['BASS']);
     expect((await page.save())?.channels).toEqual([BASS]);
+  });
+});
+
+describe('settings row menu', () => {
+  it('runs the row commands the narrow column hides', async () => {
+    const page = await openSettings({ ...structuredClone(loose), groups: [RHYTHM] });
+
+    page.pick('BASS menu', 'move:down');
+    expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
+
+    page.pick('BASS menu', 'group:g1');
+    expect(page.memberNames('g1')).toEqual(['BASS']);
+    expect(screen.getByRole('button', { name: 'BASS use group color' })).toHaveTextContent('GRP');
+
+    page.pick('BASS menu', 'color:lime');
+    expect(screen.getByRole('button', { name: 'BASS color Mix Minus Lime' })).toHaveClass(
+      'is-selected',
+    );
+    // Joining a group moves the row to the end of that group's block, which is last here.
+    expect((await page.save())?.channels).toEqual([
+      MAIN,
+      FX,
+      { ...BASS, groupId: 'g1', color: 'lime' },
+    ]);
+
+    page.pick('BASS menu', 'delete');
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX']);
+  });
+
+  it('marks the choices in force and disables the moves it cannot make', async () => {
+    const page = await openSettings({ id: 'v1', name: 'Stage', channels: [BASS], groups: [] });
+    const options = [...page.menu('BASS menu').querySelectorAll('option')];
+    const named = (text: string) => options.find((option) => option.textContent === text);
+
+    expect(named('MOVE UP')).toBeDisabled();
+    expect(named('MOVE DOWN')).toBeDisabled();
+    expect(named('• NO GROUP')).toBeDefined();
+    expect(named('• AUTO')).toBeDefined();
+    // Without a group there is nothing for GRP to follow, in either shape.
+    expect(page.itemsOf('BASS menu')).not.toContain('GRP');
+
+    page.pick('BASS menu', 'color:red');
+    expect(page.itemsOf('BASS menu')).toContain('• Main Red');
+    expect((await page.save())?.channels).toEqual([{ ...BASS, color: 'red' }]);
+  });
+
+  it('recolours and ungroups a group through its own menu', async () => {
+    const page = await openSettings(structuredClone(grouped));
+    expect(page.itemsOf('Group Rhythm menu')).toContain('• AUTO');
+
+    page.pick('Group Rhythm menu', 'color:purple');
+    expect(screen.getByRole('button', { name: 'Group Rhythm color Matrix Purple' })).toHaveClass(
+      'is-selected',
+    );
+    expect(page.itemsOf('Group Rhythm menu')).toContain('• Matrix Purple');
+    expect((await page.save())?.groups).toEqual([{ ...RHYTHM, color: 'purple' }]);
+
+    page.pick('Group Rhythm menu', 'ungroup');
+    expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
+    expect((await page.save())?.groups).toEqual([]);
+  });
+
+  it('moves and deletes a group through its own menu', async () => {
+    const page = await openSettings(structuredClone(grouped));
+    page.pick('Group Rhythm menu', 'move:down');
+    expect(page.orderedNames()).toEqual(['FX', 'BASS', 'MAIN']);
+
+    page.pick('Group Rhythm menu', 'delete');
+    expect(page.orderedNames()).toEqual(['FX']);
+    expect((await page.save())?.channels).toEqual([FX]);
   });
 });

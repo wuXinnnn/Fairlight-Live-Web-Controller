@@ -17,6 +17,7 @@ import { DeleteButton } from './DeleteButton.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
+import { RowMenu, type RowMenuSection } from './RowMenu.js';
 import { groupRowKey } from './row-keys.js';
 import { useDragPreview } from './use-drag-preview.js';
 import { moveGroup, type MoveDirection } from './view-order.js';
@@ -117,6 +118,43 @@ function GroupHeader({
   ];
   const canMoveUp = moveGroup(view, group.id, -1) !== null;
   const canMoveDown = moveGroup(view, group.id, 1) !== null;
+  const menuSections: RowMenuSection[] = [
+    {
+      label: 'ORDER',
+      items: [
+        { id: 'move:up', text: 'MOVE UP', disabled: !canMoveUp },
+        { id: 'move:down', text: 'MOVE DOWN', disabled: !canMoveDown },
+      ],
+    },
+    {
+      label: 'GROUP COLOR',
+      items: colorChoices.map((choice) => ({
+        id: `color:${choice.id}`,
+        text: choice.text ?? choice.title,
+        selected: choice.selected,
+      })),
+    },
+    {
+      items: [
+        { id: 'ungroup', text: 'UNGROUP' },
+        { id: 'delete', text: 'DELETE GROUP' },
+      ],
+    },
+  ];
+  const pickCommand = (id: string) => {
+    if (id === 'move:up' || id === 'move:down') {
+      onMoveGroup(group.id, id === 'move:up' ? -1 : 1);
+    } else if (id === 'ungroup') {
+      onRemoveGroup(group.id);
+    } else if (id === 'delete') {
+      onDeleteGroup(group.id);
+    } else {
+      const choice = colorChoices.find((candidate) => candidate.id === id.slice('color:'.length));
+      if (choice !== undefined) {
+        onSetGroupColor(group.id, choice.value);
+      }
+    }
+  };
   return (
     <div className="view-group__header">
       {handle}
@@ -171,6 +209,12 @@ function GroupHeader({
         title="Delete group and its channels"
         disabled={saving || dragging}
         onClick={() => onDeleteGroup(group.id)}
+      />
+      <RowMenu
+        label={`Group ${group.name} menu`}
+        sections={menuSections}
+        disabled={saving || dragging}
+        onPick={pickCommand}
       />
     </div>
   );

@@ -1496,13 +1496,17 @@ html.fader-cap-dragging * {
 
 /*
  * Every row in the CHANNEL ORDER column has to stay on one line: a row that wraps stops reading as
- * one channel and its controls. Two stages give the width back in the order that costs the least.
+ * one channel and its controls. Three stages give the width back in the order that costs the least.
  * First the channel name, which loses only the tail of a name its own truncation already marks.
  * Then the six swatches, which fold into the menu the palette control already carries beside them.
- * Both thresholds are measured in Chromium against the column at which each shape starts to push
- * past the row, and sit above it so each stage takes over while the one before it still fits: the
- * name floor holds to 43.5rem and the truncating name to 34.6rem. Measure on a group member, which
- * is the narrowest row there is — it carries the group's indent on top of everything else.
+ * Last everything that acts on the row — order, group, colour, delete — which folds into the one
+ * menu the row carries for exactly this, leaving the name and the handle it is read and dragged by.
+ * The first two thresholds are measured in Chromium against the column at which each shape starts
+ * to push past the row, and sit above it so each stage takes over while the one before it still
+ * fits: the name floor holds to 43.5rem and the truncating name to 34.6rem. Measure on a group
+ * member, which is the narrowest row there is — it carries the group's indent on top of everything.
+ * The last threshold is not about fitting at all: the menu shape holds down to a 21.3rem column, and
+ * 26rem is where a phone held upright lands (up to a 440px viewport), which is what it is there for.
  */
 @container (max-width: 45rem) {
   .channel-order .channel-order-row,
@@ -1537,6 +1541,40 @@ html.fader-cap-dragging * {
 
   .channel-order .group-control > span {
     display: none;
+  }
+}
+
+/*
+ * A phone held upright. Every control the row acts through folds into its menu — this block has to
+ * follow the one above, because both decide `.palette-select` at the same specificity.
+ */
+@container (max-width: 26rem) {
+  .channel-order .order-buttons,
+  .channel-order .group-control,
+  .channel-order .palette-control,
+  .channel-order .palette-select,
+  .channel-order .delete-button,
+  .channel-order .view-group__header .utility-button {
+    display: none;
+  }
+
+  /*
+   * The menu is now the only control on the row, on the one device that has no pointer: it gets a
+   * finger-sized square of its own, which the row grows a little to hold.
+   */
+  .channel-order .row-menu,
+  .channel-order .view-group__header .row-menu {
+    display: grid;
+    width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .channel-order .channel-order-row {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .channel-order .view-group__header {
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto;
   }
 }
 
@@ -2366,7 +2404,8 @@ html.fader-cap-dragging * {
     color var(--motion-fast) ease;
 }
 
-.delete-button svg {
+.delete-button svg,
+.row-menu svg {
   display: block;
   width: 0.8rem;
   height: 0.8rem;
@@ -2382,7 +2421,48 @@ html.fader-cap-dragging * {
   opacity: 0.3;
 }
 
-.view-group__header .delete-button {
+/*
+ * The row's controls, folded into one native menu on the narrowest column. The `<select>` lies
+ * transparent over the hamburger so a tap anywhere on the square opens the platform's own picker,
+ * and the square keeps drawing the glyph and the focus ring the `<select>` no longer shows.
+ */
+.row-menu {
+  display: none;
+  position: relative;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.row-menu select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.row-menu:hover:has(select:enabled),
+.row-menu:focus-within {
+  border-color: #9b742d;
+  color: var(--amber-pale);
+}
+
+.row-menu:has(select:disabled) {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.view-group__header .delete-button,
+.view-group__header .row-menu {
   width: 1.4rem;
   min-height: 1.4rem;
 }

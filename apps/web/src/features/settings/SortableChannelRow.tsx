@@ -16,6 +16,7 @@ import { DeleteButton } from './DeleteButton.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
+import { RowMenu, type RowMenuSection } from './RowMenu.js';
 import { moveChannel, type MoveDirection } from './view-order.js';
 
 export interface ChannelRowHandlers {
@@ -122,6 +123,51 @@ export function SortableChannelRow({
   }
   const canMoveUp = moveChannel(view, index, -1) !== null;
   const canMoveDown = moveChannel(view, index, 1) !== null;
+  // The same commands the row lays out beside each other, for a column that cannot hold them.
+  const menuSections: RowMenuSection[] = [
+    {
+      label: 'ORDER',
+      items: [
+        { id: 'move:up', text: 'MOVE UP', disabled: !canMoveUp },
+        { id: 'move:down', text: 'MOVE DOWN', disabled: !canMoveDown },
+      ],
+    },
+    {
+      label: 'GROUP',
+      items: [
+        { id: 'group:', text: 'NO GROUP', selected: groupId === undefined },
+        ...view.groups.map((candidate) => ({
+          id: `group:${candidate.id}`,
+          text: candidate.name,
+          selected: candidate.id === groupId,
+        })),
+      ],
+    },
+    {
+      // Derived from the palette's own choices, so the two shapes cannot drift apart.
+      label: 'COLOR',
+      items: colorChoices.map((choice) => ({
+        id: `color:${choice.id}`,
+        text: choice.text ?? choice.title,
+        selected: choice.selected,
+      })),
+    },
+    { items: [{ id: 'delete', text: 'REMOVE FROM VIEW' }] },
+  ];
+  const pickCommand = (id: string) => {
+    if (id === 'move:up' || id === 'move:down') {
+      onMoveChannel(index, id === 'move:up' ? -1 : 1);
+    } else if (id === 'delete') {
+      onDeleteChannel(index);
+    } else if (id.startsWith('group:')) {
+      onAssignGroup(index, id.slice('group:'.length) || undefined);
+    } else {
+      const choice = colorChoices.find((candidate) => candidate.id === id.slice('color:'.length));
+      if (choice !== undefined) {
+        onSetColor(index, choice.value);
+      }
+    }
+  };
   return (
     <li
       ref={setNodeRef}
@@ -180,6 +226,12 @@ export function SortableChannelRow({
         title="Remove from view"
         disabled={saving || dragging}
         onClick={() => onDeleteChannel(index)}
+      />
+      <RowMenu
+        label={`${reference.name} menu`}
+        sections={menuSections}
+        disabled={saving || dragging}
+        onPick={pickCommand}
       />
     </li>
   );
