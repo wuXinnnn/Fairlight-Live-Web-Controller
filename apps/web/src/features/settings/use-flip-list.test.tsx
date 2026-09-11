@@ -1,6 +1,7 @@
 import { act, render } from '@testing-library/react';
 import { useEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { translateOf } from './flip-geometry.js';
 import {
   FLIP_CLEANUP_FALLBACK_MS,
   FLIP_TRANSITION,
@@ -37,9 +38,32 @@ function Harness({ items, dependency }: { items: Item[]; dependency: unknown }) 
   );
 }
 
+/**
+ * Layout position plus whatever translate the element and its flip ancestors carry, the way a
+ * real `getBoundingClientRect` reports it. `naturalRect` subtracts the same amount again, so a
+ * stub that ignored transforms would make a running tween look like a layout change.
+ */
 function rectFor(element: Element): DOMRect {
   const top = tops.get(element.getAttribute('data-flip-key') ?? '') ?? 0;
-  return { top, left: 0, width: 100, height: 40, bottom: top + 40, right: 100 } as DOMRect;
+  const shift = inFlightTranslate(element);
+  return {
+    top: top + shift,
+    left: 0,
+    width: 100,
+    height: 40,
+    bottom: top + shift + 40,
+    right: 100,
+  } as DOMRect;
+}
+
+function inFlightTranslate(element: Element): number {
+  let total = 0;
+  let current: Element | null = element;
+  while (current !== null) {
+    total += translateOf((current as HTMLElement).style.transform).y;
+    current = current.parentElement?.closest('[data-flip-key]') ?? null;
+  }
+  return total;
 }
 
 function harness(props: { items: Item[]; dependency: unknown }) {
@@ -170,6 +194,49 @@ describe('useFlipList', () => {
     view.rerender(harness({ items: [{ key: 'a' }, { key: 'b' }], dependency: 3 }));
     expect(element('a').style.transform).toBe('');
     expect(element('b').style.transform).toBe('');
+  });
+
+  it('leaves a running tween alone when the natural position did not move', () => {
+    tops.set('a', 0).set('b', 40);
+    const view = render(harness({ items: [{ key: 'a' }, { key: 'b' }], dependency: 1 }));
+    tops.set('a', 40).set('b', 0);
+    view.rerender(harness({ items: [{ key: 'b' }, { key: 'a' }], dependency: 2 }));
+    expect(element('a').style.transform).toBe('translate(0px, -40px)');
+
+    // Half way through the tween, without waiting for the cleanup that ends it.
+    act(() => flushFrames());
+    element('a').style.transform = 'translate(0px, -20px)';
+    const before = element('a').style.cssText;
+
+    // A commit that does not move any natural position must not touch the element at all.
+    view.rerender(harness({ items: [{ key: 'b' }, { key: 'a' }], dependency: 3 }));
+    expect(element('a').style.cssText).toBe(before);
+    expect(frames).toHaveLength(0);
+  });
+
+  it('restarts a tween from the current visual position when a row is pushed again', () => {
+    tops.set('a', 40).set('b', 0);
+    const view = render(harness({ items: [{ key: 'b' }, { key: 'a' }], dependency: 1 }));
+
+    // The row moves up 40px, so it is held 40px down and tweens back to zero.
+    tops.set('a', 0).set('b', 40);
+    view.rerender(harness({ items: [{ key: 'a' }, { key: 'b' }], dependency: 2 }));
+    expect(element('a').style.transform).toBe('translate(0px, 40px)');
+    act(() => flushFrames());
+
+    // Say that tween has run half of its 40px, and do not wait for it to finish.
+    element('a').style.transform = 'translate(0px, 20px)';
+
+    // Now push the row back down a full row.
+    tops.set('a', 40).set('b', 0);
+    view.rerender(harness({ items: [{ key: 'b' }, { key: 'a' }], dependency: 3 }));
+
+    // It starts from where it currently looks (20) rather than snapping back first: 20 - 40.
+    expect(element('a').style.transform).toBe('translate(0px, -20px)');
+    expect(element('a').style.transition).toBe('none');
+    act(() => flushFrames());
+    expect(element('a').style.transition).toBe(FLIP_TRANSITION);
+    expect(element('a').style.transform).toBe('');
   });
 
   it('restarts an animation that is still running and clears styles on unmount', () => {

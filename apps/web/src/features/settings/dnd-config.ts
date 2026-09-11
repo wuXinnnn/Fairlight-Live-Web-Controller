@@ -2,6 +2,8 @@
  * Initial sensor values for the configuration page drag and drop. They are starting points to
  * be tuned against the real console; the touch values in particular belong to the touch audit.
  */
+import type { MeasuringConfiguration } from '@dnd-kit/core';
+import { naturalRect } from './flip-geometry.js';
 
 /** Mouse movement, in CSS pixels, before a press on a drag handle becomes a drag. */
 export const MOUSE_ACTIVATION_DISTANCE_PX = 4;
@@ -35,3 +37,12 @@ export const AUTO_SCROLL_REMEASURE_MS = 50;
 
 /** Height, in CSS pixels, of the drop slots shown before, between and after groups while a channel is dragged. */
 export const ROOT_SLOT_HEIGHT_PX = 16;
+
+/**
+ * Measure droppables at their natural position, so collision detection aims at the layout the
+ * preview is settling into rather than at wherever a FLIP tween happens to have a row right now.
+ * dnd-kit's own transform-agnostic measurement only unwinds the node's own transform, which is
+ * not enough here: a member row is carried by its group block, and that block is animated too.
+ * It is a module constant because dnd-kit memoises the measuring configuration by identity.
+ */
+export const VIEW_MEASURING: MeasuringConfiguration = { droppable: { measure: naturalRect } };

@@ -14,6 +14,7 @@ import { STUB_LIST_PADDING, STUB_ROW_HEIGHT, stubListLayout } from './stub-layou
 import {
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
+  VIEW_MEASURING,
 } from '../src/features/settings/dnd-config.js';
 import { recordFlipWrites } from './flip-writes.js';
 
@@ -118,6 +119,53 @@ describe('settings drag and drop (keyboard sensor)', () => {
       transform: `translate(0px, -${STUB_ROW_HEIGHT}px)`,
     });
     flip.stop();
+  });
+
+  it('tweens each row it crosses exactly once when arrows outrun the animation', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      channels: [BASS, MAIN, FX, SUB],
+      groups: [],
+    });
+    const flip = recordFlipWrites(page.list());
+
+    // Three steps in a row, none of them waiting for the previous tween to be cleaned up.
+    await pickUp(page.handle('BASS'));
+    await press('ArrowDown');
+    await press('ArrowDown');
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']);
+
+    // Each row BASS passed moved up exactly one row, and was told so exactly once. Measuring
+    // natural positions is what keeps a tween that is still running from being replayed.
+    const moved = flip.writes().filter((write) => write.transform !== '');
+    for (const key of ['main:MAIN:main/1#0', 'aux:FX:aux/1#0', 'sub:SUB:sub/1#0']) {
+      const forRow = moved.filter((write) => write.key === key);
+      expect(forRow).toEqual([{ key, transform: `translate(0px, ${STUB_ROW_HEIGHT}px)` }]);
+    }
+    // Nothing was ever asked to jump further than the one row it actually moved.
+    for (const write of moved) {
+      const distance = Math.abs(Number(/-?[\d.]+/.exec(write.transform)?.[0] ?? 0));
+      expect(distance).toBeLessThanOrEqual(STUB_ROW_HEIGHT);
+    }
+    flip.stop();
+  });
+
+  it('measures droppables where they belong, not where a tween is holding them', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      channels: [BASS, MAIN, FX],
+      groups: [],
+    });
+    const row = page.list().querySelector('[data-flip-key="main:MAIN:main/1#0"]') as HTMLElement;
+    const settled = VIEW_MEASURING.droppable?.measure?.(row);
+
+    // Hold the row a row-height away, as a tween part way through its 120ms would.
+    row.style.transform = `translate(0px, ${STUB_ROW_HEIGHT}px)`;
+    expect(row.getBoundingClientRect().top).toBe((settled?.top ?? 0) + STUB_ROW_HEIGHT);
+    expect(VIEW_MEASURING.droppable?.measure?.(row)).toEqual(settled);
   });
 
   it('does not tween rows that two views happen to share', async () => {

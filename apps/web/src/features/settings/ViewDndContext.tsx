@@ -34,6 +34,7 @@ import {
   REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
+  VIEW_MEASURING,
 } from './dnd-config.js';
 import { readItemData } from './dnd-ids.js';
 import {
@@ -497,6 +498,7 @@ export function ViewDndContext({
     <DndContext
       sensors={sensors}
       collisionDetection={viewCollisionDetection}
+      measuring={VIEW_MEASURING}
       accessibility={{ announcements, screenReaderInstructions }}
       autoScroll={false}
       onDragStart={handleDragStart}
