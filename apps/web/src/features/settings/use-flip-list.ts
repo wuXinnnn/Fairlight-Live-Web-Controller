@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
-import { naturalRect, ownTranslateOf, type NaturalRect, type Translate } from './flip-geometry.js';
+import { naturalGeometry, type NaturalRect, type Translate } from './flip-geometry.js';
 
 /** Movements smaller than this, in CSS pixels, are not animated. */
 export const FLIP_MIN_SHIFT_PX = 1;
@@ -51,7 +51,7 @@ function flipKey(element: Element): string {
 function measure(container: HTMLElement): Map<string, Measured> {
   const measured = new Map<string, Measured>();
   for (const element of container.querySelectorAll(FLIP_SELECTOR)) {
-    measured.set(flipKey(element), { rect: naturalRect(element), own: ownTranslateOf(element) });
+    measured.set(flipKey(element), naturalGeometry(element));
   }
   return measured;
 }

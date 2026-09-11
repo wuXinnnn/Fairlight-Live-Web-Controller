@@ -94,14 +94,7 @@ export interface NaturalRect {
   height: number;
 }
 
-/**
- * Where `element` sits with every FLIP translation unwound: its layout position. Passing this to
- * dnd-kit as the droppable measurement keeps collision detection aimed at the layout the preview
- * is settling into rather than at the half-way point of a tween.
- */
-export function naturalRect(element: Element): NaturalRect {
-  const rect = element.getBoundingClientRect();
-  const { x, y } = flipTranslateOf(element);
+function withoutTranslate(rect: DOMRect, x: number, y: number): NaturalRect {
   return {
     top: rect.top - y,
     left: rect.left - x,
@@ -110,4 +103,33 @@ export function naturalRect(element: Element): NaturalRect {
     width: rect.width,
     height: rect.height,
   };
+}
+
+/**
+ * Where `element` sits with every FLIP translation unwound: its layout position. Passing this to
+ * dnd-kit as the droppable measurement keeps collision detection aimed at the layout the preview
+ * is settling into rather than at the half-way point of a tween.
+ */
+export function naturalRect(element: Element): NaturalRect {
+  const { x, y } = flipTranslateOf(element);
+  return withoutTranslate(element.getBoundingClientRect(), x, y);
+}
+
+/**
+ * The natural position and the element's own translate together. Reading computed styles is the
+ * expensive part of both, and the FLIP list wants both for every element on every commit, so
+ * this walks the ancestors once instead of twice.
+ */
+export function naturalGeometry(element: Element): { rect: NaturalRect; own: Translate } {
+  const own = ownTranslateOf(element);
+  let x = own.x;
+  let y = own.y;
+  let parent = element.parentElement?.closest(FLIP_SELECTOR) ?? null;
+  while (parent !== null) {
+    const translate = ownTranslateOf(parent);
+    x += translate.x;
+    y += translate.y;
+    parent = parent.parentElement?.closest(FLIP_SELECTOR) ?? null;
+  }
+  return { rect: withoutTranslate(element.getBoundingClientRect(), x, y), own };
 }

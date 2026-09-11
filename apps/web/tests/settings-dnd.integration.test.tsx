@@ -379,6 +379,9 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.container.querySelector('.root-slot')).not.toBeInTheDocument();
   });
 
+  // Four keyboard drags over two groups and their slots, each one re-measuring every droppable
+  // in the list: the heaviest test here by some way, and it runs past the default 5s budget on a
+  // loaded CI runner even though it takes under two seconds locally.
   it('drops channels between two groups and before the first one through root slots', async () => {
     const VOCALS = { id: 'g2', name: 'Vocals' };
     const page = await openSettings({
@@ -431,7 +434,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
       row(SUB),
       grp(VOCALS, [BASS]),
     ]);
-  });
+  }, 20_000);
 
   it('moves a member above the group so it leaves the group', async () => {
     const page = await openSettings({

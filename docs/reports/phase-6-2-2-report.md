@@ -192,8 +192,11 @@
 | `905ce5b` | `feat(web): colour a group by the kind most of its members are` |
 | `904ba44` | `docs: describe the ordered item model, the end slot and the colour rule` |
 | `202a48a` | `fix(shared): keep the group a legacy reference named when migrating it`(远端 CI 发现,见下) |
-| `a17706d` | `docs: add the Phase 6.2.2 execution report` |
+| `42d3704` | `docs: add the Phase 6.2.2 execution report` |
+| `5b12f48` | `test(web): give the heaviest drag case room on a loaded runner` |
 
 第一次推送后远端 CI 的 `apps/server` 测试报出一处**真实缺陷**:`migrateLegacyChannelRef` 按已知字段重建引用对象时把 `groupId` 丢掉了,于是版本 1 文件里「旧引用形状 + 归属某个组」的条目迁移后会失去分组。该形状早于分组功能,正常写出的文件不会同时具备两者,但手改过的文件可以。已由 `202a48a` 修复并在 shared 补了用例(覆盖率仍 100%)。**这正是本地装不上 server 依赖所漏掉的那一类问题**,如实记录。
+
+第二次推送后 CI 的 `apps/server` 全部通过(143 例),但 `apps/web` 有一条**既有**用例 `drops channels between two groups and before the first one through root slots` 超出 vitest 默认的 5s。它是本文件里最重的一例(两个分组之上的四次键盘拖放,每一步都要重测全部 droppable),本地约 1.7s,CI 上超时。本批次的常驻末尾落槽确实给每次拖动多加了一个 droppable,但那是功能本身;试过把 FLIP 的计算样式读取减半(`naturalGeometry` 一次遍历同时给出自然矩形与自身平移),对这一例没有可测量的改善(1745ms vs 1673ms,在噪声范围内),说明瓶颈在 dnd-kit 的重测与布局 stub 而不在新增的几何计算。最终按 6.2.1 报告第 9 节留给用户的那个办法处理:**只给这一条用例显式放宽到 20s**,并在注释里写明原因。未改全局 `testTimeout`,未改覆盖率门槛。`naturalGeometry` 的去重仍然保留——它本来就是重复劳动。
 
 跨包的模型切换使 `26f4744`、`e2b518a`、`f069a0a` 三个中间提交**不能各自独立通过 typecheck**(shared 已换模型而 web 尚未跟上),提交粒度按提示词建议的分段拆分,已与用户确认;只保证推送的 head 全绿。`1488ec8` 之前另有两条集成用例处于已知失败状态(末尾落槽与组色分别由 `1488ec8`、`905ce5b` 修复)。
