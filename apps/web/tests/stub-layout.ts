@@ -5,6 +5,11 @@
  * `STUB_LIST_PADDING` below the list's top edge, each row `STUB_ROW_HEIGHT` tall and group blocks
  * spanning their header and members. Rectangles are recomputed on every call, so they follow the
  * DOM.
+ *
+ * Every call walks the lists, and dnd-kit measures constantly, so this runs thousands of times in
+ * one drag: it reads direct children rather than querying, which keeps each call proportional to
+ * the number of rows instead of the number of nodes. The rows carry a collapsed menu of their own
+ * these days, and a descendant query pays for every option in it on every measurement.
  */
 
 export const STUB_ROW_HEIGHT = 40;
@@ -41,22 +46,31 @@ function rect(x: number, y: number, width: number, height: number): DOMRect {
 
 function layoutRects(): Map<Element, DOMRect> {
   const rects = new Map<Element, DOMRect>();
-  document.querySelectorAll('[data-available-channel-id]').forEach((label, index) => {
+  const checklist = document.querySelector('.channel-checklist');
+  let entry = 0;
+  for (const label of checklist?.children ?? []) {
+    if (!(label instanceof HTMLElement) || label.dataset.availableChannelId === undefined) {
+      continue;
+    }
     // Level with the list's rows, so a keyboard pickup starts beside a row of the same index.
-    const y = STUB_LIST_PADDING + index * STUB_ROW_HEIGHT;
+    const y = STUB_LIST_PADDING + entry * STUB_ROW_HEIGHT;
     rects.set(label, rect(0, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
-  });
+    entry += 1;
+  }
   const list = document.querySelector('.view-channel-list');
   let y = STUB_LIST_PADDING;
   for (const block of list?.children ?? []) {
     if (block.classList.contains('view-group')) {
       const start = y;
       y += STUB_ROW_HEIGHT;
-      const members = block.querySelectorAll(':scope > .view-group__members > li');
-      members.forEach((row) => {
+      const list = [...block.children].find((child) =>
+        child.classList.contains('view-group__members'),
+      );
+      const members = list === undefined ? [] : [...list.children];
+      for (const row of members) {
         rects.set(row, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
         y += STUB_ROW_HEIGHT;
-      });
+      }
       // An empty group shows its "assign channels" body; a collapsed one is only its header.
       if (members.length === 0 && !block.classList.contains('is-collapsed')) {
         y += STUB_ROW_HEIGHT;
@@ -65,7 +79,7 @@ function layoutRects(): Map<Element, DOMRect> {
     } else if (block.classList.contains('root-slot--fill')) {
       // The empty-view slot is a block of its own: it follows what came before and takes space.
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_FILL_SLOT_HEIGHT));
-      const band = block.querySelector('.root-slot__band');
+      const band = block.firstElementChild;
       if (band !== null) {
         rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_FILL_SLOT_HEIGHT));
       }
@@ -73,7 +87,7 @@ function layoutRects(): Map<Element, DOMRect> {
     } else if (block.classList.contains('root-slot')) {
       // The slot takes no space; its band overlays the top of whatever follows.
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, 0));
-      const band = block.querySelector('.root-slot__band');
+      const band = block.firstElementChild;
       if (band !== null) {
         rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_SLOT_HEIGHT));
       }
