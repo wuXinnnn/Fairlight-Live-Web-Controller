@@ -323,7 +323,9 @@ describe('migrateAppConfig', () => {
           { channelId: 'legacy', lastKnownName: 'Odd' },
           { channelId: 'main/1', lastKnownName: '   ' },
           { kind: 'sub', name: 'SUB', lastKnownName: 'Ignored' },
+          { channelId: 'mtx/2', lastKnownName: 'Aux Matrix', groupId: 'g1' },
         ],
+        groups: [{ id: 'g1', name: 'Sends' }],
       }),
     ).toEqual([
       { type: 'channel', kind: 'aux', name: 'FX', channelId: 'aux/3', color: 'lime' },
@@ -334,6 +336,13 @@ describe('migrateAppConfig', () => {
       { type: 'channel', kind: 'main', name: 'main/1', channelId: 'main/1' },
       // A reference already in the new shape is left alone, stray keys and all.
       { type: 'channel', kind: 'sub', name: 'SUB', lastKnownName: 'Ignored' },
+      // Rebuilding the reference must not drop the group it named.
+      {
+        type: 'group',
+        id: 'g1',
+        name: 'Sends',
+        channels: [{ kind: 'mtx', name: 'Aux Matrix', channelId: 'mtx/2' }],
+      },
     ]);
     expect(
       appConfigSchema.safeParse(

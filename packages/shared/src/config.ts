@@ -144,6 +144,11 @@ function migrateLegacyChannelRef(input: unknown): Record<string, unknown> {
   if (candidate.color !== undefined) {
     migrated.color = candidate.color;
   }
+  // The shape predates grouping, so an entry in this shape rarely names a group - but a
+  // hand-edited file can, and rebuilding the reference must not quietly drop it on the floor.
+  if (candidate.groupId !== undefined) {
+    migrated.groupId = candidate.groupId;
+  }
   return migrated;
 }
 
