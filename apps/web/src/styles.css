@@ -1499,12 +1499,12 @@ html.fader-cap-dragging * {
  * one channel and its controls. Two stages give the width back in the order that costs the least.
  * First the channel name, which loses only the tail of a name its own truncation already marks.
  * Then the six swatches, which fold into the menu the palette control already carries beside them.
- * Both thresholds are measured in Chromium against the width at which each shape starts to push
- * past the row: the name floor plus the swatches holds down to a 40.1rem column, and the truncating
- * name plus the swatches down to 32.7rem. The stages sit just above those, so each one takes over
- * while the one before it still fits.
+ * Both thresholds are measured in Chromium against the column at which each shape starts to push
+ * past the row, and sit above it so each stage takes over while the one before it still fits: the
+ * name floor holds to 43.5rem and the truncating name to 34.6rem. Measure on a group member, which
+ * is the narrowest row there is — it carries the group's indent on top of everything else.
  */
-@container (max-width: 42rem) {
+@container (max-width: 45rem) {
   .channel-order .channel-order-row,
   .channel-order .view-group__header {
     gap: 0.45rem;
@@ -1513,15 +1513,15 @@ html.fader-cap-dragging * {
   }
 
   .channel-order .channel-order-row {
-    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto auto;
   }
 
   .channel-order .view-group__header {
-    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto auto auto;
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) auto auto auto auto auto;
   }
 }
 
-@container (max-width: 34rem) {
+@container (max-width: 36rem) {
   .channel-order .palette-control {
     display: none;
   }
@@ -2084,7 +2084,7 @@ html.fader-cap-dragging * {
 
 .channel-order-row {
   display: grid;
-  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto);
+  grid-template-columns: auto auto auto minmax(7rem, 1fr) auto auto minmax(14rem, auto) auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.35rem;
@@ -2215,7 +2215,7 @@ html.fader-cap-dragging * {
 /* Group header: a solid, brighter bar that reads as a section title above its members. */
 .view-group__header {
   display: grid;
-  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto auto;
+  grid-template-columns: auto auto auto auto minmax(7rem, 1fr) auto auto auto auto auto;
   align-items: center;
   gap: 0.65rem;
   min-height: 3.1rem;
@@ -2348,6 +2348,43 @@ html.fader-cap-dragging * {
 
 .drag-handle.is-placeholder {
   visibility: hidden;
+}
+
+/* Takes a row, or a whole group, out of the view. The one destructive control on the page. */
+.delete-button {
+  display: grid;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: #111318;
+  color: #7c828d;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.delete-button svg {
+  display: block;
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.delete-button:hover:not(:disabled) {
+  border-color: var(--red);
+  color: #ff8c85;
+}
+
+.delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.view-group__header .delete-button {
+  width: 1.4rem;
+  min-height: 1.4rem;
 }
 
 /* Folds a group shut. Editor state only: it is never saved with the view. */

@@ -32,7 +32,9 @@ import {
   assignGroup,
   moveChannel,
   moveGroup,
+  removeChannel,
   removeGroup,
+  removeGroupWithMembers,
   renameGroup,
   setGroupColor,
   type MoveDirection,
@@ -633,6 +635,12 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       }
                       onRemoveGroup={(groupId) =>
                         editDraft((source) => removeGroup(source, groupId))
+                      }
+                      onDeleteChannel={(index) =>
+                        editDraft((source) => removeChannel(source, index))
+                      }
+                      onDeleteGroup={(groupId) =>
+                        editDraft((source) => removeGroupWithMembers(source, groupId))
                       }
                       onToggleCollapse={toggleCollapse}
                       onSetGroupColor={(groupId, color) =>

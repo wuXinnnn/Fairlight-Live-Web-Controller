@@ -129,9 +129,11 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         duplicateNames={duplicateNames}
         channelInventoryLoaded={channelInventoryLoaded}
         saving={saving}
+        dragging={dragging}
         onMoveChannel={props.onMoveChannel}
         onAssignGroup={props.onAssignGroup}
         onSetColor={props.onSetColor}
+        onDeleteChannel={props.onDeleteChannel}
       />
     );
   };
@@ -223,6 +225,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             onMoveGroup: props.onMoveGroup,
             onRenameGroup: props.onRenameGroup,
             onRemoveGroup: props.onRemoveGroup,
+            onDeleteGroup: props.onDeleteGroup,
             onToggleCollapse: props.onToggleCollapse,
             onSetGroupColor: props.onSetGroupColor,
           };

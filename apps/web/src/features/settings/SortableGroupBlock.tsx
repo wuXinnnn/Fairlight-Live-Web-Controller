@@ -13,6 +13,7 @@ import { leadChannelKind, type ResolvedViewChannel } from '../mixer/view-resolve
 import { PALETTE_LABELS, pad } from './channel-labels.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
+import { DeleteButton } from './DeleteButton.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
@@ -23,7 +24,10 @@ import { moveGroup, type MoveDirection } from './view-order.js';
 export interface GroupBlockHandlers {
   onMoveGroup(groupId: string, direction: MoveDirection): void;
   onRenameGroup(groupId: string, name: string): void;
+  /** Dissolves the group and leaves its members behind as ungrouped rows. */
   onRemoveGroup(groupId: string): void;
+  /** Deletes the group together with every channel in it. */
+  onDeleteGroup(groupId: string): void;
   onToggleCollapse(groupId: string): void;
   onSetGroupColor(groupId: string, color?: ChannelPaletteKey): void;
 }
@@ -83,6 +87,7 @@ function GroupHeader({
   onMoveGroup,
   onRenameGroup,
   onRemoveGroup,
+  onDeleteGroup,
   onToggleCollapse,
   onSetGroupColor,
 }: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'> & {
@@ -110,6 +115,8 @@ function GroupHeader({
       selected: group.color === color,
     })),
   ];
+  const canMoveUp = moveGroup(view, group.id, -1) !== null;
+  const canMoveDown = moveGroup(view, group.id, 1) !== null;
   return (
     <div className="view-group__header">
       {handle}
@@ -140,8 +147,8 @@ function GroupHeader({
       <small>{pad(presentCount)} CH</small>
       <OrderButtons
         label={`group ${group.name}`}
-        canMoveUp={moveGroup(view, group.id, -1) !== null}
-        canMoveDown={moveGroup(view, group.id, 1) !== null}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
         onMove={(direction) => onMoveGroup(group.id, direction)}
       />
       <button
@@ -158,6 +165,12 @@ function GroupHeader({
         menuLabel={`Group ${group.name} color menu`}
         disabled={saving}
         onSelect={(color) => onSetGroupColor(group.id, color)}
+      />
+      <DeleteButton
+        label={`Delete group ${group.name}`}
+        title="Delete group and its channels"
+        disabled={saving || dragging}
+        onClick={() => onDeleteGroup(group.id)}
       />
     </div>
   );

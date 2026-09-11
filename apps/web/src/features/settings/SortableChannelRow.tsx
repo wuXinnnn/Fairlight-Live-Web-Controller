@@ -12,6 +12,7 @@ import { CHANNEL_PALETTE, channelAccent } from '../mixer/channel-colors.js';
 import { channelNameKey, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { KIND_LABELS, PALETTE_LABELS, pad } from './channel-labels.js';
 import { channelDndId, type DndItemData } from './dnd-ids.js';
+import { DeleteButton } from './DeleteButton.js';
 import { DragHandle } from './DragHandle.js';
 import { OrderButtons } from './OrderButtons.js';
 import { PaletteControl, type PaletteChoice } from './PaletteControl.js';
@@ -21,6 +22,7 @@ export interface ChannelRowHandlers {
   onMoveChannel(index: number, direction: MoveDirection): void;
   onAssignGroup(index: number, groupId: string | undefined): void;
   onSetColor(index: number, color?: ViewChannelColor): void;
+  onDeleteChannel(index: number): void;
 }
 
 interface SortableChannelRowProps extends ChannelRowHandlers {
@@ -30,6 +32,8 @@ interface SortableChannelRowProps extends ChannelRowHandlers {
   duplicateNames: Set<string>;
   channelInventoryLoaded: boolean;
   saving: boolean;
+  /** True while any drag is in progress; the row then renders a preview index, not a draft one. */
+  dragging: boolean;
   /** The group this row belongs to, when it has one; its colour is what GROUP follows. */
   group?: ViewGroup;
   /** Kind of the group's first present member, which is what a group without a colour takes. */
@@ -44,11 +48,13 @@ export function SortableChannelRow({
   duplicateNames,
   channelInventoryLoaded,
   saving,
+  dragging,
   group,
   groupLeadKind,
   onMoveChannel,
   onAssignGroup,
   onSetColor,
+  onDeleteChannel,
 }: SortableChannelRowProps) {
   const { reference, channel, index } = entry;
   const missing = channelInventoryLoaded && channel === undefined;
@@ -114,6 +120,8 @@ export function SortableChannelRow({
       selected: reference.color === color,
     });
   }
+  const canMoveUp = moveChannel(view, index, -1) !== null;
+  const canMoveDown = moveChannel(view, index, 1) !== null;
   return (
     <li
       ref={setNodeRef}
@@ -142,8 +150,8 @@ export function SortableChannelRow({
       </div>
       <OrderButtons
         label={reference.name}
-        canMoveUp={moveChannel(view, index, -1) !== null}
-        canMoveDown={moveChannel(view, index, 1) !== null}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
         onMove={(direction) => onMoveChannel(index, direction)}
       />
       <label className="group-control">
@@ -165,6 +173,13 @@ export function SortableChannelRow({
         choices={colorChoices}
         menuLabel={`${reference.name} color menu`}
         onSelect={(color) => onSetColor(index, color)}
+      />
+      {/* A drag renders preview indices, so the row would delete whatever now sits at its place. */}
+      <DeleteButton
+        label={`Remove ${reference.name}`}
+        title="Remove from view"
+        disabled={saving || dragging}
+        onClick={() => onDeleteChannel(index)}
       />
     </li>
   );
