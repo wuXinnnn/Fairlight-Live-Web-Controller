@@ -139,6 +139,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 | `apps/web/src/features/settings/DeleteButton.tsx` | 第 13 节新增:行与组头共用的删除键 |
 | `apps/web/src/features/settings/RowMenu.tsx` | 第 13 节新增:极限窄屏把整行控件收进去的原生命令菜单 |
 | `apps/web/tests/settings-row-controls.integration.test.tsx` | 第 13 节新增:删除按钮 3 例 + 命令菜单 5 例 |
+| `apps/web/tests/stub-layout.ts` | 第 13 节:遍历改为读直接子元素,使每次测量正比于行数(见 13.4) |
 | `docs/architecture.md` | 传感器、FLIP、空态落槽、折叠、键盘收敛、颜色模型与持久化示例 |
 | `docs/reports/phase-6-2-1-report.md` | 本报告 |
 
@@ -332,7 +333,7 @@ feat(web): keep settings rows on one line as the column narrows
 
 ### 13.3 验证
 
-质量门:`pnpm lint` / `typecheck` / `test` / `build` 串行全绿。测试 web **285**(新增 8 例,既有用例零改动)、server 142、shared 34、test-utils 22;覆盖率 web 96.74% / 92.05% / 99.04% / 96.66%,server 92.51% / 85.77%,均未调低门槛、未新增排除项;`git diff pnpm-lock.yaml` 为空。
+质量门:`pnpm lint` / `typecheck` / `test` / `build` 串行全绿。测试 web **285**(新增 8 例,既有**用例**零改动;改了一个测试 **helper**,见 13.5)、server 142、shared 34、test-utils 22;覆盖率 web 96.74% / 92.05% / 99.04% / 96.66%,server 92.51% / 85.77%,均未调低门槛、未新增排除项;`git diff pnpm-lock.yaml` 为空。
 
 浏览器实测(`pnpm dev` + Mock Provider + Playwright 驱动预装 Chromium,view 为 5 通道含一个 2 成员的组):
 
@@ -380,10 +381,35 @@ saved: ["MIC-REVERB","BASS","Anagram-Wet"] ; groups []
 
 **观感与手感仍由用户在真机上验收**:删除按钮是否好按、误触概率有多大、不做二次确认是否可以接受、手机竖屏下菜单的选项措辞与分组是否清楚、第四档换挡的宽度是否合适、放大到 44px 的汉堡键与随之长高的行是否合适。
 
-### 13.4 本节提交
+### 13.4 CI 回归与 `stub-layout.ts` 的必要改动
+
+首次推送后 CI 红了一条:`settings-dnd.integration.test.tsx` 的
+「drops channels between two groups and before the first one through root slots」
+**超时**,5255ms 对 5000ms 的上限。本地四个包串行跑时它是绿的,所以第一反应是负载噪声——
+但按「flake 不是根因」核下去,**这是本 PR 引入的**:
+
+| 同一台机器、同一条用例 | 用时 |
+| --- | --- |
+| 基线 `7328cbc` | 1.97s / 2.04s |
+| 本批次改动后 | 2.35s / 2.85s |
+
+CI 的 runner 更慢,这段余量就变成了超时。
+
+根因**不在产品代码而在测试替身**。`stub-layout.ts` 的 `layoutRects()` 在**每一次**
+`getBoundingClientRect()` 上重建整张矩形表,而且用的是 `document.querySelectorAll` 与
+`:scope >` 后代查询——每次调用的代价正比于**节点数**而不是行数。dnd-kit 在拖动中持续测量,
+一次拖动要付上千次;而这一批恰好给每行加了一个折叠着的菜单,**那十几个 `<option>` 于是被每一次
+测量都数一遍**。
+
+改为直接读子元素(`children`)而不是查询后代,每次调用重新正比于行数。DOM 变大的前提下该用例回到
+**1.91s / 1.93s / 2.10s**,与基线持平甚至略好。**没有跳过、放宽或重设任何用例的超时**,改的只是
+helper 的遍历方式,断言与布局语义一字未动。
+
+### 13.5 本节提交
 
 ```text
 feat(web): remove a channel or a group from the order list
 feat(web): fold the row controls into one menu on a narrow column
 docs: record the row delete button and the narrow-column menu
+test(web): keep the layout stub proportional to the rows it lays out
 ```
