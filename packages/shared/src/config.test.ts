@@ -272,8 +272,8 @@ describe('migrateAppConfig', () => {
     ]);
   });
 
-  it('splits a group whose members were not next to each other', () => {
-    // Version 1 never promised contiguity, so this is what a hand-edited file could hold.
+  it('splits a group whose members were not next to each other, giving each block an id', () => {
+    // Version 1 never required contiguity and the mixer drew such a group as two sections.
     const items = migratedItems({
       channels: [
         { kind: 'channel', name: 'BASS', groupId: 'g1' },
@@ -281,12 +281,56 @@ describe('migrateAppConfig', () => {
         { kind: 'channel', name: 'GTR', groupId: 'g1' },
       ],
       groups: [{ id: 'g1', name: 'Rhythm' }],
-    }) as { type: string; id?: string; channels?: { name: string }[] }[];
+    }) as { type: string; id?: string; groupId?: string; channels?: { name: string }[] }[];
     expect(items.map((item) => item.type)).toEqual(['group', 'channel', 'group']);
     expect(items[0]?.channels?.map((c) => c.name)).toEqual(['BASS']);
     expect(items[2]?.channels?.map((c) => c.name)).toEqual(['GTR']);
-    // Both blocks keep the id, so the result no longer passes the duplicate-id refinement.
-    expect(items[2]?.id).toBe('g1');
+    // Two blocks cannot share an id: the second run gets one of its own, and the bookkeeping
+    // key the migration used to pair them up does not leak into the result.
+    expect(items[0]?.id).toBe('g1');
+    expect(items[2]?.id).toBe('g1-2');
+    expect(items.every((item) => item.groupId === undefined)).toBe(true);
+  });
+
+  it('keeps a split group clear of ids the file already uses', () => {
+    const items = migratedItems({
+      channels: [
+        { kind: 'channel', name: 'A', groupId: 'g1' },
+        { kind: 'main', name: 'Main' },
+        { kind: 'channel', name: 'B', groupId: 'g1' },
+        { kind: 'sub', name: 'Sub' },
+        { kind: 'channel', name: 'C', groupId: 'g1' },
+      ],
+      groups: [
+        { id: 'g1', name: 'Rhythm' },
+        // A group already called g1-2 would collide with the obvious choice of name.
+        { id: 'g1-2', name: 'Decoy' },
+      ],
+    }) as { id?: string }[];
+    expect(items.map((item) => item.id)).toEqual([
+      'g1',
+      undefined,
+      'g1-3',
+      undefined,
+      'g1-4',
+      'g1-2',
+    ]);
+  });
+
+  it('never migrates a version 1 config into one the schema would throw away', () => {
+    // A duplicate id fails the refinement, and ConfigStore answers that by replacing the whole
+    // file with defaults - every view and the Ember endpoint with it.
+    const parsed = appConfigSchema.safeParse(
+      legacyConfig({
+        channels: [
+          { kind: 'channel', name: 'BASS', groupId: 'g1' },
+          { kind: 'main', name: 'Main' },
+          { kind: 'channel', name: 'GTR', groupId: 'g1' },
+        ],
+        groups: [{ id: 'g1', name: 'Rhythm' }],
+      }),
+    );
+    expect(parsed.success).toBe(true);
   });
 
   it('appends groups nobody referenced, in their stored order', () => {

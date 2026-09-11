@@ -333,6 +333,31 @@ describe('settings group colours', () => {
     expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.red);
   });
 
+  it('keeps the drag clone on the colour the row was picked up with', async () => {
+    const page = await openSettings([
+      {
+        id: 'v1',
+        name: 'Stage',
+        // A teal group above a loose row: the clone must stay teal while it is dragged out.
+        items: [grp({ ...RHYTHM, color: 'teal' }, [{ ...MAIN, color: 'group' }]), row(BASS)],
+      },
+    ]);
+    const overlayAccent = () =>
+      (document.querySelector('.drag-overlay') as HTMLElement | null)?.style.getPropertyValue(
+        '--channel-row-accent',
+      );
+
+    await pickUp(page.handle('MAIN'));
+    expect(overlayAccent()).toBe(CHANNEL_PALETTE.teal);
+
+    // Previewing it out of the group moves a different row to the index it was picked up at;
+    // the clone must still read the group MAIN came from, not whatever sits there now.
+    await press('ArrowDown');
+    await waitFor(() => expect(page.memberNames('g1')).toEqual([]));
+    expect(overlayAccent()).toBe(CHANNEL_PALETTE.teal);
+    await press('Escape');
+  });
+
   it('paints the mixer group section with the same dominant colour', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([

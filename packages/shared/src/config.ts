@@ -183,6 +183,21 @@ function migrateLegacyView(input: unknown): unknown {
     }
   }
 
+  // Version 1 never required a group's members to be adjacent, and the mixer drew such a group
+  // as two sections. Two blocks cannot share an id here, so the second run onwards gets one of
+  // its own - taken well clear of every id the file already uses, since a duplicate would fail
+  // validation and send the whole config back to defaults.
+  const taken = new Set(groups.keys());
+  const freshId = (base: string): string => {
+    for (let suffix = 2; ; suffix += 1) {
+      const candidate = `${base}-${suffix}`;
+      if (!taken.has(candidate)) {
+        taken.add(candidate);
+        return candidate;
+      }
+    }
+  };
+
   const items: Record<string, unknown>[] = [];
   const placed = new Set<string>();
   for (const entry of view.channels) {
@@ -192,12 +207,18 @@ function migrateLegacyView(input: unknown): unknown {
       continue;
     }
     const last = items[items.length - 1];
-    if (last?.type === 'group' && last.id === groupId) {
+    if (last?.type === 'group' && last.groupId === groupId) {
       (last.channels as Record<string, unknown>[]).push(reference);
       continue;
     }
+    const id = placed.has(groupId) ? freshId(groupId) : groupId;
     placed.add(groupId);
-    items.push({ ...groups.get(groupId), type: 'group', channels: [reference] });
+    // `groupId` tracks which version 1 group this block came from, so a later run of the same
+    // group joins the right block; it is dropped before the item is handed on.
+    items.push({ ...groups.get(groupId), type: 'group', id, groupId, channels: [reference] });
+  }
+  for (const item of items) {
+    delete item.groupId;
   }
   for (const [id, group] of groups) {
     if (!placed.has(id)) {
