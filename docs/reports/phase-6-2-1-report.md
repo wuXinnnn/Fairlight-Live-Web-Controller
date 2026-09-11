@@ -173,7 +173,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 - **旧数据的颜色升级**:已保存的旧 view 里组内没有颜色的引用不做批量迁移,但它**跨组移动或移出组一次后**会按规则升级为 `'group'` / `AUTO`,表现为一次「看起来没动却变脏」的编辑。这是规则作用于它,不是迁移;已在 `docs/architecture.md` 与 `view-order.test.ts` 中写明。
 - **一条既有用例在高并发下会超时(非本批次引入)**:`apps/web/tests/settings-dirty.integration.test.tsx` 的 `shows the three dirty indicators until a save succeeds and keeps them when it fails` 在本容器上以 `pnpm test` 同时跑四个包时约 5.0–5.5s 触发 vitest 默认的 5s 超时。证据:(1) `pnpm --filter @flwc/web test` 单独跑连续三次 273/273 全绿;(2) 在本批次基线提交 `c3ecab3` 上执行同一条 `pnpm test`,同一条用例以同样方式失败(245/246);(3) 远端 CI 在 `132cdbd` 与 `2569b16` 两次 `success`。故判定为该用例本身对机器负载敏感,未在本批次中修改它(它属 6.2 且提示词要求既有测试不得删改)。若后续频繁困扰,可给该用例单独放宽 `testTimeout`,由用户决定。
 - **建议回写文档**:无踩坑类条目需要写入 `docs/fairlight-ember.md`;本批次架构变化已写入 `docs/architecture.md`。
-- **`docs/development-plan.md` 的 6.2 与 6.2.1 验收框未勾选**,由用户在真机验收后处理。
+- **`docs/development-plan.md` 的 6.2 与 6.2.1 验收框**已在真机验收后由用户勾选(合并后的文档提交)。
 
 ## 10. 评审后的修订
 
@@ -189,22 +189,35 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 
 ## 11. 提交记录
 
-分支 `claude/phase-6-2-1-4pm0av`(基于 `c3ecab3 docs: add the Phase 6.2.1 follow-up batch and its execution prompt`),本批次新增提交:
+分支 `claude/phase-6-2-1-4pm0av`(基于 `c3ecab3 docs: add the Phase 6.2.1 follow-up batch and its execution prompt`),从旧到新共 21 个提交:
 
 ```text
-2f399af docs: record the pre-existing timeout seen under a parallel test run
-4433ea1 docs: add the Phase 6.2.1 execution report
-2569b16 fix(web): let the empty-view drop slot take the space the list has left
-132cdbd feat: give groups a colour and let channels follow it
-d21cd31 feat(web): collapse and expand groups in the view editor
-2b0a6a6 feat(web): let an empty view accept the first dragged channel
-3170af4 feat(web): animate the settings list during drag previews and speed it up
 c796a62 refactor(web): drive settings drag and drop with mouse and touch sensors
+3170af4 feat(web): animate the settings list during drag previews and speed it up
+2b0a6a6 feat(web): let an empty view accept the first dragged channel
+d21cd31 feat(web): collapse and expand groups in the view editor
+132cdbd feat: give groups a colour and let channels follow it
+2569b16 fix(web): let the empty-view drop slot take the space the list has left
+4433ea1 docs: add the Phase 6.2.1 execution report
+2f399af docs: record the pre-existing timeout seen under a parallel test run
+9bdb8b7 fix(web): reveal a group when a channel is assigned into it
+bb029d9 adjust(web): DnD Touch Delay
+c07dbf3 docs: align the report with the tuned touch delay
+07101af feat(web): label the group colour choice GRP instead of a swatch
+0a84143 refactor(web): share one palette control between rows and group headers
+d2560c5 feat(web): let the views column narrow with the viewport
+504eca6 feat(web): keep settings rows on one line as the column narrows
+7328cbc docs: record the settings page responsive pass
+80fb8eb feat(web): remove a channel or a group from the order list
+adc178b feat(web): fold the row controls into one menu on a narrow column
+a1ac4bd docs: record the row delete button and the narrow-column menu
+1f82dff test(web): keep the layout stub proportional to the rows it lays out
+72ad794 docs: record the CI timeout and the layout-stub fix
 ```
 
-评审后追加(第 10 节):`fix(web): reveal a group when a channel is assigned into it`,以及用户的真机调参提交 `adjust(web): DnD Touch Delay`。
+前 8 个是提示词范围的交付,`9bdb8b7` 是评审后的修订(第 10 节),`bb029d9` 是用户的真机调参,其余为两轮真机验收后的 UX 调整(第 12、13 节)。以上提交经 PR #16 squash 合并到 `main`(`0b5d115`)。
 
-不含本报告本身,合计 34 个文件、+1626 / −186 行。
+含本报告与 `docs/architecture.md`,合计 40 个文件、+2952 / −254 行。
 
 ## 12. 真机验收后的 UX 调整
 
@@ -271,11 +284,12 @@ saved: groups [["Rhythm","purple"]] ; colours [...,["MIC","g","group"],["MIC-REV
 ### 12.5 本节提交
 
 ```text
-docs: align the report with the tuned touch delay
-feat(web): label the group colour choice GRP instead of a swatch
-refactor(web): share one palette control between rows and group headers
-feat(web): let the views column narrow with the viewport
-feat(web): keep settings rows on one line as the column narrows
+c07dbf3 docs: align the report with the tuned touch delay
+07101af feat(web): label the group colour choice GRP instead of a swatch
+0a84143 refactor(web): share one palette control between rows and group headers
+d2560c5 feat(web): let the views column narrow with the viewport
+504eca6 feat(web): keep settings rows on one line as the column narrows
+7328cbc docs: record the settings page responsive pass
 ```
 
 ## 13. 第二轮真机验收后的 UX 调整
@@ -408,8 +422,9 @@ helper 的遍历方式,断言与布局语义一字未动。
 ### 13.5 本节提交
 
 ```text
-feat(web): remove a channel or a group from the order list
-feat(web): fold the row controls into one menu on a narrow column
-docs: record the row delete button and the narrow-column menu
-test(web): keep the layout stub proportional to the rows it lays out
+80fb8eb feat(web): remove a channel or a group from the order list
+adc178b feat(web): fold the row controls into one menu on a narrow column
+a1ac4bd docs: record the row delete button and the narrow-column menu
+1f82dff test(web): keep the layout stub proportional to the rows it lays out
+72ad794 docs: record the CI timeout and the layout-stub fix
 ```
