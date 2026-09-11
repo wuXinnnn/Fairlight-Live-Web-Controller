@@ -170,7 +170,16 @@
 | `apps/server/src/config/config-store.test.ts` | `{version:2}` → `{version:3}`;`save` 版本 2;新增 v1→v2 用例 | **本地未运行** |
 | `apps/server/src/api/views.test.ts` | 全部 7 例夹具改 `items`;`persisted.version` 1→2;旧写入体由「被迁移」改为「被 400 拒绝」 | **本地未运行** |
 
-## 10. 遗留问题与移交事项
+## 10. 评审后的修订
+
+**Cursor Bugbot 在第一次推送后报了两条,都属实,已由 `666d88e` 修复。**
+
+- **High — 非连续同组的迁移会清空配置**。版本 1 从不要求同组成员连续(旧 `checkViewGroups` 没有这条,文档也写着「不强制连续」,混音页会把它画成两段),而我的迁移把这样一个组拆成两个**共用同一个 `id`** 的块。`checkViewItems` 随即因重复 id 拒绝整份配置,`ConfigStore.load` 的回退把**所有 view 与 Ember 端点一起换成默认值**——用户第一次启动新版本就丢全部配置。我在写那条用例时甚至注释了「两个块都保留 id,所以结果过不了重复 id 校验」,却没往下想一步到 `load` 的回退,这是我的疏忽。现在第二段起分配一个不与文件中任何已用 id 冲突的新 id(`g1` → `g1-2`,若 `g1-2` 已被占用则继续往后),视觉分段与版本 1 一致。补了三条用例:拆分后的 id、与既有 id 的冲突回避,以及「版本 1 配置迁移后必须能通过 schema」这条兜底断言。
+- **Medium — 拖动克隆取错了组**。克隆从 `startView` 按起拖下标取引用,却拿同一个下标去问**预览视图**的组。预览一旦挪动过行,那个下标上已经是别的行,于是跟随组色的行在拖动途中可能变成另一个组的颜色或没有颜色。现在在下标所属的那个视图(`startView`)里解析组,再用组 id 到当前视图里取(改名/改色仍然跟手)。新增集成用例「克隆保持拾起时的颜色」——把修复移除后该用例确实变红(`#d95f63` 而非 `#3fa9a3`),证明它守得住。
+
+两条都是**本地跑不了 server 依赖、也跑不了浏览器冒烟**之外的另一类补网:静态评审。第一条尤其说明「迁移的失败模式」值得单独断言,而不是只断言迁移的成功路径。
+
+## 11. 遗留问题与移交事项
 
 - **`apps/server` / `packages/test-utils` 的依赖在本会话装不上**。`pnpm install --frozen-lockfile` 在 `emberplus-connection` → `asn1`(`https://codeload.github.com/evs-broadcast/node-asn1/tar.gz/0146823…`)上 403。6.2 报告第 7 节的绕行办法(`git clone` 打本地 tarball → 临时改 lockfile → 安装 → 还原 lockfile)在本会话被沙箱分类器判为 *Package Registry Bypass* 并拒绝;我没有尝试绕过。**后果**:server 的两个测试文件从未在本地运行,浏览器冒烟完全没做。如果希望后续云端会话能跑全量,需要用户为该操作放行,或在环境里预置该 tarball。
 - **提示词第 1 节要求的「修复前/修复后埋点对比」没有产出**。这是本批次唯一一项完全缺失的验收证据。jsdom 本身也复现不了这个 bug(它不跑 CSS transition,补间的中间态不存在),所以集成测试只能守住「每跨一行恰好一次补间」这条不变式,不能证明修复前会失败。**修复的正确性在本会话只由单元测试与推导支撑,观感与真实计时请在真机上按第 5 节第 2 步重点确认。**
@@ -180,7 +189,7 @@
 - **无需回写 `docs/fairlight-ember.md`**:本批次没有 Ember+ 踩坑条目。
 - **`docs/development-plan.md` 的 6.2.2 验收框**留给用户在真机验收后勾选。
 
-## 11. 提交记录
+## 12. 提交记录
 
 | 提交 | 说明 |
 | --- | --- |
@@ -194,6 +203,7 @@
 | `202a48a` | `fix(shared): keep the group a legacy reference named when migrating it`(远端 CI 发现,见下) |
 | `42d3704` | `docs: add the Phase 6.2.2 execution report` |
 | `5b12f48` | `test(web): give the heaviest drag case room on a loaded runner` |
+| `666d88e` | `fix: keep a split legacy group valid and the drag clone on its own colour`(评审机器人发现,见第 10 节) |
 
 第一次推送后远端 CI 的 `apps/server` 测试报出一处**真实缺陷**:`migrateLegacyChannelRef` 按已知字段重建引用对象时把 `groupId` 丢掉了,于是版本 1 文件里「旧引用形状 + 归属某个组」的条目迁移后会失去分组。该形状早于分组功能,正常写出的文件不会同时具备两者,但手改过的文件可以。已由 `202a48a` 修复并在 shared 补了用例(覆盖率仍 100%)。**这正是本地装不上 server 依赖所漏掉的那一类问题**,如实记录。
 
