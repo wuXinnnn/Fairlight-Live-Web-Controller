@@ -10,7 +10,7 @@ export const MOUSE_ACTIVATION_DISTANCE_PX = 4;
  * Press duration, in milliseconds, a finger must rest on a drag handle before the touch becomes
  * a drag. Below it the gesture stays with the page, so a flick still scrolls the list.
  */
-export const TOUCH_ACTIVATION_DELAY_MS = 150;
+export const TOUCH_ACTIVATION_DELAY_MS = 100;
 
 /**
  * Finger movement, in CSS pixels, tolerated while the touch delay runs. Moving further reads as

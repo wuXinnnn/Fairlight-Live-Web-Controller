@@ -56,7 +56,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 | 常量 | 值 | 文件 | 用途 |
 | --- | --- | --- | --- |
 | `MOUSE_ACTIVATION_DISTANCE_PX` | 4 | `apps/web/src/features/settings/dnd-config.ts` | `MouseSensor` 激活距离(CSS px);由 `POINTER_ACTIVATION_DISTANCE_PX` 更名而来,值未变 |
-| `TOUCH_ACTIVATION_DELAY_MS` | **150**(交付初值 250,用户真机调整,见第 10 节) | 同上 | `TouchSensor` 按压延迟(ms) |
+| `TOUCH_ACTIVATION_DELAY_MS` | **100**(交付初值 250,用户真机两次调整,见第 10 节) | 同上 | `TouchSensor` 按压延迟(ms) |
 | `TOUCH_ACTIVATION_TOLERANCE_PX` | 8 | 同上 | `TouchSensor` 按压期间容差(CSS px),6.4 调参 |
 | `DROP_ANIMATION_MS` | **150**(新增) | 同上 | `DragOverlay` 落下动画时长 |
 | `FLIP_DURATION_MS` | **120**(新增) | `apps/web/src/features/settings/use-flip-list.ts` | 行位移补间时长;`FLIP_TRANSITION` 直接用它,不再挂 `--motion-medium` |
@@ -94,7 +94,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 触屏路径(平板;**本批次的重点**,手感数值调参仍属 6.4):
 
 1. 用手指在列表空白处上下滑动。预期:页面/列表正常滚动。
-2. 手指按在某行把手上**不动**约 `TOUCH_ACTIVATION_DELAY_MS`(当前 150ms)直到该行变半透明,再拖到目标位置松开。预期:能起拖,落点语义与鼠标相同。**6.2 上这一步是做不到的**(指针传感器抢先接管)。
+2. 手指按在某行把手上**不动**约 `TOUCH_ACTIVATION_DELAY_MS`(当前 100ms)直到该行变半透明,再拖到目标位置松开。预期:能起拖,落点语义与鼠标相同。**6.2 上这一步是做不到的**(指针传感器抢先接管)。
 3. 手指按在把手上后**立刻**滑动(超过约 8px)。预期:不起拖。注意:把手上有 `touch-action: none`,所以这一下也不会滚动列表——手势相当于被丢弃(见第 8 节);请记录这是否影响手感。
 4. 长按组头把手整组移动;从左侧长按可用通道把手拖入右侧;长按折叠组的组头拖一个通道进去。
 5. 记录:按压延迟与 8px 容差是否合适(`dnd-config.ts` 的 `TOUCH_ACTIVATION_DELAY_MS` / `TOUCH_ACTIVATION_TOLERANCE_PX`),留给 6.4 调整。
@@ -167,7 +167,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 ## 9. 遗留问题与移交事项
 
 - **用户需完成第 5 节真机验收**,重点是触屏长按起拖(本批次的核心修正)、拖动中的行补间观感与 120ms / 150ms 两个时长、颜色在两个页面是否一致。
-- **留给 6.4**:`TOUCH_ACTIVATION_DELAY_MS` 已由用户在真机上调为 150(见第 10 节),`TOUCH_ACTIVATION_TOLERANCE_PX` 的调参仍属 6.4;上面提到的 `touch-action: none` 与容差语义矛盾一并在 6.4 处理;把手 `:hover` 样式待包进 `@media (hover: hover)`;新增的 `.group-collapse:hover` 同理。
+- **留给 6.4**:`TOUCH_ACTIVATION_DELAY_MS` 已由用户在真机上调为 100(见第 10 节),`TOUCH_ACTIVATION_TOLERANCE_PX` 的调参仍属 6.4;上面提到的 `touch-action: none` 与容差语义矛盾一并在 6.4 处理;把手 `:hover` 样式待包进 `@media (hover: hover)`;新增的 `.group-collapse:hover` 同理。
 - **留给 6.3**:组头现在有 9 列(把手、折叠、序号、accent、组名、计数、箭头、`UNGROUP`、`GROUP COLOR`),窄屏排布已同步两处断点,但页头压缩时需一并复核。
 - **键盘路径的已知限制**(6.2 已记录,本批次未变):键盘落下恒为「落在 over 行之前」,要把通道放到某组末尾仍需先落入组内再用箭头或 `GROUP` 下拉。
 - **旧数据的颜色升级**:已保存的旧 view 里组内没有颜色的引用不做批量迁移,但它**跨组移动或移出组一次后**会按规则升级为 `'group'` / `AUTO`,表现为一次「看起来没动却变脏」的编辑。这是规则作用于它,不是迁移;已在 `docs/architecture.md` 与 `view-order.test.ts` 中写明。
@@ -185,7 +185,7 @@ Phase 6.2.1 云端范围已全部完成:传感器由 `PointerSensor + TouchSenso
 
 > 中途试过在 `SettingsPage` 用 `useEffect` 把折叠集合按草稿裁剪(「没有成员的组不可折叠」),被 `react-hooks/set-state-in-effect` 拒绝——该规则是对的,这里本来就不需要 effect。最终的入组即展开既符合 lint,也与既有语义一致。
 
-**真机调参(`bb029d9`,用户提交)**:用户在平板上验收后把 `TOUCH_ACTIVATION_DELAY_MS` 由交付初值 250 调整为 **150**,这正是第 5 节第 2、5 步与第 9 节留给真机的那项调参;调整理由由用户掌握,此处只记录结果。`TOUCH_ACTIVATION_TOLERANCE_PX` 维持 8。两个触屏用例读的是常量而非字面量,改值后无需改测试;该 head 上 `ci` ×2 与 Cursor Bugbot 均为 success。第 4 节的表已同步为当前值。
+**真机调参(`bb029d9`,用户提交)**:用户在平板上验收后把 `TOUCH_ACTIVATION_DELAY_MS` 由交付初值 250 调整为 **150**,这正是第 5 节第 2、5 步与第 9 节留给真机的那项调参;调整理由由用户掌握,此处只记录结果。`TOUCH_ACTIVATION_TOLERANCE_PX` 维持 8。两个触屏用例读的是常量而非字面量,改值后无需改测试;该 head 上 `ci` ×2 与 Cursor Bugbot 均为 success。合并后用户在真机上再调为 **100**,连同开发机 `vite.config.ts` 的 `host: '0.0.0.0'`(局域网平板访问 dev server)一起直接提交到 `main`。第 4 节的表已同步为当前值。
 
 ## 11. 提交记录
 
