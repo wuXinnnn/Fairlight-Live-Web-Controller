@@ -9,7 +9,7 @@ import {
 } from '@flwc/shared';
 import type { CSSProperties, ReactNode } from 'react';
 import { CHANNEL_PALETTE, groupAccent } from '../mixer/channel-colors.js';
-import { leadChannelKind, type ResolvedViewChannel } from '../mixer/view-resolver.js';
+import type { ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { PALETTE_LABELS, pad } from './channel-labels.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
@@ -103,7 +103,7 @@ function GroupHeader({
       id: 'auto',
       value: undefined,
       ariaLabel: `Group ${group.name} use automatic color`,
-      title: "First member's type",
+      title: 'Most common member type',
       text: 'AUTO',
       selected: group.color === undefined,
     },
@@ -223,7 +223,6 @@ function GroupHeader({
 /** A group with members: a sortable block in the root list and a drop container for channels. */
 export function SortableGroupBlock(props: GroupBlockProps) {
   const { group, entries, rowKeys, itemIds, saving, collapsed, renderRow } = props;
-  const leadKind = leadChannelKind(entries);
   const membersId = `view-group-${group.id}-members`;
   const {
     attributes,
@@ -253,7 +252,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
   });
   const isDropTarget = useIsDropTarget(group.id);
   const style = {
-    '--channel-row-accent': groupAccent(group, leadKind),
+    '--channel-row-accent': groupAccent(group),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;
@@ -330,7 +329,7 @@ export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowK
   });
   const isDropTarget = useIsDropTarget(group.id);
   const style = {
-    '--channel-row-accent': groupAccent(group, undefined),
+    '--channel-row-accent': groupAccent(group),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;

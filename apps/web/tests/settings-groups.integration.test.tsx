@@ -18,6 +18,7 @@ const snapshot: MixerSnapshot = {
     { id: 'main/1', kind: 'main', name: 'MAIN', levelDb: -6, muted: false, meterDb: -20 },
     { id: 'aux/1', kind: 'aux', name: 'FX', levelDb: -8, muted: true, meterDb: -40 },
     { id: 'sub/1', kind: 'sub', name: 'SUB', levelDb: -10, muted: false, meterDb: -35 },
+    { id: 'aux/2', kind: 'aux', name: 'REV', levelDb: -14, muted: false, meterDb: -45 },
   ],
   loudness: { integratedLufs: -23, truePeakDbtp: -3 },
   connection: 'connected',
@@ -27,6 +28,7 @@ const BASS = { kind: 'channel', name: 'BASS', channelId: 'channel/1' } as const;
 const MAIN = { kind: 'main', name: 'MAIN', channelId: 'main/1' } as const;
 const FX = { kind: 'aux', name: 'FX', channelId: 'aux/1' } as const;
 const SUB = { kind: 'sub', name: 'SUB', channelId: 'sub/1' } as const;
+const REV = { kind: 'aux', name: 'REV', channelId: 'aux/2' } as const;
 const RHYTHM = { id: 'g1', name: 'Rhythm' };
 
 async function openSettings(views: View[]) {
@@ -301,7 +303,55 @@ describe('settings group colours', () => {
     ]);
   });
 
-  it('clears a group colour back to its first present member', async () => {
+  it('colours a group by the kind most of its members are', async () => {
+    const page = await openSettings([
+      {
+        id: 'v1',
+        name: 'Stage',
+        // One main against two auxes: the auxes have it.
+        items: [
+          grp(RHYTHM, [
+            { ...MAIN, color: 'group' },
+            { ...FX, color: 'group' },
+            { ...REV, color: 'group' },
+          ]),
+        ],
+      },
+    ]);
+    const header = page.container.querySelector('[data-view-group-id="g1"]') as HTMLElement;
+    expect(header.style.getPropertyValue('--channel-row-accent')).toBe(CHANNEL_PALETTE.navy);
+    // Every row following the group reads the same answer.
+    expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.navy);
+    expect(accentOf(rowOf(page.container, 'FX'))).toBe(CHANNEL_PALETTE.navy);
+
+    // Take one aux out: one main against one aux is a tie, and main comes first.
+    await pickUp(page.handle('REV'));
+    await press('ArrowDown');
+    await press('Space');
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'FX']));
+    expect(header.style.getPropertyValue('--channel-row-accent')).toBe(CHANNEL_PALETTE.red);
+    expect(accentOf(rowOf(page.container, 'MAIN'))).toBe(CHANNEL_PALETTE.red);
+  });
+
+  it('paints the mixer group section with the same dominant colour', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      {
+        id: 'v1',
+        name: 'Stage',
+        items: [grp(RHYTHM, [MAIN, FX, REV])],
+      },
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'v1' },
+    });
+    const section = container.querySelector('[data-view-group-id="g1"]') as HTMLElement;
+    expect(section.style.getPropertyValue('--channel-accent')).toBe(CHANNEL_PALETTE.navy);
+  });
+
+  it('clears a group colour back to the kind most of its members are', async () => {
     const page = await openSettings([
       {
         id: 'v1',

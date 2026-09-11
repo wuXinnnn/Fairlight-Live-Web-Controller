@@ -3,7 +3,6 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   CHANNEL_PALETTE_KEYS,
   viewGroups,
-  type ChannelKind,
   type View,
   type ViewChannelColor,
   type ViewGroup,
@@ -38,8 +37,6 @@ interface SortableChannelRowProps extends ChannelRowHandlers {
   dragging: boolean;
   /** The group this row belongs to, when it has one; its colour is what GROUP follows. */
   group?: ViewGroup;
-  /** Kind of the group's first present member, which is what a group without a colour takes. */
-  groupLeadKind?: ChannelKind;
 }
 
 /** One channel reference of the view: sortable inside its list, with the row's own controls. */
@@ -52,7 +49,6 @@ export function SortableChannelRow({
   saving,
   dragging,
   group,
-  groupLeadKind,
   onMoveChannel,
   onAssignGroup,
   onSetColor,
@@ -84,7 +80,7 @@ export function SortableChannelRow({
     transition: null,
   });
   const style = {
-    '--channel-row-accent': channelAccent(kind, reference.color, group, groupLeadKind),
+    '--channel-row-accent': channelAccent(kind, reference.color, group),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;

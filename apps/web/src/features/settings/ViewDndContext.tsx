@@ -456,7 +456,7 @@ export function ViewDndContext({
         return {
           variant,
           label,
-          accent: channelAccent(kind, reference?.color, group, undefined),
+          accent: channelAccent(kind, reference?.color, group),
           detail: KIND_LABELS[kind],
         };
       }
@@ -466,7 +466,7 @@ export function ViewDndContext({
         return {
           variant,
           label,
-          accent: groupAccent(group, undefined),
+          accent: groupAccent(group),
           detail: `${pad(group?.channels.length ?? 0)} CH`,
         };
       }
