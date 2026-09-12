@@ -66,7 +66,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
     listRef,
     flipRef,
   } = props;
-  const { dragging, sourceKind, source, preview } = useDragPreview();
+  const { dragging, sourceKind, source, preview, removing } = useDragPreview();
   const view = preview?.view ?? props.view;
   // The tween runs on the view that is actually rendered, so a drag preview animates too, and
   // collapsing a group shifts every row below it.
@@ -175,7 +175,8 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
   ) : null;
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
-      <ol className="view-channel-list" ref={listRef}>
+      {/* Releasing outside the list removes the dragged item; its placeholder says so. */}
+      <ol className={`view-channel-list ${removing ? 'is-removing' : ''}`} ref={listRef}>
         {view.items.length === 0 && !dragging && (
           <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>
         )}

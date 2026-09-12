@@ -2515,6 +2515,13 @@ html.fader-cap-dragging * {
   background: #171610;
 }
 
+/* The pointer has left the list: releasing removes the item, so its placeholder turns red. */
+.view-channel-list.is-removing .channel-order-row.is-dragging,
+.view-channel-list.is-removing .view-group.is-dragging {
+  outline-color: var(--red);
+  background: #2a1716;
+}
+
 .channel-order-row.is-placeholder {
   grid-template-columns: auto auto auto minmax(7rem, 1fr);
 }

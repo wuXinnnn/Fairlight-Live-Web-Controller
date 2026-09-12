@@ -12,6 +12,7 @@ import { pointerDown, pointerMoveTo, pointerUp } from './pointer-drag.js';
 import { advanceTouchDelay, touchEnd, touchMove, touchStart } from './touch-drag.js';
 import { STUB_LIST_PADDING, STUB_ROW_HEIGHT, stubListLayout } from './stub-layout.js';
 import {
+  REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
   VIEW_MEASURING,
@@ -760,6 +761,61 @@ describe('settings drag and drop (mouse sensor)', () => {
     expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']);
     expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('');
     expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN, FX]), row(SUB), row(BASS)]);
+  });
+
+  /** A point below the list by more than the distance that reads as taking the item out of it. */
+  const outsideTheList = (list: HTMLElement) =>
+    list.getBoundingClientRect().bottom + REMOVE_DRAG_THRESHOLD_PX + STUB_ROW_HEIGHT;
+
+  it('marks the placeholder of a row taken out of the list and removes it on release', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pointerDown(page.handle('MAIN'), X, rowY(1, 0.5));
+    await pointerMoveTo(X, rowY(1, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('MAIN'));
+    const away = outsideTheList(page.list());
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    expect(document.querySelector('.drag-overlay')).toHaveTextContent('DROP TO REMOVE');
+    const placeholder = page.list().querySelector('.channel-order-row.is-dragging') as HTMLElement;
+    expect(placeholder.dataset.orderedChannelName).toBe('MAIN');
+
+    // Back inside the list it is an ordinary drag again, and the placeholder an ordinary one.
+    await pointerMoveTo(X, rowY(1, 0.5));
+    await waitFor(() => expect(page.list()).not.toHaveClass('is-removing'));
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    await pointerUp(X, away);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'FX']));
+    expect(screen.getByRole('checkbox', { name: /MAIN/ })).not.toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS), row(FX)]);
+  });
+
+  it('takes a whole group out of the list with its members', async () => {
+    const page = await openSettings({
+      id: 'grouped',
+      name: 'Grouped',
+      items: [grp(RHYTHM, [MAIN, FX]), row(BASS)],
+    });
+    await pointerDown(page.handle('group Rhythm'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() =>
+      expect(document.querySelector('.drag-overlay')).toHaveTextContent('Rhythm'),
+    );
+    const away = outsideTheList(page.list());
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    expect(page.list().querySelector('.view-group.is-dragging')).not.toBeNull();
+
+    await pointerUp(X, away);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    expect(await page.savedItems()).toEqual([row(BASS)]);
   });
 });
 
