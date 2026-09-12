@@ -17,12 +17,21 @@ export interface FlipRecorder {
 
 export function recordFlipWrites(root: HTMLElement): FlipRecorder {
   const seen: FlipWrite[] = [];
+  const latest = new Map<HTMLElement, string>();
   const take = (records: MutationRecord[]): void => {
     for (const record of records) {
       const element = record.target as HTMLElement;
+      const transform = element.style.transform;
+      // The hook writes `transition` and `transform` separately, so one tween shows up as
+      // several style mutations carrying the same transform. Only record it when it changes,
+      // or counting tweens would count the writes around them too.
+      if (latest.get(element) === transform) {
+        continue;
+      }
+      latest.set(element, transform);
       seen.push({
         key: element.getAttribute('data-flip-key') ?? '',
-        transform: element.style.transform,
+        transform,
       });
     }
   };

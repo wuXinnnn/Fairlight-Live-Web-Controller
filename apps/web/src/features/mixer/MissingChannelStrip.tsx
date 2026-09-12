@@ -1,4 +1,4 @@
-import type { ChannelKind, ViewChannelRef, ViewGroup } from '@flwc/shared';
+import type { ViewChannelRef, ViewGroup } from '@flwc/shared';
 import type { CSSProperties } from 'react';
 import { channelAccent } from './channel-colors.js';
 
@@ -8,8 +8,6 @@ interface MissingChannelStripProps {
   className?: string;
   /** The group the reference belongs to, so a colour of `'group'` still resolves. */
   group?: ViewGroup;
-  /** Kind of the group's first present member. */
-  groupLeadKind?: ChannelKind;
 }
 
 export function MissingChannelStrip({
@@ -17,7 +15,6 @@ export function MissingChannelStrip({
   index,
   className,
   group,
-  groupLeadKind,
 }: MissingChannelStripProps) {
   return (
     <article
@@ -26,7 +23,7 @@ export function MissingChannelStrip({
       style={
         {
           '--strip-index': index,
-          '--channel-accent': channelAccent(reference.kind, reference.color, group, groupLeadKind),
+          '--channel-accent': channelAccent(reference.kind, reference.color, group),
         } as CSSProperties
       }
     >

@@ -7,6 +7,7 @@ import { resetMixerStore } from '../src/store/mixer-store.js';
 import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
 /*
  * The delete button beside every row and group header, and the menu every control of a row folds
@@ -61,12 +62,11 @@ async function openSettings(view: View) {
   return { container, orderedNames, memberNames, menu, pick, itemsOf, save };
 }
 
-const loose: View = { id: 'v1', name: 'Stage', channels: [BASS, MAIN, FX], groups: [] };
+const loose: View = { id: 'v1', name: 'Stage', items: [row(BASS), row(MAIN), row(FX)] };
 const grouped: View = {
   id: 'v1',
   name: 'Stage',
-  channels: [{ ...BASS, groupId: 'g1' }, { ...MAIN, groupId: 'g1' }, FX],
-  groups: [RHYTHM],
+  items: [grp(RHYTHM, [BASS, MAIN]), row(FX)],
 };
 
 beforeEach(() => {
@@ -83,7 +83,7 @@ describe('settings delete button', () => {
 
     expect(page.orderedNames()).toEqual(['BASS', 'FX']);
     expect(screen.getByRole('checkbox', { name: /MAIN/ })).not.toBeChecked();
-    expect((await page.save())?.channels).toEqual([BASS, FX]);
+    expect((await page.save())?.items).toEqual([row(BASS), row(FX)]);
   });
 
   it('deletes a group together with its members', async () => {
@@ -91,9 +91,7 @@ describe('settings delete button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete group Rhythm' }));
 
     expect(page.orderedNames()).toEqual(['FX']);
-    const saved = await page.save();
-    expect(saved?.groups).toEqual([]);
-    expect(saved?.channels).toEqual([FX]);
+    expect((await page.save())?.items).toEqual([row(FX)]);
   });
 
   it('leaves the members behind when the same header is ungrouped instead', async () => {
@@ -103,9 +101,7 @@ describe('settings delete button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ungroup Rhythm' }));
 
     expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
-    const saved = await page.save();
-    expect(saved?.groups).toEqual([]);
-    expect(saved?.channels).toEqual([BASS, MAIN, FX]);
+    expect((await page.save())?.items).toEqual([row(BASS), row(MAIN), row(FX)]);
   });
 
   it('removes a missing reference, which the checklist cannot offer at all', async () => {
@@ -113,23 +109,27 @@ describe('settings delete button', () => {
     const page = await openSettings({
       id: 'v1',
       name: 'Stage',
-      channels: [BASS, ghost],
-      groups: [],
+      items: [row(BASS), row(ghost)],
     });
-    const row = page.container.querySelector('[data-ordered-channel-name="GHOST"]') as HTMLElement;
-    expect(row).toHaveTextContent('MISSING');
+    const missing = page.container.querySelector(
+      '[data-ordered-channel-name="GHOST"]',
+    ) as HTMLElement;
+    expect(missing).toHaveTextContent('MISSING');
     // Nothing in AVAILABLE CHANNELS stands for it, so unchecking is not a way out.
     expect(page.container.querySelector('[data-available-channel-id="aux/9"]')).toBeNull();
 
-    fireEvent.click(within(row).getByRole('button', { name: 'Remove GHOST' }));
+    fireEvent.click(within(missing).getByRole('button', { name: 'Remove GHOST' }));
     expect(page.orderedNames()).toEqual(['BASS']);
-    expect((await page.save())?.channels).toEqual([BASS]);
+    expect((await page.save())?.items).toEqual([row(BASS)]);
   });
 });
 
 describe('settings row menu', () => {
   it('runs the row commands the narrow column hides', async () => {
-    const page = await openSettings({ ...structuredClone(loose), groups: [RHYTHM] });
+    const page = await openSettings({
+      ...structuredClone(loose),
+      items: [...structuredClone(loose).items, grp(RHYTHM)],
+    });
 
     page.pick('BASS menu', 'move:down');
     expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
@@ -143,10 +143,10 @@ describe('settings row menu', () => {
       'is-selected',
     );
     // Joining a group moves the row to the end of that group's block, which is last here.
-    expect((await page.save())?.channels).toEqual([
-      MAIN,
-      FX,
-      { ...BASS, groupId: 'g1', color: 'lime' },
+    expect((await page.save())?.items).toEqual([
+      row(MAIN),
+      row(FX),
+      grp(RHYTHM, [{ ...BASS, color: 'lime' }]),
     ]);
 
     page.pick('BASS menu', 'delete');
@@ -154,7 +154,7 @@ describe('settings row menu', () => {
   });
 
   it('marks the choices in force and disables the moves it cannot make', async () => {
-    const page = await openSettings({ id: 'v1', name: 'Stage', channels: [BASS], groups: [] });
+    const page = await openSettings({ id: 'v1', name: 'Stage', items: [row(BASS)] });
     const options = [...page.menu('BASS menu').querySelectorAll('option')];
     const named = (text: string) => options.find((option) => option.textContent === text);
 
@@ -167,7 +167,7 @@ describe('settings row menu', () => {
 
     page.pick('BASS menu', 'color:red');
     expect(page.itemsOf('BASS menu')).toContain('• Main Red');
-    expect((await page.save())?.channels).toEqual([{ ...BASS, color: 'red' }]);
+    expect((await page.save())?.items).toEqual([row({ ...BASS, color: 'red' })]);
   });
 
   it('recolours and ungroups a group through its own menu', async () => {
@@ -179,11 +179,14 @@ describe('settings row menu', () => {
       'is-selected',
     );
     expect(page.itemsOf('Group Rhythm menu')).toContain('• Matrix Purple');
-    expect((await page.save())?.groups).toEqual([{ ...RHYTHM, color: 'purple' }]);
+    expect((await page.save())?.items).toEqual([
+      grp({ ...RHYTHM, color: 'purple' }, [BASS, MAIN]),
+      row(FX),
+    ]);
 
     page.pick('Group Rhythm menu', 'ungroup');
     expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
-    expect((await page.save())?.groups).toEqual([]);
+    expect((await page.save())?.items).toEqual([row(BASS), row(MAIN), row(FX)]);
   });
 
   it('moves and deletes a group through its own menu', async () => {
@@ -193,6 +196,6 @@ describe('settings row menu', () => {
 
     page.pick('Group Rhythm menu', 'delete');
     expect(page.orderedNames()).toEqual(['FX']);
-    expect((await page.save())?.channels).toEqual([FX]);
+    expect((await page.save())?.items).toEqual([row(FX)]);
   });
 });

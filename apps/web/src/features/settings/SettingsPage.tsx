@@ -1,4 +1,10 @@
-import { type View, type ViewChannelColor, type ViewChannelRef } from '@flwc/shared';
+import {
+  viewChannelRefs,
+  viewGroups,
+  type View,
+  type ViewChannelColor,
+  type ViewItem,
+} from '@flwc/shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -29,13 +35,16 @@ import { isViewDirty } from './view-dirty.js';
 import { ViewDndContext } from './ViewDndContext.js';
 import {
   addGroup,
+  appendChannel,
   assignGroup,
   moveChannel,
   moveGroup,
   removeChannel,
+  removeChannels,
   removeGroup,
   removeGroupWithMembers,
   renameGroup,
+  setChannelColor as setChannelColorIn,
   setGroupColor,
   type MoveDirection,
 } from './view-order.js';
@@ -46,26 +55,14 @@ interface SettingsPageProps {
   onOpenConnection(): void;
 }
 
-function copyView(view: View): View {
-  return {
-    ...view,
-    channels: view.channels.map((channel) => ({ ...channel })),
-    groups: view.groups.map((group) => ({ ...group })),
-  };
+function copyItem(item: ViewItem): ViewItem {
+  return item.type === 'channel'
+    ? { ...item }
+    : { ...item, channels: item.channels.map((channel) => ({ ...channel })) };
 }
 
-function withColor(reference: ViewChannelRef, color?: ViewChannelColor): ViewChannelRef {
-  const next: ViewChannelRef = { kind: reference.kind, name: reference.name };
-  if (reference.channelId !== undefined) {
-    next.channelId = reference.channelId;
-  }
-  if (reference.groupId !== undefined) {
-    next.groupId = reference.groupId;
-  }
-  if (color !== undefined) {
-    next.color = color;
-  }
-  return next;
+function copyView(view: View): View {
+  return { ...view, items: view.items.map(copyItem) };
 }
 
 export function SettingsPage({ viewsClient, onBack, onOpenConnection }: SettingsPageProps) {
@@ -226,7 +223,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   };
 
   const performCreate = async (name: string) => {
-    const created = await createView(viewsClient, { name, channels: [], groups: [] });
+    const created = await createView(viewsClient, { name, items: [] });
     if (created !== null) {
       setNewName('');
       selectView(created);
@@ -257,15 +254,16 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       setLocalError('View name cannot be empty.');
       return;
     }
-    if (activeDraft.groups.some((group) => group.name.trim().length === 0)) {
+    if (viewGroups(activeDraft).some((group) => group.name.trim().length === 0)) {
       setLocalError('Group names cannot be empty.');
       return;
     }
     setLocalError(null);
     const updated = await updateView(viewsClient, activeDraft.id, {
       name,
-      channels: activeDraft.channels,
-      groups: activeDraft.groups.map((group) => ({ ...group, name: group.name.trim() })),
+      items: activeDraft.items.map((item) =>
+        item.type === 'group' ? { ...item, name: item.name.trim() } : item,
+      ),
     });
     if (updated !== null) {
       setDraft(copyView(updated));
@@ -349,13 +347,9 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       const existing = resolveViewChannels(source, availableChannels).find(
         (entry) => entry.channel?.id === channelId,
       );
-      return {
-        ...source,
-        channels:
-          existing === undefined
-            ? [...source.channels, referenceForChannel(channel)]
-            : source.channels.filter((_, index) => index !== existing.index),
-      };
+      return existing === undefined
+        ? appendChannel(source, referenceForChannel(channel))
+        : removeChannels(source, new Set([existing.index]));
     });
   };
 
@@ -378,12 +372,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
   };
 
   const setChannelColor = (index: number, color?: ViewChannelColor) => {
-    editDraft((source) => ({
-      ...source,
-      channels: source.channels.map((reference, candidate) =>
-        candidate === index ? withColor(reference, color) : reference,
-      ),
-    }));
+    editDraft((source) => setChannelColorIn(source, index, color));
   };
 
   const handleAddGroup = (event: FormEvent) => {
@@ -403,10 +392,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
       return;
     }
     const missingIndexes = new Set(missingEntries.map((entry) => entry.index));
-    editDraft((source) => ({
-      ...source,
-      channels: source.channels.filter((_, index) => !missingIndexes.has(index)),
-    }));
+    editDraft((source) => removeChannels(source, missingIndexes));
   };
 
   return (
@@ -483,7 +469,7 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                 >
                   <span>{pad(index + 1)}</span>
                   <strong>{view.name}</strong>
-                  <small>{pad(view.channels.length)} CH</small>
+                  <small>{pad(viewChannelRefs(view).length)} CH</small>
                   {view.id === selected?.id && dirty && (
                     <span className="visually-hidden">Unsaved changes</span>
                   )}
@@ -583,8 +569,8 @@ export function SettingsPage({ viewsClient, onBack, onOpenConnection }: Settings
                       <span>03</span>
                       <h2 id="channel-order-heading">CHANNEL ORDER &amp; COLOR</h2>
                       <small>
-                        {pad(activeDraft.channels.length)} ASSIGNED /{' '}
-                        {pad(activeDraft.groups.length)} GROUPS
+                        {pad(viewChannelRefs(activeDraft).length)} ASSIGNED /{' '}
+                        {pad(viewGroups(activeDraft).length)} GROUPS
                       </small>
                     </div>
                     <form className="group-toolbar" onSubmit={handleAddGroup}>

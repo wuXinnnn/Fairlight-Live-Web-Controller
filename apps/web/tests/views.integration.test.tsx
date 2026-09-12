@@ -8,6 +8,7 @@ import { resetMixerStore } from '../src/store/mixer-store.js';
 import { ACTIVE_VIEW_STORAGE_KEY, resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
 import { FakeViewsClient } from './fake-views-client.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -55,8 +56,7 @@ describe('views integration', () => {
       {
         id: 'startup',
         name: 'Startup',
-        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
-        groups: [],
+        items: [row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' })],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -93,8 +93,7 @@ describe('views integration', () => {
       {
         id: 'reconnect',
         name: 'Reconnect',
-        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
-        groups: [],
+        items: [row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' })],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -133,8 +132,7 @@ describe('views integration', () => {
       {
         id: 'handshake',
         name: 'Handshake',
-        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/1' }],
-        groups: [],
+        items: [row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' })],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -194,12 +192,11 @@ describe('views integration', () => {
       {
         id: 'foh',
         name: 'FOH',
-        channels: [
-          { kind: 'main', name: 'MAIN', channelId: 'main/1', color: 'purple' },
-          { kind: 'channel', name: 'GUEST', channelId: 'channel/404' },
-          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+        items: [
+          row({ kind: 'main', name: 'MAIN', channelId: 'main/1', color: 'purple' }),
+          row({ kind: 'channel', name: 'GUEST', channelId: 'channel/404' }),
+          row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' }),
         ],
-        groups: [],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -292,11 +289,10 @@ describe('views integration', () => {
         method: 'update',
         body: {
           name: 'Studio',
-          channels: [
-            { kind: 'main', name: 'MAIN', channelId: 'main/1' },
-            { kind: 'channel', name: 'BASS', channelId: 'channel/1', color: 'red' },
+          items: [
+            row({ kind: 'main', name: 'MAIN', channelId: 'main/1' }),
+            row({ kind: 'channel', name: 'BASS', channelId: 'channel/1', color: 'red' }),
           ],
-          groups: [],
         },
       });
     });
@@ -316,11 +312,10 @@ describe('views integration', () => {
       {
         id: 'cleanup',
         name: 'Cleanup',
-        channels: [
-          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
-          { kind: 'channel', name: 'GUEST', channelId: 'channel/404', color: 'teal' },
+        items: [
+          row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' }),
+          row({ kind: 'channel', name: 'GUEST', channelId: 'channel/404', color: 'teal' }),
         ],
-        groups: [],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -355,8 +350,8 @@ describe('views integration', () => {
     await waitFor(() => {
       expect(viewsClient.calls.filter((call) => call.method === 'update')).toHaveLength(1);
     });
-    expect(viewsClient.calls.find((call) => call.method === 'update')?.body?.channels).toEqual([
-      { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+    expect(viewsClient.calls.find((call) => call.method === 'update')?.body?.items).toEqual([
+      row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' }),
     ]);
 
     fireEvent.click(screen.getByRole('button', { name: 'DELETE VIEW' }));
@@ -370,9 +365,7 @@ describe('views integration', () => {
 
   it('handles empty views and configuration failures without hiding all-channel mode', async () => {
     const socket = new FakeSocket();
-    const viewsClient = new FakeViewsClient([
-      { id: 'empty', name: 'Empty', channels: [], groups: [] },
-    ]);
+    const viewsClient = new FakeViewsClient([{ id: 'empty', name: 'Empty', items: [] }]);
     render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('option', { name: 'Empty' });
@@ -403,8 +396,7 @@ describe('views integration', () => {
       {
         id: 'renumbered',
         name: 'Renumbered',
-        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/9' }],
-        groups: [],
+        items: [row({ kind: 'channel', name: 'BASS', channelId: 'channel/9' })],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -433,8 +425,7 @@ describe('views integration', () => {
       {
         id: 'renumbered',
         name: 'Renumbered',
-        channels: [{ kind: 'channel', name: 'BASS', channelId: 'channel/9' }],
-        groups: [],
+        items: [row({ kind: 'channel', name: 'BASS', channelId: 'channel/9' })],
       },
     ]);
     render(<App socket={socket} viewsClient={viewsClient} />);
@@ -466,12 +457,11 @@ describe('views integration', () => {
       {
         id: 'grouped',
         name: 'Grouped',
-        channels: [
-          { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
-          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
-          { kind: 'aux', name: 'FX', channelId: 'aux/1' },
+        items: [
+          row({ kind: 'channel', name: 'BASS', channelId: 'channel/1' }),
+          row({ kind: 'main', name: 'MAIN', channelId: 'main/1' }),
+          row({ kind: 'aux', name: 'FX', channelId: 'aux/1' }),
         ],
-        groups: [],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -486,7 +476,10 @@ describe('views integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ADD GROUP' }));
     expect(screen.getByRole('textbox', { name: 'Group 1 name' })).toHaveValue('Rhythm');
     expect(screen.getByText('ASSIGN CHANNELS BELOW')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Move group Rhythm up' })).toBeDisabled();
+    // A new group lands at the end of the list and holds a place there like any other block, so
+    // it can be moved up straight away and only the bottom of the list stops it going down.
+    expect(screen.getByRole('button', { name: 'Move group Rhythm up' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move group Rhythm down' })).toBeDisabled();
 
     const bassGroup = screen.getByRole('combobox', { name: 'BASS group' });
     const groupId = within(bassGroup).getByRole('option', { name: 'Rhythm' }).getAttribute('value');
@@ -529,12 +522,13 @@ describe('views integration', () => {
         method: 'update',
         body: {
           name: 'Grouped',
-          channels: [
-            { kind: 'aux', name: 'FX', channelId: 'aux/1' },
-            { kind: 'main', name: 'MAIN', channelId: 'main/1', groupId },
-            { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId },
+          items: [
+            row({ kind: 'aux', name: 'FX', channelId: 'aux/1' }),
+            grp({ id: groupId, name: 'Rhythm Section' }, [
+              { kind: 'main', name: 'MAIN', channelId: 'main/1' },
+              { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+            ]),
           ],
-          groups: [{ id: groupId, name: 'Rhythm Section' }],
         },
       });
     });
@@ -567,25 +561,24 @@ describe('views integration', () => {
       {
         id: 'gaps',
         name: 'Gaps',
-        channels: [
-          { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId: 'g1' },
-          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
-          { kind: 'aux', name: 'FX', channelId: 'aux/1', groupId: 'g2' },
-        ],
-        groups: [
-          { id: 'g1', name: 'Inputs' },
-          { id: 'g2', name: 'Sends' },
+        items: [
+          grp({ id: 'g1', name: 'Inputs' }, [
+            { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+          ]),
+          row({ kind: 'main', name: 'MAIN', channelId: 'main/1' }),
+          grp({ id: 'g2', name: 'Sends' }, [{ kind: 'aux', name: 'FX', channelId: 'aux/1' }]),
         ],
       },
       {
         id: 'adjacent',
         name: 'Adjacent',
-        channels: [
-          { kind: 'channel', name: 'BASS', channelId: 'channel/1', groupId: 'g1' },
-          { kind: 'main', name: 'MAIN', channelId: 'main/1' },
-          { kind: 'aux', name: 'FX', channelId: 'aux/1' },
+        items: [
+          grp({ id: 'g1', name: 'Inputs' }, [
+            { kind: 'channel', name: 'BASS', channelId: 'channel/1' },
+          ]),
+          row({ kind: 'main', name: 'MAIN', channelId: 'main/1' }),
+          row({ kind: 'aux', name: 'FX', channelId: 'aux/1' }),
         ],
-        groups: [{ id: 'g1', name: 'Inputs' }],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -613,11 +606,12 @@ describe('views integration', () => {
       {
         id: 'grouped',
         name: 'Grouped',
-        channels: [
-          { kind: 'channel', name: 'MIC', channelId: 'channel/1', groupId: 'g1' },
-          { kind: 'channel', name: 'GHOST', channelId: 'channel/404', groupId: 'g1' },
+        items: [
+          grp({ id: 'g1', name: 'Rhythm' }, [
+            { kind: 'channel', name: 'MIC', channelId: 'channel/1' },
+            { kind: 'channel', name: 'GHOST', channelId: 'channel/404' },
+          ]),
         ],
-        groups: [{ id: 'g1', name: 'Rhythm' }],
       },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
@@ -664,8 +658,11 @@ describe('views integration', () => {
       expect(viewsClient.calls.at(-1)).toMatchObject({
         method: 'update',
         body: {
-          channels: [{ kind: 'channel', name: 'MIC', channelId: 'channel/1', groupId: 'g1' }],
-          groups: [{ id: 'g1', name: 'Rhythm' }],
+          items: [
+            grp({ id: 'g1', name: 'Rhythm' }, [
+              { kind: 'channel', name: 'MIC', channelId: 'channel/1' },
+            ]),
+          ],
         },
       });
     });

@@ -2,21 +2,20 @@ import type { View } from '@flwc/shared';
 import { describe, expect, it } from 'vitest';
 import { dragSourceFor, resolveDropTarget } from './drop-resolver.js';
 
-function ref(name: string, groupId?: string) {
-  return groupId === undefined
-    ? { kind: 'channel' as const, name, channelId: `channel/${name}` }
-    : { kind: 'channel' as const, name, channelId: `channel/${name}`, groupId };
+function ref(name: string) {
+  return { kind: 'channel' as const, name, channelId: `channel/${name}` };
 }
 
-// Blocks: A | g1(B, C) | D | g2(E) | g3 (empty)
+// Blocks: A | g1(B, C) | D | g2(E) | g3 (empty). Root positions count all five.
 const view: View = {
   id: 'v',
   name: 'View',
-  channels: [ref('A'), ref('B', 'g1'), ref('C', 'g1'), ref('D'), ref('E', 'g2')],
-  groups: [
-    { id: 'g1', name: 'Rhythm' },
-    { id: 'g2', name: 'Vocals' },
-    { id: 'g3', name: 'Empty' },
+  items: [
+    { ...ref('A'), type: 'channel' },
+    { type: 'group', id: 'g1', name: 'Rhythm', channels: [ref('B'), ref('C')] },
+    { ...ref('D'), type: 'channel' },
+    { type: 'group', id: 'g2', name: 'Vocals', channels: [ref('E')] },
+    { type: 'group', id: 'g3', name: 'Empty', channels: [] },
   ],
 };
 
@@ -154,24 +153,25 @@ describe('resolveDropTarget', () => {
   });
 
   it('places channels at the root slot they are dropped on', () => {
-    // Blocks: A | g1(B, C) | D | g2(E). Slot positions count the blocks without the dragged
-    // channel, so they pass through unchanged as long as they exist in that view.
+    // Slot positions count the blocks without the dragged channel, empty groups included, so
+    // they pass through unchanged as long as that view has such a position.
     const a = { kind: 'channel', index: 0 } as const;
     const c = { kind: 'channel', index: 2 } as const;
     const fx = { kind: 'available', channelId: 'aux/1' } as const;
     expect(resolveDropTarget(view, a, 'slot:0', before)).toEqual({ kind: 'root', position: 0 });
     expect(resolveDropTarget(view, a, 'slot:3', before)).toEqual({ kind: 'root', position: 3 });
-    // Without A there are three blocks, so position 4 does not exist.
-    expect(resolveDropTarget(view, a, 'slot:4', before)).toBeNull();
+    // Without A there are four blocks, so the end of the list is position 4 and 5 does not exist.
+    expect(resolveDropTarget(view, a, 'slot:4', before)).toEqual({ kind: 'root', position: 4 });
+    expect(resolveDropTarget(view, a, 'slot:5', before)).toBeNull();
     expect(resolveDropTarget(view, c, 'slot:4', after)).toEqual({ kind: 'root', position: 4 });
     expect(resolveDropTarget(view, fx, 'slot:0', before)).toEqual({ kind: 'root', position: 0 });
-    expect(resolveDropTarget(view, fx, 'slot:4', before)).toEqual({ kind: 'root', position: 4 });
-    expect(resolveDropTarget(view, fx, 'slot:5', before)).toBeNull();
+    expect(resolveDropTarget(view, fx, 'slot:5', before)).toEqual({ kind: 'root', position: 5 });
+    expect(resolveDropTarget(view, fx, 'slot:6', before)).toBeNull();
     expect(resolveDropTarget(view, { kind: 'group', groupId: 'g1' }, 'slot:0', before)).toBeNull();
   });
 
   it('moves groups before or after root rows and other groups only', () => {
-    // Without g1 the blocks are A | D | g2(E).
+    // Without g1 the blocks are A | D | g2(E) | g3.
     const g1 = { kind: 'group', groupId: 'g1' } as const;
     expect(resolveDropTarget(view, g1, row('D'), before)).toEqual({ kind: 'root', position: 1 });
     expect(resolveDropTarget(view, g1, row('D'), after)).toEqual({ kind: 'root', position: 2 });
@@ -180,9 +180,11 @@ describe('resolveDropTarget', () => {
     const g2 = { kind: 'group', groupId: 'g2' } as const;
     expect(resolveDropTarget(view, g2, row('A'), before)).toEqual({ kind: 'root', position: 0 });
     expect(resolveDropTarget(view, g2, 'group:g1', after)).toEqual({ kind: 'root', position: 2 });
+    // An empty group is an ordinary block, so a group can be dropped either side of it.
+    expect(resolveDropTarget(view, g1, 'group:g3', before)).toEqual({ kind: 'root', position: 3 });
+    expect(resolveDropTarget(view, g1, 'group:g3', after)).toEqual({ kind: 'root', position: 4 });
     expect(resolveDropTarget(view, g1, row('E'), before)).toBeNull();
     expect(resolveDropTarget(view, g1, 'group:g1', before)).toBeNull();
-    expect(resolveDropTarget(view, g1, 'group:g3', before)).toBeNull();
     expect(resolveDropTarget(view, { kind: 'channel', index: 0 }, 'group:g1', before)).toBeNull();
   });
 

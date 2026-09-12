@@ -15,7 +15,7 @@ import {
   type KeyboardCoordinateGetter,
   type Over,
 } from '@dnd-kit/core';
-import type { ChannelKind, ChannelState, View } from '@flwc/shared';
+import { viewChannelRefs, viewGroups, type ChannelState, type View } from '@flwc/shared';
 import {
   useCallback,
   useEffect,
@@ -34,6 +34,7 @@ import {
   REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
+  VIEW_MEASURING,
 } from './dnd-config.js';
 import { readItemData } from './dnd-ids.js';
 import {
@@ -59,7 +60,7 @@ import {
   IDLE_DRAG_PREVIEW,
   type DragPreviewState,
 } from './use-drag-preview.js';
-import { insertChannelAt, moveChannelTo, moveGroupTo } from './view-order.js';
+import { groupOfIndex, insertChannelAt, moveChannelTo, moveGroupTo } from './view-order.js';
 
 interface ViewDndContextProps {
   /** The draft being edited; null while no view is selected. */
@@ -439,19 +440,6 @@ export function ViewDndContext({
       return null;
     }
     const current = drag.preview?.view ?? drag.startView;
-    // Same rule as the list: a group without a colour takes its first present member's type.
-    const leadKindOf = (groupId: string | undefined): ChannelKind | undefined => {
-      if (groupId === undefined) {
-        return undefined;
-      }
-      for (const reference of current.channels) {
-        const live = reference.channelId === undefined ? undefined : channels[reference.channelId];
-        if (reference.groupId === groupId && live !== undefined) {
-          return live.kind;
-        }
-      }
-      return undefined;
-    };
     const variant: DragOverlayVariant =
       drag.source.kind === 'group'
         ? 'group'
@@ -461,28 +449,31 @@ export function ViewDndContext({
     const label = variant === 'group' ? drag.label.replace(/^group /, '') : drag.label;
     switch (drag.source.kind) {
       case 'channel': {
-        const reference = drag.startView.channels[drag.source.index];
+        const reference = viewChannelRefs(drag.startView)[drag.source.index];
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
-        const group = current.groups.find((candidate) => candidate.id === reference?.groupId);
+        // The clone keeps the colour the row had when it was picked up, so it does not change
+        // under the pointer as the preview moves it around. That means the group as it was then,
+        // members and all: a group with no colour of its own takes one from its members, so
+        // reading it out of the preview would repaint the clone the moment this row left it.
+        // The index is an index into `startView` too - after a preview it points at a different
+        // row of `current` - so both have to come from the view the index belongs to.
+        const group = groupOfIndex(drag.startView, drag.source.index);
         return {
           variant,
           label,
-          accent: channelAccent(kind, reference?.color, group, leadKindOf(group?.id)),
+          accent: channelAccent(kind, reference?.color, group),
           detail: KIND_LABELS[kind],
         };
       }
       case 'group': {
         const groupId = drag.source.groupId;
-        const members = current.channels.filter((reference) => reference.groupId === groupId);
+        const group = viewGroups(current).find((candidate) => candidate.id === groupId);
         return {
           variant,
           label,
-          accent: groupAccent(
-            current.groups.find((candidate) => candidate.id === groupId),
-            leadKindOf(groupId),
-          ),
-          detail: `${pad(members.length)} CH`,
+          accent: groupAccent(group),
+          detail: `${pad(group?.channels.length ?? 0)} CH`,
         };
       }
       case 'available': {
@@ -497,6 +488,7 @@ export function ViewDndContext({
     <DndContext
       sensors={sensors}
       collisionDetection={viewCollisionDetection}
+      measuring={VIEW_MEASURING}
       accessibility={{ announcements, screenReaderInstructions }}
       autoScroll={false}
       onDragStart={handleDragStart}

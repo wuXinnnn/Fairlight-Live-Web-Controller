@@ -1,4 +1,4 @@
-import { SOCKET_EVENTS, type MixerSnapshot, type View } from '@flwc/shared';
+import { SOCKET_EVENTS, type MixerSnapshot, type View, type ViewChannelRef } from '@flwc/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App.js';
@@ -12,10 +12,13 @@ import { pointerDown, pointerMoveTo, pointerUp } from './pointer-drag.js';
 import { advanceTouchDelay, touchEnd, touchMove, touchStart } from './touch-drag.js';
 import { STUB_LIST_PADDING, STUB_ROW_HEIGHT, stubListLayout } from './stub-layout.js';
 import {
+  REMOVE_DRAG_THRESHOLD_PX,
   TOUCH_ACTIVATION_DELAY_MS,
   TOUCH_ACTIVATION_TOLERANCE_PX,
+  VIEW_MEASURING,
 } from '../src/features/settings/dnd-config.js';
 import { recordFlipWrites } from './flip-writes.js';
+import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
 const snapshot: MixerSnapshot = {
   channels: [
@@ -33,6 +36,9 @@ const MAIN = { kind: 'main', name: 'MAIN', channelId: 'main/1' } as const;
 const FX = { kind: 'aux', name: 'FX', channelId: 'aux/1' } as const;
 const SUB = { kind: 'sub', name: 'SUB', channelId: 'sub/1' } as const;
 const RHYTHM = { id: 'g1', name: 'Rhythm' };
+
+/** A member that joined a group takes its colour, which is what the save body records. */
+const joined = (reference: ViewChannelRef): ViewChannelRef => ({ ...reference, color: 'group' });
 
 async function openSettings(view: View) {
   const socket = new FakeSocket();
@@ -55,10 +61,10 @@ async function openSettings(view: View) {
     within(
       container.querySelector(`[data-available-channel-id="${channelId}"]`) as HTMLElement,
     ).getByRole('button', { name: /^Drag / });
-  const savedChannels = async () => {
+  const savedItems = async () => {
     fireEvent.click(screen.getByRole('button', { name: 'SAVE VIEW' }));
     await waitFor(() => expect(viewsClient.calls.at(-1)?.method).toBe('update'));
-    return viewsClient.calls.at(-1)?.body?.channels;
+    return viewsClient.calls.at(-1)?.body?.items;
   };
   return {
     container,
@@ -68,7 +74,7 @@ async function openSettings(view: View) {
     memberNames,
     handle,
     availableHandle,
-    savedChannels,
+    savedItems,
   };
 }
 
@@ -91,8 +97,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     const page = await openSettings({
       id: 'flat',
       name: 'Flat',
-      channels: [BASS, MAIN, FX],
-      groups: [],
+      items: [row(BASS), row(MAIN), row(FX)],
     });
     const flip = recordFlipWrites(page.list());
     const bassKey = 'channel:BASS:channel/1#0';
@@ -120,11 +125,56 @@ describe('settings drag and drop (keyboard sensor)', () => {
     flip.stop();
   });
 
+  it('tweens each row it crosses exactly once when arrows outrun the animation', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX), row(SUB)],
+    });
+    const flip = recordFlipWrites(page.list());
+
+    // Three steps in a row, none of them waiting for the previous tween to be cleaned up.
+    await pickUp(page.handle('BASS'));
+    await press('ArrowDown');
+    await press('ArrowDown');
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']);
+
+    // Each row BASS passed moved up exactly one row, and was told so exactly once. Measuring
+    // natural positions is what keeps a tween that is still running from being replayed.
+    const moved = flip.writes().filter((write) => write.transform !== '');
+    for (const key of ['main:MAIN:main/1#0', 'aux:FX:aux/1#0', 'sub:SUB:sub/1#0']) {
+      const forRow = moved.filter((write) => write.key === key);
+      expect(forRow).toEqual([{ key, transform: `translate(0px, ${STUB_ROW_HEIGHT}px)` }]);
+    }
+    // Nothing was ever asked to jump further than the one row it actually moved.
+    for (const write of moved) {
+      const distance = Math.abs(Number(/-?[\d.]+/.exec(write.transform)?.[0] ?? 0));
+      expect(distance).toBeLessThanOrEqual(STUB_ROW_HEIGHT);
+    }
+    flip.stop();
+  });
+
+  it('measures droppables where they belong, not where a tween is holding them', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    const main = page.list().querySelector('[data-flip-key="main:MAIN:main/1#0"]') as HTMLElement;
+    const settled = VIEW_MEASURING.droppable?.measure?.(main);
+
+    // Hold the row a row-height away, as a tween part way through its 120ms would.
+    main.style.transform = `translate(0px, ${STUB_ROW_HEIGHT}px)`;
+    expect(main.getBoundingClientRect().top).toBe((settled?.top ?? 0) + STUB_ROW_HEIGHT);
+    expect(VIEW_MEASURING.droppable?.measure?.(main)).toEqual(settled);
+  });
+
   it('does not tween rows that two views happen to share', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
-      { id: 'a', name: 'Alpha', channels: [BASS, MAIN], groups: [] },
-      { id: 'b', name: 'Beta', channels: [MAIN, BASS], groups: [] },
+      { id: 'a', name: 'Alpha', items: [row(BASS), row(MAIN)] },
+      { id: 'b', name: 'Beta', items: [row(MAIN), row(BASS)] },
     ]);
     const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
@@ -144,7 +194,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
   });
 
   it('takes the first channel of an empty view from AVAILABLE', async () => {
-    const page = await openSettings({ id: 'new', name: 'New', channels: [], groups: [] });
+    const page = await openSettings({ id: 'new', name: 'New', items: [] });
     expect(screen.getByText('THIS VIEW HAS NO CHANNELS')).toBeInTheDocument();
     expect(page.list()).not.toBeNull();
 
@@ -156,40 +206,107 @@ describe('settings drag and drop (keyboard sensor)', () => {
 
     await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
     expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
-    expect(await page.savedChannels()).toEqual([BASS]);
+    expect(await page.savedItems()).toEqual([row(BASS)]);
   });
 
   it('moves a channel between an empty group and the empty list around it', async () => {
     const page = await openSettings({
       id: 'groups',
       name: 'Groups',
-      channels: [],
-      groups: [RHYTHM],
+      items: [grp(RHYTHM)],
     });
     expect(page.orderedNames()).toEqual([]);
 
-    // The empty group block sits above the fill slot, so the pickup previews into the group.
+    // A group that starts the list has a slot above it, and that is the nearest target here, so
+    // the channel arrives as an ungrouped row above the group.
     await pickUp(page.availableHandle('channel/1'));
+    expect(page.memberNames('g1')).toEqual([]);
+    expect(page.orderedNames()).toEqual(['BASS']);
+    // Down once is the group itself.
+    await press('ArrowDown');
     expect(page.memberNames('g1')).toEqual(['BASS']);
-    // Down from there is the slot filling the rest of the list: the channel leaves the group.
+    // Down again is the slot filling the rest of the list: the channel leaves the group again,
+    // this time below it.
     await press('ArrowDown');
     expect(page.memberNames('g1')).toEqual([]);
     expect(page.orderedNames()).toEqual(['BASS']);
-    // And back up into the group again.
+    // And back up into the group.
     await press('ArrowUp');
     expect(page.memberNames('g1')).toEqual(['BASS']);
 
     await press('Space');
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['BASS']));
-    expect(await page.savedChannels()).toEqual([{ ...BASS, groupId: 'g1', color: 'group' }]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [joined(BASS)])]);
+  });
+
+  it('reaches the end of the list with an arrow and stops there', async () => {
+    // The list ends with a group, so no row stands for the boundary below it: the slot at the
+    // end of the list is the only way to become the last row.
+    const page = await openSettings({
+      id: 'trailing',
+      name: 'Trailing',
+      items: [row(BASS), grp(RHYTHM, [MAIN])],
+    });
+    // dnd-kit keeps its own live region, separate from the page's status line. Every move is
+    // announced there, but the text is replaced again as the geometry settles, so collect it.
+    const announced: string[] = [];
+    const observer = new MutationObserver(() => {
+      const text = document.querySelector('[id^="DndLiveRegion"]')?.textContent ?? '';
+      if (text.length > 0) {
+        announced.push(text);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    await pickUp(page.handle('BASS'));
+    // Down through the group and on to the slot at the end, which is the only target past it.
+    await press('ArrowDown');
+    await press('ArrowDown');
+    expect(announced.join(' | ')).toContain('the end of the list');
+    observer.disconnect();
+
+    // Nothing lies past it, so pressing again leaves the list where it is.
+    const settled = page.orderedNames();
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(settled);
+    await press('Escape');
+  });
+
+  it('skips the end slot when the dragged row is already the last block', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pickUp(page.handle('FX'));
+    // FX already sits at the end, so that slot is where it is: down goes nowhere.
+    await press('ArrowDown');
+    expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
+    await press('ArrowUp');
+    expect(page.orderedNames()).toEqual(['BASS', 'FX', 'MAIN']);
+    await press('Escape');
+  });
+
+  it('takes the end slot away once the drag is over', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN)],
+    });
+    expect(page.container.querySelector('.root-slot--fill')).not.toBeInTheDocument();
+    await pickUp(page.handle('BASS'));
+    expect(page.container.querySelector('.root-slot--fill')).toBeInTheDocument();
+    await press('Escape');
+    await waitFor(() =>
+      expect(page.container.querySelector('.root-slot--fill')).not.toBeInTheDocument(),
+    );
   });
 
   it('reorders ungrouped rows and saves the new order', async () => {
     const page = await openSettings({
       id: 'flat',
       name: 'Flat',
-      channels: [BASS, MAIN, FX],
-      groups: [],
+      items: [row(BASS), row(MAIN), row(FX)],
     });
     expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']);
     await pickUp(page.handle('BASS'));
@@ -202,7 +319,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']));
-    expect(await page.savedChannels()).toEqual([MAIN, BASS, FX]);
+    expect(await page.savedItems()).toEqual([row(MAIN), row(BASS), row(FX)]);
 
     await pickUp(page.handle('FX'));
     await press('ArrowUp');
@@ -215,8 +332,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     const page = await openSettings({
       id: 'grouped',
       name: 'Grouped',
-      channels: [BASS, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }],
-      groups: [RHYTHM],
+      items: [row(BASS), grp(RHYTHM, [MAIN, FX])],
     });
     await pickUp(page.handle('BASS'));
     await press('ArrowDown');
@@ -238,11 +354,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.container.querySelector('[data-view-group-id="g1"]')).not.toHaveClass(
       'is-drop-target',
     );
-    expect(await page.savedChannels()).toEqual([
-      { ...MAIN, groupId: 'g1' },
-      { ...BASS, groupId: 'g1', color: 'group' },
-      { ...FX, groupId: 'g1' },
-    ]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN, joined(BASS), FX])]);
 
     // With no ungrouped row left, the group starts the list, so a root slot above it lets a
     // member leave the group to the top: two steps reorder inside the group (the list already
@@ -268,17 +380,15 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.container.querySelector('.root-slot')).not.toBeInTheDocument();
   });
 
+  // Four keyboard drags over two groups and their slots, each one re-measuring every droppable
+  // in the list: the heaviest test here by some way, and it runs past the default 5s budget on a
+  // loaded CI runner even though it takes under two seconds locally.
   it('drops channels between two groups and before the first one through root slots', async () => {
     const VOCALS = { id: 'g2', name: 'Vocals' };
     const page = await openSettings({
       id: 'stacked',
       name: 'Stacked',
-      channels: [
-        { ...MAIN, groupId: 'g1' },
-        { ...FX, groupId: 'g1' },
-        { ...BASS, groupId: 'g2' },
-      ],
-      groups: [RHYTHM, VOCALS],
+      items: [grp(RHYTHM, [MAIN, FX]), grp(VOCALS, [BASS])],
     });
     expect(page.container.querySelector('.root-slot')).not.toBeInTheDocument();
 
@@ -296,11 +406,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     await press('Space');
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue(''));
     expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']);
-    expect(await page.savedChannels()).toEqual([
-      { ...MAIN, groupId: 'g1' },
-      FX,
-      { ...BASS, groupId: 'g2' },
-    ]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN]), row(FX), grp(VOCALS, [BASS])]);
 
     // Up once joins Rhythm above MAIN, up again reaches the slot above the first group.
     await pickUp(page.handle('FX'));
@@ -312,11 +418,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'BASS']));
     expect(screen.getByRole('combobox', { name: 'FX group' })).toHaveValue('');
-    expect(await page.savedChannels()).toEqual([
-      FX,
-      { ...MAIN, groupId: 'g1' },
-      { ...BASS, groupId: 'g2' },
-    ]);
+    expect(await page.savedItems()).toEqual([row(FX), grp(RHYTHM, [MAIN]), grp(VOCALS, [BASS])]);
 
     // An AVAILABLE channel lands on slots too: picked up level with the boundary between the
     // groups, the nearest target is the slot band, so the placeholder appears between them.
@@ -327,20 +429,19 @@ describe('settings drag and drop (keyboard sensor)', () => {
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['FX', 'MAIN', 'SUB', 'BASS']));
     expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('');
-    expect(await page.savedChannels()).toEqual([
-      FX,
-      { ...MAIN, groupId: 'g1' },
-      SUB,
-      { ...BASS, groupId: 'g2' },
+    expect(await page.savedItems()).toEqual([
+      row(FX),
+      grp(RHYTHM, [MAIN]),
+      row(SUB),
+      grp(VOCALS, [BASS]),
     ]);
-  });
+  }, 20_000);
 
   it('moves a member above the group so it leaves the group', async () => {
     const page = await openSettings({
       id: 'grouped',
       name: 'Grouped',
-      channels: [BASS, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }],
-      groups: [RHYTHM],
+      items: [row(BASS), grp(RHYTHM, [MAIN, FX])],
     });
     await pickUp(page.handle('MAIN'));
     await press('ArrowUp');
@@ -348,34 +449,28 @@ describe('settings drag and drop (keyboard sensor)', () => {
     await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']));
     expect(page.memberNames('g1')).toEqual(['FX']);
     expect(screen.getByRole('combobox', { name: 'MAIN group' })).toHaveValue('');
-    expect(await page.savedChannels()).toEqual([MAIN, BASS, { ...FX, groupId: 'g1' }]);
+    expect(await page.savedItems()).toEqual([row(MAIN), row(BASS), grp(RHYTHM, [FX])]);
   });
 
   it('moves a whole group with its drag handle', async () => {
     const page = await openSettings({
       id: 'grouped',
       name: 'Grouped',
-      channels: [BASS, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }],
-      groups: [RHYTHM],
+      items: [row(BASS), grp(RHYTHM, [MAIN, FX])],
     });
     await pickUp(page.handle('group Rhythm'));
     await press('ArrowUp');
     await press('Space');
     await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']));
     expect(screen.getByRole('button', { name: 'Move group Rhythm up' })).toBeDisabled();
-    expect(await page.savedChannels()).toEqual([
-      { ...MAIN, groupId: 'g1' },
-      { ...FX, groupId: 'g1' },
-      BASS,
-    ]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN, FX]), row(BASS)]);
   });
 
   it('drops a row onto an empty group', async () => {
     const page = await openSettings({
       id: 'flat',
       name: 'Flat',
-      channels: [BASS, MAIN],
-      groups: [],
+      items: [row(BASS), row(MAIN)],
     });
     fireEvent.change(screen.getByLabelText('NEW GROUP'), { target: { value: 'Rhythm' } });
     fireEvent.click(screen.getByRole('button', { name: 'ADD GROUP' }));
@@ -400,8 +495,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     const page = await openSettings({
       id: 'partial',
       name: 'Partial',
-      channels: [BASS, { ...MAIN, groupId: 'g1' }],
-      groups: [RHYTHM],
+      items: [row(BASS), grp(RHYTHM, [MAIN])],
     });
     expect(page.availableHandle('main/1')).toBeDisabled();
     expect(page.availableHandle('channel/1')).toBeDisabled();
@@ -434,20 +528,14 @@ describe('settings drag and drop (keyboard sensor)', () => {
     expect(page.container.querySelector('[data-placeholder="true"]')).not.toBeInTheDocument();
     expect(page.container.querySelector('.channel-checklist')).not.toHaveClass('is-drag-locked');
     expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('g1');
-    expect(await page.savedChannels()).toEqual([
-      FX,
-      BASS,
-      { ...SUB, groupId: 'g1', color: 'group' },
-      { ...MAIN, groupId: 'g1' },
-    ]);
+    expect(await page.savedItems()).toEqual([row(FX), row(BASS), grp(RHYTHM, [joined(SUB), MAIN])]);
   });
 
   it('cancels with Escape and ignores drops without a target', async () => {
     const page = await openSettings({
       id: 'flat',
       name: 'Flat',
-      channels: [BASS, MAIN, FX],
-      groups: [],
+      items: [row(BASS), row(MAIN), row(FX)],
     });
     const handle = page.handle('BASS');
     await pickUp(handle);
@@ -466,8 +554,7 @@ describe('settings drag and drop (keyboard sensor)', () => {
     const page = await openSettings({
       id: 'grouped',
       name: 'Grouped',
-      channels: [BASS, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }],
-      groups: [RHYTHM],
+      items: [row(BASS), grp(RHYTHM, [MAIN, FX])],
     });
     fireEvent.click(screen.getByRole('button', { name: 'Move FX up' }));
     expect(page.memberNames('g1')).toEqual(['FX', 'MAIN']);
@@ -503,8 +590,87 @@ describe('settings drag and drop (mouse sensor)', () => {
   const rowY = (row: number, fraction: number) =>
     STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
 
+  // Well below the last block but still inside the list: the empty area the end slot takes.
+  const belowEverything = (blocks: number) =>
+    STUB_LIST_PADDING + blocks * STUB_ROW_HEIGHT + 2.5 * STUB_ROW_HEIGHT;
+
+  it('sends a row dropped in the empty area below the list to the end', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pointerDown(page.handle('BASS'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+
+    await pointerMoveTo(X, belowEverything(3));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'BASS']));
+    await pointerUp(X, belowEverything(3));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(await page.savedItems()).toEqual([row(MAIN), row(FX), row(BASS)]);
+  });
+
+  it('appends an AVAILABLE channel dropped in the empty area below the list', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN)],
+    });
+    const handle = page.availableHandle('aux/1');
+    await pointerDown(handle, 0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2.5);
+    await pointerMoveTo(0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 2.5 + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('FX'));
+
+    await pointerMoveTo(X, belowEverything(2));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']));
+    await pointerUp(X, belowEverything(2));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(screen.getByRole('checkbox', { name: /FX/ })).toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS), row(MAIN), row(FX)]);
+  });
+
+  it('sends a whole group dropped in the empty area below the list to the end', async () => {
+    const page = await openSettings({
+      id: 'grouped',
+      name: 'Grouped',
+      items: [grp(RHYTHM, [MAIN, FX]), row(BASS)],
+    });
+    // Rows: header | MAIN | FX | BASS
+    await pointerDown(page.handle('group Rhythm'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() =>
+      expect(document.querySelector('.drag-overlay')).toHaveTextContent('Rhythm'),
+    );
+
+    await pointerMoveTo(X, belowEverything(4));
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'MAIN', 'FX']));
+    await pointerUp(X, belowEverything(4));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(await page.savedItems()).toEqual([row(BASS), grp(RHYTHM, [MAIN, FX])]);
+  });
+
+  it('drops a channel after an empty group that ends the list', async () => {
+    const page = await openSettings({
+      id: 'trailing',
+      name: 'Trailing',
+      items: [row(BASS), row(MAIN), grp(RHYTHM)],
+    });
+    await pointerDown(page.handle('BASS'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+
+    // The empty group is two rows tall, so the area below it starts at row 4.
+    await pointerMoveTo(X, belowEverything(4));
+    await pointerUp(X, belowEverything(4));
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    // Below the group, not inside it: BASS is an ungrouped row again, after the block.
+    expect(page.memberNames('g1')).toEqual([]);
+    expect(await page.savedItems()).toEqual([row(MAIN), grp(RHYTHM), row(BASS)]);
+  });
+
   it('takes the first channel of an empty view from AVAILABLE', async () => {
-    const page = await openSettings({ id: 'new', name: 'New', channels: [], groups: [] });
+    const page = await openSettings({ id: 'new', name: 'New', items: [] });
     const handle = page.availableHandle('channel/1');
 
     await pointerDown(handle, 0, STUB_LIST_PADDING + STUB_ROW_HEIGHT * 0.5);
@@ -519,7 +685,28 @@ describe('settings drag and drop (mouse sensor)', () => {
     await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
     expect(page.orderedNames()).toEqual(['BASS']);
     expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
-    expect(await page.savedChannels()).toEqual([BASS]);
+    expect(await page.savedItems()).toEqual([row(BASS)]);
+  });
+
+  it('takes a channel dropped where the first row of an empty view would be', async () => {
+    const page = await openSettings({ id: 'new', name: 'New', items: [] });
+    const handle = page.availableHandle('channel/1');
+    // The notice an empty list shows stands exactly where the first row goes. It steps aside for
+    // the drag, so the slot that fills the list starts at the very top of it.
+    const top = STUB_LIST_PADDING + STUB_ROW_HEIGHT * 0.5;
+
+    await pointerDown(handle, 0, top);
+    await pointerMoveTo(0, top + STUB_ROW_HEIGHT);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+    expect(screen.queryByText('THIS VIEW HAS NO CHANNELS')).toBeNull();
+
+    await pointerMoveTo(X, top);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    await pointerUp(X, top);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(page.orderedNames()).toEqual(['BASS']);
+    expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS)]);
   });
 
   it('reaches the last member of a group and the row right after it from below', async () => {
@@ -527,8 +714,7 @@ describe('settings drag and drop (mouse sensor)', () => {
     const page = await openSettings({
       id: 'below',
       name: 'Below',
-      channels: [{ ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }, BASS, SUB],
-      groups: [RHYTHM],
+      items: [grp(RHYTHM, [MAIN, FX]), row(BASS), row(SUB)],
     });
     await pointerDown(page.handle('SUB'), X, rowY(4, 0.5));
     await pointerMoveTo(X, rowY(4, 0.5) + 6);
@@ -544,12 +730,7 @@ describe('settings drag and drop (mouse sensor)', () => {
     expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']);
     await pointerUp(X, rowY(2, 0.9));
     await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'FX', 'SUB']));
-    expect(await page.savedChannels()).toEqual([
-      { ...MAIN, groupId: 'g1' },
-      { ...FX, groupId: 'g1' },
-      { ...SUB, groupId: 'g1', color: 'group' },
-      BASS,
-    ]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN, FX, joined(SUB)]), row(BASS)]);
   });
 
   it('reaches the same two places from above, entering the group at its top', async () => {
@@ -557,8 +738,7 @@ describe('settings drag and drop (mouse sensor)', () => {
     const page = await openSettings({
       id: 'above',
       name: 'Above',
-      channels: [SUB, { ...MAIN, groupId: 'g1' }, { ...FX, groupId: 'g1' }, BASS],
-      groups: [RHYTHM],
+      items: [row(SUB), grp(RHYTHM, [MAIN, FX]), row(BASS)],
     });
     await pointerDown(page.handle('SUB'), X, rowY(0, 0.5));
     await pointerMoveTo(X, rowY(0, 0.5) + 6);
@@ -580,12 +760,62 @@ describe('settings drag and drop (mouse sensor)', () => {
     await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
     expect(page.orderedNames()).toEqual(['MAIN', 'FX', 'SUB', 'BASS']);
     expect(screen.getByRole('combobox', { name: 'SUB group' })).toHaveValue('');
-    expect(await page.savedChannels()).toEqual([
-      { ...MAIN, groupId: 'g1' },
-      { ...FX, groupId: 'g1' },
-      SUB,
-      BASS,
-    ]);
+    expect(await page.savedItems()).toEqual([grp(RHYTHM, [MAIN, FX]), row(SUB), row(BASS)]);
+  });
+
+  /** A point below the list by more than the distance that reads as taking the item out of it. */
+  const outsideTheList = (list: HTMLElement) =>
+    list.getBoundingClientRect().bottom + REMOVE_DRAG_THRESHOLD_PX + STUB_ROW_HEIGHT;
+
+  it('marks the placeholder of a row taken out of the list and removes it on release', async () => {
+    const page = await openSettings({
+      id: 'flat',
+      name: 'Flat',
+      items: [row(BASS), row(MAIN), row(FX)],
+    });
+    await pointerDown(page.handle('MAIN'), X, rowY(1, 0.5));
+    await pointerMoveTo(X, rowY(1, 0.5) + 6);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('MAIN'));
+    const away = outsideTheList(page.list());
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    expect(document.querySelector('.drag-overlay')).toHaveTextContent('DROP TO REMOVE');
+    const placeholder = page.list().querySelector('.channel-order-row.is-dragging') as HTMLElement;
+    expect(placeholder.dataset.orderedChannelName).toBe('MAIN');
+
+    // Back inside the list it is an ordinary drag again, and the placeholder an ordinary one.
+    await pointerMoveTo(X, rowY(1, 0.5));
+    await waitFor(() => expect(page.list()).not.toHaveClass('is-removing'));
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    await pointerUp(X, away);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS', 'FX']));
+    expect(screen.getByRole('checkbox', { name: /MAIN/ })).not.toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS), row(FX)]);
+  });
+
+  it('takes a whole group out of the list with its members', async () => {
+    const page = await openSettings({
+      id: 'grouped',
+      name: 'Grouped',
+      items: [grp(RHYTHM, [MAIN, FX]), row(BASS)],
+    });
+    await pointerDown(page.handle('group Rhythm'), X, rowY(0, 0.5));
+    await pointerMoveTo(X, rowY(0, 0.5) + 6);
+    await waitFor(() =>
+      expect(document.querySelector('.drag-overlay')).toHaveTextContent('Rhythm'),
+    );
+    const away = outsideTheList(page.list());
+
+    await pointerMoveTo(X, away);
+    await waitFor(() => expect(page.list()).toHaveClass('is-removing'));
+    expect(page.list().querySelector('.view-group.is-dragging')).not.toBeNull();
+
+    await pointerUp(X, away);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    expect(await page.savedItems()).toEqual([row(BASS)]);
   });
 });
 
@@ -612,7 +842,7 @@ describe('settings drag and drop (touch sensor)', () => {
   const X = 700;
   const rowY = (row: number, fraction: number) =>
     STUB_LIST_PADDING + (row + fraction) * STUB_ROW_HEIGHT;
-  const view: View = { id: 'v1', name: 'Stage', channels: [BASS, MAIN, FX], groups: [] };
+  const view: View = { id: 'v1', name: 'Stage', items: [row(BASS), row(MAIN), row(FX)] };
 
   it('starts a drag only after the finger has rested on the handle', async () => {
     const page = await openSettings(view);
@@ -631,7 +861,7 @@ describe('settings drag and drop (touch sensor)', () => {
     expect(page.orderedNames()).toEqual(['MAIN', 'BASS', 'FX']);
     // dnd-kit swallows clicks for a moment after a drop; let that window pass before saving.
     await advanceTouchDelay(TOUCH_ACTIVATION_DELAY_MS);
-    expect(await page.savedChannels()).toEqual([MAIN, BASS, FX]);
+    expect(await page.savedItems()).toEqual([row(MAIN), row(BASS), row(FX)]);
   });
 
   it('reads a finger that moves past the tolerance as a scroll and never starts', async () => {

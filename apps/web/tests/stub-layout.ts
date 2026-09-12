@@ -6,11 +6,19 @@
  * spanning their header and members. Rectangles are recomputed on every call, so they follow the
  * DOM.
  *
+ * The layout above is where elements *belong*. A real `getBoundingClientRect` also includes any
+ * transform in effect, and the FLIP list leans on that: it measures natural positions by taking
+ * the transform back out again. So a rectangle from the layout below is shifted by whatever the
+ * element and its flip ancestors currently translate by, or a running tween would read as a
+ * layout change and the list would animate moves that never happened.
+ *
  * Every call walks the lists, and dnd-kit measures constantly, so this runs thousands of times in
  * one drag: it reads direct children rather than querying, which keeps each call proportional to
  * the number of rows instead of the number of nodes. The rows carry a collapsed menu of their own
  * these days, and a descendant query pays for every option in it on every measurement.
  */
+
+import { flipTranslateOf } from '../src/features/settings/flip-geometry.js';
 
 export const STUB_ROW_HEIGHT = 40;
 export const STUB_ROW_WIDTH = 400;
@@ -92,7 +100,7 @@ function layoutRects(): Map<Element, DOMRect> {
         rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_SLOT_HEIGHT));
       }
     } else if (block.classList.contains('panel-empty')) {
-      // The empty notice is a row of the list, but nothing ever drops on it.
+      // The empty notice is a row of the list. It steps aside for a drag, so nothing drops on it.
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
       y += STUB_ROW_HEIGHT;
     } else {
@@ -129,12 +137,23 @@ function overlayRect(element: Element): DOMRect | undefined {
   );
 }
 
+/** Moves a laid-out rectangle by the translation the element is currently painted with. */
+function withInFlightTranslate(element: Element, laidOut: DOMRect): DOMRect {
+  const { x, y } = flipTranslateOf(element);
+  return x === 0 && y === 0
+    ? laidOut
+    : rect(laidOut.left + x, laidOut.top + y, laidOut.width, laidOut.height);
+}
+
 /** Installs the layout stub and returns a function that restores the original method. */
 export function stubListLayout(): () => void {
   const original = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
+    const laidOut = layoutRects().get(this);
+    if (laidOut !== undefined) {
+      return withInFlightTranslate(this, laidOut);
+    }
     return (
-      layoutRects().get(this) ??
       overlayRect(this) ??
       // dnd-kit measures the overlay's only child rather than the positioned wrapper itself.
       (this.parentElement === null ? undefined : overlayRect(this.parentElement)) ??

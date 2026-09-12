@@ -27,16 +27,40 @@ export function channelColor(kind: ChannelKind, color?: ChannelPaletteKey): stri
 }
 
 /**
- * Colour of a group: its own override, or the type colour of its first present member. The
- * member's own override is deliberately ignored, so a member set to follow the group cannot end
- * up asking the group to follow it back. A group with no present member falls back to the input
- * colour, which is what the configuration page shows for a group waiting to be filled.
+ * The kind most of `kinds` are. A tie goes to whichever of the tied kinds comes first, so the
+ * answer only depends on the list and not on how it was counted. An empty list has no answer.
  */
-export function groupAccent(group: ViewGroup | undefined, leadKind: ChannelKind | undefined) {
+export function dominantChannelKind(kinds: readonly ChannelKind[]): ChannelKind | undefined {
+  const counts = new Map<ChannelKind, number>();
+  for (const kind of kinds) {
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  let best: ChannelKind | undefined;
+  let bestCount = 0;
+  for (const kind of kinds) {
+    const count = counts.get(kind) ?? 0;
+    if (count > bestCount) {
+      best = kind;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/**
+ * Colour of a group: its own override, or the type colour most of its members are. Members are
+ * counted by the kind their reference records, so a member the mixer cannot currently resolve
+ * still counts and the colour does not shift about while the tree loads. A member's own override
+ * is deliberately ignored, so one set to follow the group cannot ask the group to follow it
+ * back. A group with no members falls back to the input colour, which is what the configuration
+ * page shows for a group waiting to be filled.
+ */
+export function groupAccent(group: ViewGroup | undefined): string {
   if (group?.color !== undefined) {
     return CHANNEL_PALETTE[group.color];
   }
-  return channelTypeColor(leadKind ?? 'channel');
+  const kinds = group?.channels.map((channel) => channel.kind) ?? [];
+  return channelTypeColor(dominantChannelKind(kinds) ?? 'channel');
 }
 
 /**
@@ -49,10 +73,9 @@ export function channelAccent(
   kind: ChannelKind,
   color: ViewChannelColor | undefined,
   group: ViewGroup | undefined,
-  leadKind?: ChannelKind,
 ): string {
   if (color === 'group') {
-    return group === undefined ? channelTypeColor(kind) : groupAccent(group, leadKind);
+    return group === undefined ? channelTypeColor(kind) : groupAccent(group);
   }
   return channelColor(kind, color);
 }

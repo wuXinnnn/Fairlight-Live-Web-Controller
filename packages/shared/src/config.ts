@@ -21,12 +21,99 @@ export type ViewChannelColor = z.infer<typeof viewChannelColorSchema>;
  * so the logical `channelId` (for example `channel/3`) only survives as a tie-breaker when two
  * live channels share the same kind and name.
  */
-const viewChannelRefObjectSchema = z.object({
+export const viewChannelRefSchema = z.object({
   kind: channelKindSchema,
   name: z.string().trim().min(1),
   channelId: z.string().min(1).optional(),
-  groupId: z.string().min(1).optional(),
   color: viewChannelColorSchema.optional(),
+});
+export type ViewChannelRef = z.infer<typeof viewChannelRefSchema>;
+
+/** A named group of channels. It owns its members, so an empty group is simply one with none. */
+export const viewGroupSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1),
+  /** Overrides the colour the group would take from its members' types. */
+  color: channelPaletteKeySchema.optional(),
+  channels: z.array(viewChannelRefSchema),
+});
+export type ViewGroup = z.infer<typeof viewGroupSchema>;
+
+/**
+ * One entry of a view, in display order: either a channel on its own or a whole group. Groups
+ * carry their members, so a group has a place in the list even when it is empty, and membership
+ * is a matter of where a reference sits rather than an id it has to agree with.
+ */
+export const viewItemSchema = z.discriminatedUnion('type', [
+  viewChannelRefSchema.extend({ type: z.literal('channel') }),
+  viewGroupSchema.extend({ type: z.literal('group') }),
+]);
+export type ViewItem = z.infer<typeof viewItemSchema>;
+export type ViewChannelItem = Extract<ViewItem, { type: 'channel' }>;
+export type ViewGroupItem = Extract<ViewItem, { type: 'group' }>;
+
+/** Object shape shared by the persisted view and the REST write body; refinements are added per schema. */
+export const viewObjectSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1),
+  items: z.array(viewItemSchema).default([]),
+});
+
+interface ViewItemIntegrity {
+  items: ViewItem[];
+}
+
+/**
+ * Ensures group ids are unique and that no channel outside a group asks to follow a group
+ * colour. Membership itself needs no check: it is structural.
+ */
+export function checkViewItems(view: ViewItemIntegrity, ctx: z.RefinementCtx): void {
+  const groupIds = new Set<string>();
+  view.items.forEach((item, index) => {
+    if (item.type === 'group') {
+      if (groupIds.has(item.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['items', index, 'id'],
+          message: `Duplicate group id "${item.id}"`,
+        });
+      }
+      groupIds.add(item.id);
+      return;
+    }
+    if (item.color === 'group') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['items', index, 'color'],
+        message: 'Channel color "group" requires a group',
+      });
+    }
+  });
+}
+
+export const viewSchema = viewObjectSchema.superRefine(checkViewItems);
+export type View = z.infer<typeof viewSchema>;
+
+/** Every channel reference of a view in display order, root-level entries and members alike. */
+export function viewChannelRefs(view: Pick<View, 'items'>): ViewChannelRef[] {
+  return view.items.flatMap((item) => (item.type === 'channel' ? [item] : item.channels));
+}
+
+/** The groups of a view, in the order their blocks appear. */
+export function viewGroups(view: Pick<View, 'items'>): ViewGroup[] {
+  return view.items.filter((item): item is ViewGroupItem => item.type === 'group');
+}
+
+export const emberEndpointSchema = z.object({
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65535),
+});
+export type EmberEndpoint = z.infer<typeof emberEndpointSchema>;
+
+export const appConfigObjectSchema = z.object({
+  version: z.literal(2),
+  ember: emberEndpointSchema,
+  views: z.array(viewSchema),
 });
 
 function kindFromChannelId(channelId: string): ChannelKind {
@@ -34,18 +121,18 @@ function kindFromChannelId(channelId: string): ChannelKind {
   return CHANNEL_KINDS.find((kind) => kind === prefix) ?? 'channel';
 }
 
-/** Migrates the pre-grouping `{ channelId, lastKnownName }` reference shape in place. */
-function migrateLegacyChannelRef(input: unknown): unknown {
-  if (typeof input !== 'object' || input === null) {
-    return input;
-  }
-  const candidate = input as Record<string, unknown>;
+/** Migrates the pre-grouping `{ channelId, lastKnownName }` reference shape. */
+function migrateLegacyChannelRef(input: unknown): Record<string, unknown> {
+  const candidate = (typeof input === 'object' && input !== null ? input : {}) as Record<
+    string,
+    unknown
+  >;
   if (
     typeof candidate.channelId !== 'string' ||
     typeof candidate.lastKnownName !== 'string' ||
     'name' in candidate
   ) {
-    return input;
+    return candidate;
   }
   // Old references could carry an empty name; fall back to the id so one such entry never
   // invalidates the whole persisted config.
@@ -57,89 +144,115 @@ function migrateLegacyChannelRef(input: unknown): unknown {
   if (candidate.color !== undefined) {
     migrated.color = candidate.color;
   }
+  // The shape predates grouping, so an entry in this shape rarely names a group - but a
+  // hand-edited file can, and rebuilding the reference must not quietly drop it on the floor.
+  if (candidate.groupId !== undefined) {
+    migrated.groupId = candidate.groupId;
+  }
   return migrated;
 }
 
-export const viewChannelRefSchema = z.preprocess(
-  migrateLegacyChannelRef,
-  viewChannelRefObjectSchema,
-);
-export type ViewChannelRef = z.infer<typeof viewChannelRefObjectSchema>;
-
-export const viewGroupSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().trim().min(1),
-  /** Overrides the colour the group would take from its first present member. */
-  color: channelPaletteKeySchema.optional(),
-});
-export type ViewGroup = z.infer<typeof viewGroupSchema>;
-
-/** Object shape shared by the persisted view and the REST write body; refinements are added per schema. */
-export const viewObjectSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().trim().min(1),
-  channels: z.array(viewChannelRefSchema),
-  groups: z.array(viewGroupSchema).default([]),
-});
-
-interface ViewGroupIntegrity {
-  channels: ViewChannelRef[];
-  groups: ViewGroup[];
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 /**
- * Ensures group ids are unique, every channel `groupId` points at an existing group, and no
- * channel asks to follow a group colour without belonging to a group.
+ * Rebuilds one version 1 view as ordered items. Version 1 stored a flat `channels` array whose
+ * entries pointed at `groups` by id, so a group's place in the list could only be inferred from
+ * where its members happened to sit — and a group with no members had no place at all. Here each
+ * run of consecutive members becomes one group block in that same spot, groups nobody references
+ * are appended (they had been shown at the end), and a `groupId` pointing at nothing is dropped,
+ * which is how the old reader treated it too.
  */
-export function checkViewGroups(view: ViewGroupIntegrity, ctx: z.RefinementCtx): void {
-  const groupIds = new Set<string>();
-  view.groups.forEach((group, index) => {
-    if (groupIds.has(group.id)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['groups', index, 'id'],
-        message: `Duplicate group id "${group.id}"`,
-      });
+function migrateLegacyView(input: unknown): unknown {
+  const view = (typeof input === 'object' && input !== null ? input : {}) as Record<
+    string,
+    unknown
+  >;
+  if (!Array.isArray(view.channels)) {
+    return view;
+  }
+  const groups = new Map<string, Record<string, unknown>>();
+  for (const entry of asArray(view.groups)) {
+    const group = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<
+      string,
+      unknown
+    >;
+    if (typeof group.id === 'string') {
+      groups.set(group.id, group);
     }
-    groupIds.add(group.id);
-  });
-  view.channels.forEach((channel, index) => {
-    if (channel.groupId !== undefined && !groupIds.has(channel.groupId)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['channels', index, 'groupId'],
-        message: `Unknown group id "${channel.groupId}"`,
-      });
+  }
+
+  // Version 1 never required a group's members to be adjacent, and the mixer drew such a group
+  // as two sections. Two blocks cannot share an id here, so the second run onwards gets one of
+  // its own - taken well clear of every id the file already uses, since a duplicate would fail
+  // validation and send the whole config back to defaults.
+  const taken = new Set(groups.keys());
+  const freshId = (base: string): string => {
+    for (let suffix = 2; ; suffix += 1) {
+      const candidate = `${base}-${suffix}`;
+      if (!taken.has(candidate)) {
+        taken.add(candidate);
+        return candidate;
+      }
     }
-    if (channel.color === 'group' && channel.groupId === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['channels', index, 'color'],
-        message: 'Channel color "group" requires a group',
-      });
+  };
+
+  const items: Record<string, unknown>[] = [];
+  const placed = new Set<string>();
+  for (const entry of view.channels) {
+    const { groupId, ...reference } = migrateLegacyChannelRef(entry);
+    if (typeof groupId !== 'string' || !groups.has(groupId)) {
+      items.push({ ...reference, type: 'channel' });
+      continue;
     }
-  });
+    const last = items[items.length - 1];
+    if (last?.type === 'group' && last.groupId === groupId) {
+      (last.channels as Record<string, unknown>[]).push(reference);
+      continue;
+    }
+    const id = placed.has(groupId) ? freshId(groupId) : groupId;
+    placed.add(groupId);
+    // `groupId` tracks which version 1 group this block came from, so a later run of the same
+    // group joins the right block; it is dropped before the item is handed on.
+    items.push({ ...groups.get(groupId), type: 'group', id, groupId, channels: [reference] });
+  }
+  for (const item of items) {
+    delete item.groupId;
+  }
+  for (const [id, group] of groups) {
+    if (!placed.has(id)) {
+      items.push({ ...group, type: 'group', channels: [] });
+    }
+  }
+  const rest = { ...view };
+  delete rest.channels;
+  delete rest.groups;
+  return { ...rest, items };
 }
 
-export const viewSchema = viewObjectSchema.superRefine(checkViewGroups);
-export type View = z.infer<typeof viewSchema>;
+/**
+ * Brings a persisted config up to version 2. Anything already at version 2 is returned as it is,
+ * and any other version is passed through for the schema to reject. Migrating on read means the
+ * next save writes version 2 without the server knowing anything about it.
+ */
+export function migrateAppConfig(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null) {
+    return input;
+  }
+  const config = input as Record<string, unknown>;
+  if (config.version !== 1) {
+    return config;
+  }
+  return { ...config, version: 2, views: asArray(config.views).map(migrateLegacyView) };
+}
 
-export const emberEndpointSchema = z.object({
-  host: z.string().min(1),
-  port: z.number().int().min(1).max(65535),
-});
-export type EmberEndpoint = z.infer<typeof emberEndpointSchema>;
-
-export const appConfigSchema = z.object({
-  version: z.literal(1),
-  ember: emberEndpointSchema,
-  views: z.array(viewSchema),
-});
-export type AppConfig = z.infer<typeof appConfigSchema>;
+export const appConfigSchema = z.preprocess(migrateAppConfig, appConfigObjectSchema);
+export type AppConfig = z.infer<typeof appConfigObjectSchema>;
 
 export function defaultAppConfig(): AppConfig {
   return {
-    version: 1,
+    version: 2,
     ember: { host: DEFAULT_EMBER_HOST, port: DEFAULT_EMBER_PORT },
     views: [],
   };

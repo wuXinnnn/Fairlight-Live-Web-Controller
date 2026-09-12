@@ -2515,6 +2515,13 @@ html.fader-cap-dragging * {
   background: #171610;
 }
 
+/* The pointer has left the list: releasing removes the item, so its placeholder turns red. */
+.view-channel-list.is-removing .channel-order-row.is-dragging,
+.view-channel-list.is-removing .view-group.is-dragging {
+  outline-color: var(--red);
+  background: #2a1716;
+}
+
 .channel-order-row.is-placeholder {
   grid-template-columns: auto auto auto minmax(7rem, 1fr);
 }
@@ -2522,6 +2529,10 @@ html.fader-cap-dragging * {
 /*
  * Root slots: drop targets at the block boundaries next to groups, shown only while a channel is
  * dragged. The item is zero height; its band overlays the top of the block below the boundary.
+ * They have no appearance of their own. Hitting one moves the preview's placeholder row to that
+ * position, and the placeholder is the answer to "where would this land" - a marker on the slot
+ * as well only tells the same thing twice, and cannot tell it consistently: once the placeholder
+ * is at the end of the list it covers the top of the slot that put it there.
  */
 .root-slot {
   position: relative;
@@ -2541,12 +2552,13 @@ html.fader-cap-dragging * {
 }
 
 /*
- * The slot of a view with nothing ordered in it takes the space the list has left, so the first
- * channel can be dropped anywhere below the (possibly empty) groups rather than on a 16px band.
+ * The slot at the end of the list takes the space the list has left, so anything dropped in the
+ * empty area below the last block goes to the end rather than having to find a 16px band. Its
+ * minimum height comes from ROOT_SLOT_HEIGHT_PX inline, so a list that has overflowed and has
+ * no space left over still leaves it that much to hit.
  */
 .view-channel-list > .root-slot--fill {
   flex: 1 1 auto;
-  min-height: 4rem;
 }
 
 .root-slot--fill .root-slot__band {
@@ -2558,19 +2570,6 @@ html.fader-cap-dragging * {
 .view-channel-list > .panel-empty {
   display: block;
   flex: 0 0 auto;
-}
-
-.root-slot__band::before {
-  position: absolute;
-  top: 0;
-  right: 0.5rem;
-  left: 0.5rem;
-  border-top: 2px dashed color-mix(in srgb, var(--amber) 55%, transparent);
-  content: '';
-}
-
-.root-slot__band.is-over::before {
-  border-top-color: var(--amber);
 }
 
 /* The clone that follows the pointer, drawn in dnd-kit's overlay portal above everything. */

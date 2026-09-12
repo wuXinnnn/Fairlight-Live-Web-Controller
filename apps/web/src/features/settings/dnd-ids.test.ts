@@ -18,7 +18,10 @@ describe('dnd ids', () => {
     expect(parseDndId(groupDndId('g1'))).toEqual({ kind: 'group', groupId: 'g1' });
     expect(parseDndId(groupZoneDndId('g1'))).toEqual({ kind: 'groupzone', groupId: 'g1' });
     expect(parseDndId(availableDndId('aux/1'))).toEqual({ kind: 'available', channelId: 'aux/1' });
-    expect(parseDndId(rootSlotDndId(2))).toEqual({ kind: 'slot', position: 2 });
+    expect(parseDndId(rootSlotDndId(2))).toEqual({ kind: 'slot', position: 2, fill: false });
+    // The slot at the end of the list is marked in the identifier, because the drop resolver
+    // has nothing but the identifier to tell it apart from an ordinary boundary.
+    expect(parseDndId(rootSlotDndId(2, true))).toEqual({ kind: 'slot', position: 2, fill: true });
   });
 
   it('rejects identifiers it does not know', () => {
@@ -28,6 +31,8 @@ describe('dnd ids', () => {
     expect(parseDndId('slot:x')).toBeNull();
     expect(parseDndId('slot:-1')).toBeNull();
     expect(parseDndId('slot:1.5')).toBeNull();
+    expect(parseDndId('slot:fill:x')).toBeNull();
+    expect(parseDndId('slot:fill:')).toBeNull();
     expect(parseDndId(42)).toBeNull();
   });
 

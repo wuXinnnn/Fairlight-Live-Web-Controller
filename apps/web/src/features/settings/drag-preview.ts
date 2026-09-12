@@ -6,8 +6,10 @@ import { DROP_ANIMATION_MS } from './dnd-config.js';
 import { parseDndId } from './dnd-ids.js';
 import { resolveDropTarget, type DragSource, type DropHint } from './drop-resolver.js';
 import {
-  insertChannelAt,
-  moveChannelTo,
+  groupOfIndex,
+  insertChannelAtAt,
+  locateChannel,
+  moveChannelToAt,
   moveGroupTo,
   removeChannel,
   removeGroupWithMembers,
@@ -51,14 +53,11 @@ export function sameContainer(a: ListContainer | null, b: ListContainer | null):
 export function containerOf(view: View, source: DragSource): ListContainer | null {
   switch (source.kind) {
     case 'channel': {
-      const reference = view.channels[source.index];
-      if (reference === undefined) {
+      if (locateChannel(view, source.index) === null) {
         return null;
       }
-      const groupId = reference.groupId;
-      return groupId !== undefined && view.groups.some((group) => group.id === groupId)
-        ? { kind: 'group', groupId }
-        : { kind: 'root' };
+      const group = groupOfIndex(view, source.index);
+      return group === undefined ? { kind: 'root' } : { kind: 'group', groupId: group.id };
     }
     case 'group':
       return { kind: 'root' };
@@ -69,10 +68,6 @@ export function containerOf(view: View, source: DragSource): ListContainer | nul
 
 export function containerOfTarget(target: DropTarget): ListContainer {
   return target.kind === 'group' ? { kind: 'group', groupId: target.groupId } : { kind: 'root' };
-}
-
-function movedIndex(before: View, after: View): number {
-  return after.channels.findIndex((reference) => !before.channels.includes(reference));
 }
 
 /**
@@ -87,11 +82,11 @@ export function previewFor(
 ): DragPreview | null {
   switch (source.kind) {
     case 'channel': {
-      const next = moveChannelTo(view, source.index, target);
-      if (next === null) {
+      const placed = moveChannelToAt(view, source.index, target);
+      if (placed === null) {
         return null;
       }
-      return { view: next, source: { kind: 'channel', index: movedIndex(view, next) } };
+      return { view: placed.view, source: { kind: 'channel', index: placed.index } };
     }
     case 'group': {
       if (target.kind !== 'root') {
@@ -104,13 +99,13 @@ export function previewFor(
       if (channel === undefined) {
         return null;
       }
-      const next = insertChannelAt(view, referenceForChannel(channel), target);
-      if (next === null) {
+      const placed = insertChannelAtAt(view, referenceForChannel(channel), target);
+      if (placed === null) {
         return null;
       }
       return {
-        view: next,
-        source: { kind: 'channel', index: movedIndex(view, next) },
+        view: placed.view,
+        source: { kind: 'channel', index: placed.index },
         placeholderChannelId: channel.id,
       };
     }
@@ -146,7 +141,7 @@ export function settlePreview(
   }
   const settled =
     source.kind === 'channel'
-      ? moveChannelTo(view, source.index, target)
+      ? (moveChannelToAt(view, source.index, target)?.view ?? null)
       : source.kind === 'group' && target.kind === 'root'
         ? moveGroupTo(view, source.groupId, target.position)
         : null;

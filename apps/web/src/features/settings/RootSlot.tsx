@@ -4,16 +4,16 @@ import { ROOT_SLOT_HEIGHT_PX } from './dnd-config.js';
 import { rootSlotDndId, type DndItemData } from './dnd-ids.js';
 
 interface RootSlotProps {
-  /** Number of non-empty blocks above this boundary. */
+  /** Number of blocks above this boundary. */
   position: number;
   /** Where the slot is, for screen reader announcements. */
   label: string;
   /** True when the dragged row already sits here; keyboard moves skip it, pointers stay put. */
   current: boolean;
   /**
-   * True for the slot of a view with no ordered blocks. It takes the space the list has left
-   * instead of overlaying the block below, so an empty view has somewhere to drop the first
-   * channel while any empty groups above it stay reachable in their own right.
+   * True for the slot at the end of the list. It takes the space the list has left instead of
+   * overlaying the block below, so the empty area under the last block is a drop target: the
+   * one place a channel, an AVAILABLE entry or a whole group can be sent to the end.
    */
   fill?: boolean;
 }
@@ -26,16 +26,20 @@ interface RootSlotProps {
  * Hovering the band previews the channel there as an ungrouped row, which replaces the slot.
  */
 export function RootSlot({ position, label, current, fill = false }: RootSlotProps) {
-  const data: DndItemData = { kind: 'slot', label, position, current };
-  const { setNodeRef, isOver } = useDroppable({ id: rootSlotDndId(position), data });
+  const data: DndItemData = { kind: 'slot', label, position, current, fill };
+  const { setNodeRef } = useDroppable({ id: rootSlotDndId(position, fill), data });
   return (
     <li className={`root-slot ${fill ? 'root-slot--fill' : ''}`} aria-hidden="true">
       <div
         ref={setNodeRef}
-        className={`root-slot__band ${isOver ? 'is-over' : ''}`}
+        className="root-slot__band"
         data-root-slot={position}
         data-root-slot-fill={fill ? '' : undefined}
-        style={fill ? undefined : ({ height: ROOT_SLOT_HEIGHT_PX } as CSSProperties)}
+        style={
+          fill
+            ? ({ minHeight: ROOT_SLOT_HEIGHT_PX } as CSSProperties)
+            : ({ height: ROOT_SLOT_HEIGHT_PX } as CSSProperties)
+        }
       />
     </li>
   );

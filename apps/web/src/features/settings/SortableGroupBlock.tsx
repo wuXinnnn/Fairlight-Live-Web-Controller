@@ -9,7 +9,7 @@ import {
 } from '@flwc/shared';
 import type { CSSProperties, ReactNode } from 'react';
 import { CHANNEL_PALETTE, groupAccent } from '../mixer/channel-colors.js';
-import { leadChannelKind, type ResolvedViewChannel } from '../mixer/view-resolver.js';
+import type { ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { PALETTE_LABELS, pad } from './channel-labels.js';
 import { previewSortingStrategy } from './dnd-collision.js';
 import { groupDndId, groupZoneDndId, readItemData } from './dnd-ids.js';
@@ -103,7 +103,7 @@ function GroupHeader({
       id: 'auto',
       value: undefined,
       ariaLabel: `Group ${group.name} use automatic color`,
-      title: "First member's type",
+      title: 'Most common member type',
       text: 'AUTO',
       selected: group.color === undefined,
     },
@@ -223,7 +223,6 @@ function GroupHeader({
 /** A group with members: a sortable block in the root list and a drop container for channels. */
 export function SortableGroupBlock(props: GroupBlockProps) {
   const { group, entries, rowKeys, itemIds, saving, collapsed, renderRow } = props;
-  const leadKind = leadChannelKind(entries);
   const membersId = `view-group-${group.id}-members`;
   const {
     attributes,
@@ -253,7 +252,7 @@ export function SortableGroupBlock(props: GroupBlockProps) {
   });
   const isDropTarget = useIsDropTarget(group.id);
   const style = {
-    '--channel-row-accent': groupAccent(group, leadKind),
+    '--channel-row-accent': groupAccent(group),
     transform: CSS.Transform.toString(transform),
     transition,
   } as CSSProperties;
@@ -295,10 +294,29 @@ export function SortableGroupBlock(props: GroupBlockProps) {
   );
 }
 
-/** A group without members: only a drop container, always listed after the ordered blocks. */
+/**
+ * A group without members. It holds a place in the list like any other block, so it is a
+ * sortable item in its own right - draggable by its handle, movable with the arrows - as well as
+ * a drop container. It has no collapse button, because there is nothing to fold away.
+ */
 export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowKeys' | 'itemIds'>) {
   const { group, saving } = props;
-  const { setNodeRef } = useDroppable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: groupDndId(group.id),
+    data: { kind: 'group', label: `group ${group.name}`, groupId: group.id },
+    disabled: saving,
+    animateLayoutChanges: () => false,
+    transition: null,
+  });
+  const { setNodeRef: setZoneRef } = useDroppable({
     id: groupZoneDndId(group.id),
     data: {
       kind: 'groupzone',
@@ -310,17 +328,34 @@ export function EmptyGroupBlock(props: Omit<GroupBlockProps, 'renderRow' | 'rowK
     disabled: saving,
   });
   const isDropTarget = useIsDropTarget(group.id);
+  const style = {
+    '--channel-row-accent': groupAccent(group),
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } as CSSProperties;
   return (
     <li
-      ref={setNodeRef}
-      className={`view-group ${isDropTarget ? 'is-drop-target' : ''}`}
+      ref={(node) => {
+        setNodeRef(node);
+        setZoneRef(node);
+      }}
+      className={`view-group ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
       data-flip-key={groupRowKey(group.id)}
+      data-flip-skip={isDragging ? '' : undefined}
       data-view-group-id={group.id}
-      style={{ '--channel-row-accent': groupAccent(group, undefined) } as CSSProperties}
+      style={style}
     >
       <GroupHeader
         {...props}
-        handle={<span className="drag-handle is-placeholder" aria-hidden="true" />}
+        handle={
+          <DragHandle
+            label={`Drag group ${group.name}`}
+            handleRef={setActivatorNodeRef}
+            attributes={attributes}
+            listeners={listeners}
+            disabled={saving}
+          />
+        }
       />
       <p className="view-group__empty">ASSIGN CHANNELS BELOW</p>
     </li>

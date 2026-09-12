@@ -1,4 +1,10 @@
-import { CHANNEL_KINDS, type ChannelKind, type ViewGroup } from '@flwc/shared';
+import {
+  CHANNEL_KINDS,
+  viewChannelRefs,
+  viewGroups,
+  type ChannelKind,
+  type ViewGroup,
+} from '@flwc/shared';
 import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -18,7 +24,6 @@ import { useChannelPresence, type PresenceChannel } from './use-channel-presence
 import { useControlLockPreference } from './use-control-lock-preference.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
 import {
-  leadChannelKind,
   resolveViewChannels,
   segmentViewChannels,
   type ResolvedViewChannel,
@@ -44,7 +49,7 @@ interface MixerPageProps {
 }
 
 function segmentAccent(segment: ViewSegment): string {
-  return groupAccent(segment.group, leadChannelKind(segment.entries));
+  return groupAccent(segment.group);
 }
 
 export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: MixerPageProps) {
@@ -86,14 +91,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const liveIds = new Set(channels.map((channel) => channel.id));
   const [typeRows, toggleTypeRows] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
-  const viewHasGroups = activeView !== null && activeView.groups.length > 0;
+  const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
     socketConnected,
     emberStatus,
     emberLastError,
     channelInventoryLoaded,
     channelCount: renderedChannels.length,
-    viewChannelCount: activeView === null ? null : activeView.channels.length,
+    viewChannelCount: activeView === null ? null : viewChannelRefs(activeView).length,
   });
 
   const renderViewStrip = (
@@ -102,7 +107,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     extraClass?: string,
     // The group a strip belongs to, so a colour of `'group'` resolves the same as in the editor.
     group?: ViewGroup,
-    groupLeadKind?: ChannelKind,
   ): ReactNode => {
     const { reference, channel, index } = entry;
     let item: PresenceChannel | undefined;
@@ -133,7 +137,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           index={position}
           className={extraClass}
           group={group}
-          groupLeadKind={groupLeadKind}
         />
       );
     }
@@ -147,12 +150,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         style={
           {
             '--strip-index': position,
-            '--channel-accent': channelAccent(
-              item.channel.kind,
-              reference.color,
-              group,
-              groupLeadKind,
-            ),
+            '--channel-accent': channelAccent(item.channel.kind, reference.color, group),
           } as CSSProperties
         }
       />
@@ -182,7 +180,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     }
     const headingId = `view-group-${group.id}-${first.index}`;
     const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
-    const leadKind = leadChannelKind(entries);
     return (
       <section
         className="mixer-section"
@@ -196,13 +193,13 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
             <h2 id={headingId}>{group.name}</h2>
             <span>{presentCount.toString().padStart(2, '0')}</span>
           </header>
-          {renderViewStrip(first, offset, undefined, group, leadKind)}
+          {renderViewStrip(first, offset, undefined, group)}
         </div>
         <div className="channel-bay">
           {entries
             .slice(1)
             .map((entry, position) =>
-              renderViewStrip(entry, offset + position + 1, undefined, group, leadKind),
+              renderViewStrip(entry, offset + position + 1, undefined, group),
             )}
         </div>
       </section>

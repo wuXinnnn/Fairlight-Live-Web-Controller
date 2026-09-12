@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
+import { naturalGeometry, type NaturalRect, type Translate } from './flip-geometry.js';
 
 /** Movements smaller than this, in CSS pixels, are not animated. */
 export const FLIP_MIN_SHIFT_PX = 1;
@@ -31,6 +32,15 @@ interface Shift {
   dy: number;
 }
 
+/**
+ * One element as of a commit: where it belongs in the layout, and the translate it happens to be
+ * carrying right now. Both are read in the same pass, before any cleanup can wipe a transform.
+ */
+interface Measured {
+  rect: NaturalRect;
+  own: Translate;
+}
+
 /** Distinguishable from every dependency value, so the first commit only takes a baseline. */
 const NOT_MEASURED = Symbol('flip-not-measured');
 
@@ -38,12 +48,12 @@ function flipKey(element: Element): string {
   return element.getAttribute('data-flip-key') ?? '';
 }
 
-function measure(container: HTMLElement): Map<string, DOMRect> {
-  const rects = new Map<string, DOMRect>();
+function measure(container: HTMLElement): Map<string, Measured> {
+  const measured = new Map<string, Measured>();
   for (const element of container.querySelectorAll(FLIP_SELECTOR)) {
-    rects.set(flipKey(element), element.getBoundingClientRect());
+    measured.set(flipKey(element), naturalGeometry(element));
   }
-  return rects;
+  return measured;
 }
 
 function prefersReducedMotion(): boolean {
@@ -53,21 +63,26 @@ function prefersReducedMotion(): boolean {
 /**
  * FLIP animation for a list: the elements carrying `data-flip-key` are measured after **every**
  * commit, so the baseline always describes what is on screen, but only a commit that changed
- * `dependency` animates. Any element that moved by more than `FLIP_MIN_SHIFT_PX` first receives
- * the inverse translation and then transitions back to its natural place. Rows nested inside a
- * moved block only animate their movement relative to that block. Elements that were not in the
- * previous measurement (newly added rows) and elements marked `data-flip-skip` are left alone,
- * and reduced-motion users get no animation at all.
+ * `dependency` animates. Rows nested inside a moved block only animate their movement relative to
+ * that block. Elements that were not in the previous measurement (newly added rows) and elements
+ * marked `data-flip-skip` are left alone, and reduced-motion users get no animation at all.
  *
  * Measuring on every commit matters because rows also move for reasons the dependency does not
  * describe (a duplicate-name flag appearing, the inventory resolving); animating only on the
  * dependency keeps those from being mistaken for a reorder.
+ *
+ * Positions are **natural** ones — `getBoundingClientRect` minus the translate in effect — so a
+ * tween that is still running does not read as a layout change. That gives two properties a
+ * fast drag depends on. An element whose natural position did not move is left completely alone,
+ * so its tween keeps running at its own pace instead of being restarted from a place it is not
+ * in. An element that is pushed again mid-tween starts its new tween from where it currently
+ * looks, by keeping the translate it already carries, so it never jumps back first.
  */
 export function useFlipList<T extends HTMLElement>(
   containerRef: RefObject<T | null>,
   dependency: unknown,
 ): FlipListHandle {
-  const lastRects = useRef(new Map<string, DOMRect>());
+  const lastMeasured = useRef(new Map<string, Measured>());
   const lastDependency = useRef<unknown>(NOT_MEASURED);
   const skipNext = useRef(false);
   const pending = useRef(new Map<HTMLElement, () => void>());
@@ -75,12 +90,14 @@ export function useFlipList<T extends HTMLElement>(
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (container === null) {
-      lastRects.current = new Map();
+      lastMeasured.current = new Map();
       return;
     }
-    const previous = lastRects.current;
+    const previous = lastMeasured.current;
+    // Everything is read up front: `animate` clears the transform of the element it restarts,
+    // so a translate read inside the loop below would already be gone for earlier elements.
     const next = measure(container);
-    lastRects.current = next;
+    lastMeasured.current = next;
     const changed = !Object.is(lastDependency.current, dependency);
     lastDependency.current = dependency;
     if (!changed) {
@@ -93,12 +110,16 @@ export function useFlipList<T extends HTMLElement>(
     if (previous.size === 0 || prefersReducedMotion()) {
       return;
     }
+    // How far each element's natural place moved, as an inverse translation.
     const shifts = new Map<Element, Shift>();
     for (const element of container.querySelectorAll(FLIP_SELECTOR)) {
       const before = previous.get(flipKey(element));
       const after = next.get(flipKey(element));
       if (before !== undefined && after !== undefined) {
-        shifts.set(element, { dx: before.left - after.left, dy: before.top - after.top });
+        shifts.set(element, {
+          dx: before.rect.left - after.rect.left,
+          dy: before.rect.top - after.rect.top,
+        });
       }
     }
     for (const [element, shift] of shifts) {
@@ -106,11 +127,16 @@ export function useFlipList<T extends HTMLElement>(
       const parentShift = parent === null || parent === undefined ? undefined : shifts.get(parent);
       const dx = shift.dx - (parentShift?.dx ?? 0);
       const dy = shift.dy - (parentShift?.dy ?? 0);
+      // The natural place did not move: whatever tween is running is still heading somewhere
+      // correct, so touching this element could only interrupt it.
       if (Math.abs(dx) < FLIP_MIN_SHIFT_PX && Math.abs(dy) < FLIP_MIN_SHIFT_PX) {
         continue;
       }
       if (element instanceof HTMLElement && !element.matches(FLIP_SKIP_SELECTOR)) {
-        animate(element, dx, dy, pending.current);
+        // Start from where the element currently looks, not from its natural place. Only its own
+        // translate counts: an ancestor's is already covered by subtracting the parent's shift.
+        const own = next.get(flipKey(element))?.own ?? { x: 0, y: 0 };
+        animate(element, dx + own.x, dy + own.y, pending.current);
       }
     }
   });
@@ -128,7 +154,7 @@ export function useFlipList<T extends HTMLElement>(
     () => ({
       capture: () => {
         const container = containerRef.current;
-        lastRects.current = container === null ? new Map() : measure(container);
+        lastMeasured.current = container === null ? new Map() : measure(container);
       },
       skipNext: () => {
         skipNext.current = true;

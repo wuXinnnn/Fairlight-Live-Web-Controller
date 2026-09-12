@@ -1,5 +1,5 @@
 import { SortableContext } from '@dnd-kit/sortable';
-import type { ChannelKind, ChannelState, View } from '@flwc/shared';
+import type { ChannelState, View } from '@flwc/shared';
 import { Fragment, useImperativeHandle, useMemo, type RefObject } from 'react';
 import { resolveViewChannels, type ResolvedViewChannel } from '../mixer/view-resolver.js';
 import { previewSortingStrategy } from './dnd-collision.js';
@@ -15,7 +15,7 @@ import {
 } from './SortableGroupBlock.js';
 import { useDragPreview } from './use-drag-preview.js';
 import { useFlipList, type FlipListHandle } from './use-flip-list.js';
-import { nonEmptyBlocks, rootSlotPositionsFor, viewBlocks, type ViewBlock } from './view-order.js';
+import { groupOfIndex, rootSlotPositionsFor, viewBlocks, type ViewBlock } from './view-order.js';
 
 interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
   view: View;
@@ -33,8 +33,9 @@ interface ChannelOrderListProps extends ChannelRowHandlers, GroupBlockHandlers {
 }
 
 /**
- * The CHANNEL ORDER list: top-level blocks (ungrouped rows and groups with members) form the root
- * sortable list, each group nests its own sortable list, and empty groups trail as drop targets.
+ * The CHANNEL ORDER list: every item is a top-level block of the root sortable list - an
+ * ungrouped row, or a group with its own nested sortable list. A group without members is a
+ * block like any other, in its own place, and is both draggable and a drop target.
  * While a drag is previewed the preview view is rendered instead of the draft, with the dragged
  * item shown as a placeholder where it would land; the DOM order is the preview, so dnd-kit's
  * sorting strategy displaces nothing and the FLIP list animates the moves. While a channel is
@@ -65,7 +66,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
     listRef,
     flipRef,
   } = props;
-  const { dragging, sourceKind, source, preview } = useDragPreview();
+  const { dragging, sourceKind, source, preview, removing } = useDragPreview();
   const view = preview?.view ?? props.view;
   // The tween runs on the view that is actually rendered, so a drag preview animates too, and
   // collapsing a group shifts every row below it.
@@ -77,34 +78,19 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       ? -1
       : preview.source.index;
   const resolved = useMemo(() => resolveViewChannels(view, channels), [view, channels]);
-  // A group without a colour of its own takes the type colour of its first present member, and
-  // every row set to follow the group needs the same answer. Work it out once for the whole view.
-  const groupLeadKinds = useMemo(() => {
-    const kinds = new Map<string, ChannelKind>();
-    for (const entry of resolved) {
-      const groupId = entry.reference.groupId;
-      if (groupId !== undefined && entry.channel !== undefined && !kinds.has(groupId)) {
-        kinds.set(groupId, entry.channel.kind);
-      }
-    }
-    return kinds;
-  }, [resolved]);
-  const groupOf = (groupId: string | undefined) =>
-    groupId === undefined ? undefined : view.groups.find((group) => group.id === groupId);
   const rowKeys = channelRowKeys(view);
   const rowDndId = (index: number): string =>
     index === placeholderIndex && preview?.placeholderChannelId !== undefined
       ? availableDndId(preview.placeholderChannelId)
       : channelDndId(rowKeys[index] ?? '');
-  const rootItems = nonEmptyBlocks(view).map((block) =>
+  const blocks = viewBlocks(view);
+  const rootItems = blocks.map((block) =>
     block.kind === 'single' ? rowDndId(block.index) : groupDndId(block.group.id),
   );
   const renderRow = (entry: ResolvedViewChannel, rowKey: string) => {
     if (entry.index === placeholderIndex && preview?.placeholderChannelId !== undefined) {
       const reference = entry.reference;
-      const groupId = view.groups.some((group) => group.id === reference.groupId)
-        ? reference.groupId
-        : undefined;
+      const groupId = groupOfIndex(view, entry.index)?.id;
       return (
         <PlaceholderRow
           key={rowKey}
@@ -117,7 +103,7 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         />
       );
     }
-    const group = groupOf(entry.reference.groupId);
+    const group = groupOfIndex(view, entry.index);
     return (
       <SortableChannelRow
         key={rowKey}
@@ -125,7 +111,6 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         view={view}
         rowKey={rowKey}
         group={group}
-        groupLeadKind={group === undefined ? undefined : groupLeadKinds.get(group.id)}
         duplicateNames={duplicateNames}
         channelInventoryLoaded={channelInventoryLoaded}
         saving={saving}
@@ -137,34 +122,31 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
       />
     );
   };
-  const blocks = viewBlocks(view);
   const groupNumbers = new Map<string, number>();
   for (const block of blocks) {
     if (block.kind === 'group') {
       groupNumbers.set(block.group.id, groupNumbers.size + 1);
     }
   }
-  // The ordered blocks as they would be without the dragged channel: slot positions count
-  // these, and each slot is drawn before the block it precedes (or after the last block).
-  const draggedIndex = dragging && source?.kind === 'channel' ? source.index : -1;
-  const isDragged = (block: ViewBlock) =>
-    block.kind === 'single'
-      ? block.index === draggedIndex
-      : block.indices.length === 1 && block.indices[0] === draggedIndex;
-  const ordered = blocks.filter((block) => block.kind === 'single' || block.indices.length > 0);
-  const remaining = ordered.filter((block) => !isDragged(block));
-  // The position the dragged row occupies among the remaining blocks, when it is a root row.
-  const draggedOrdered = ordered.findIndex((block) => block.kind === 'single' && isDragged(block));
-  const currentPosition =
-    draggedOrdered < 0 ? -1 : ordered.slice(0, draggedOrdered).filter((b) => !isDragged(b)).length;
+  // The blocks as they would be without the dragged one: slot positions count these, and each
+  // slot is drawn before the block it precedes. A group that the dragged row is the last member
+  // of stays in the count, because it stays in the list as an empty block.
+  const draggedBlock =
+    !dragging || source === null
+      ? -1
+      : source.kind === 'group'
+        ? blocks.findIndex((block) => block.kind === 'group' && block.group.id === source.groupId)
+        : source.kind === 'channel'
+          ? blocks.findIndex((block) => block.kind === 'single' && block.index === source.index)
+          : -1;
+  const remaining = blocks.filter((_, position) => position !== draggedBlock);
+  // Taking a block out and putting it back where it was is a no-op, so that is its position.
+  const currentPosition = draggedBlock;
   const slotPositions = dragging && sourceKind !== 'group' ? rootSlotPositionsFor(remaining) : [];
   const slotBeforeBlock = new Map<ViewBlock, number>();
-  let slotAfterLast: number | undefined;
   for (const position of slotPositions) {
     const block = remaining[position];
-    if (block === undefined) {
-      slotAfterLast = position;
-    } else {
+    if (block !== undefined) {
       slotBeforeBlock.set(block, position);
     }
   }
@@ -177,38 +159,35 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
         current={position === currentPosition}
       />
     );
-  const lastOrdered = ordered[ordered.length - 1];
-  // A view whose draft has no ordered block (no channels, or only empty groups) still needs a
-  // place to drop the first channel. The slot is decided by the draft, not by the preview: were
-  // it gated on the rendered view it would unmount the moment a placeholder appeared, leaving
-  // the pointer over nothing, which clears the preview and brings the slot back, frame by frame.
-  const emptyDraft = nonEmptyBlocks(props.view).length === 0;
-  const fillSlot =
-    dragging && sourceKind !== 'group' && emptyDraft ? (
-      <RootSlot
-        key="slot:fill"
-        position={remaining.length}
-        label="the start of the list"
-        current={false}
-        fill
-      />
-    ) : null;
+  // The space under the last block is a drop target for the whole of a drag: it takes whatever
+  // height the list has left, so dropping anywhere in the empty area below the rows appends to
+  // the end. It is there for every kind of drag and for the whole of one, which is also what
+  // stops it flickering - a slot that came and went as the preview changed would unmount under
+  // the pointer, clear the preview, and come straight back, frame after frame.
+  const fillSlot = dragging ? (
+    <RootSlot
+      key="slot:fill"
+      position={remaining.length}
+      label="the end of the list"
+      current={remaining.length === currentPosition}
+      fill
+    />
+  ) : null;
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
-      <ol className="view-channel-list" ref={listRef}>
-        {view.channels.length === 0 && view.groups.length === 0 && (
+      {/* Releasing outside the list removes the dragged item; its placeholder says so. */}
+      <ol className={`view-channel-list ${removing ? 'is-removing' : ''}`} ref={listRef}>
+        {view.items.length === 0 && !dragging && (
           <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>
         )}
         {blocks.map((block) => {
           const slotBefore = slotAt(slotBeforeBlock.get(block));
-          const slotAfter = block === lastOrdered ? slotAt(slotAfterLast) : null;
           if (block.kind === 'single') {
             const entry = resolved[block.index];
             return entry === undefined ? null : (
               <Fragment key={rowKeys[block.index] ?? ''}>
                 {slotBefore}
                 {renderRow(entry, rowKeys[block.index] ?? '')}
-                {slotAfter}
               </Fragment>
             );
           }
@@ -229,18 +208,19 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
             onToggleCollapse: props.onToggleCollapse,
             onSetGroupColor: props.onSetGroupColor,
           };
-          return entries.length === 0 ? (
-            <EmptyGroupBlock key={block.group.id} {...shared} collapsed={false} />
-          ) : (
+          return (
             <Fragment key={block.group.id}>
               {slotBefore}
-              <SortableGroupBlock
-                {...shared}
-                rowKeys={block.indices.map((index) => rowKeys[index] ?? '')}
-                itemIds={block.indices.map(rowDndId)}
-                renderRow={renderRow}
-              />
-              {slotAfter}
+              {entries.length === 0 ? (
+                <EmptyGroupBlock {...shared} collapsed={false} />
+              ) : (
+                <SortableGroupBlock
+                  {...shared}
+                  rowKeys={block.indices.map((index) => rowKeys[index] ?? '')}
+                  itemIds={block.indices.map(rowDndId)}
+                  renderRow={renderRow}
+                />
+              )}
             </Fragment>
           );
         })}
