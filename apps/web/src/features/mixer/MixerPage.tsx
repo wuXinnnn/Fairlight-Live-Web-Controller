@@ -5,11 +5,14 @@ import {
   type ChannelKind,
   type ViewGroup,
 } from '@flwc/shared';
-import { useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
+import { INITIAL_PAGE_WHEEL_STATE, reducePageWheel } from '../../lib/page-wheel.js';
 import type { ControlClient } from '../../lib/socket.js';
+import { pagingDelta } from '../../lib/wheel-delta.js';
+import { sameOwner, wheelGestureTracker } from '../../lib/wheel-gesture.js';
 import { mixerStore } from '../../store/mixer-store.js';
 import { viewStore } from '../../store/view-store.js';
 import { LoudnessPanel } from '../loudness/LoudnessPanel.js';
@@ -66,6 +69,9 @@ const LAYOUT_VARIABLES = {
   '--page-transition': `${PAGE_TRANSITION_MS}ms`,
 } as CSSProperties;
 
+/** The pager has nothing to finish when its gesture ends; the fader is the one that commits. */
+const NO_GESTURE_END = () => {};
+
 interface MixerPageProps {
   controlClient: ControlClient;
   onOpenSettings(): void;
@@ -121,7 +127,9 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     viewChannelCount: activeView === null ? null : viewChannelRefs(activeView).length,
   });
 
-  const { width: viewportWidth, attach: attachViewport } = usePagerViewport();
+  const { width: viewportWidth, attach: attachViewport, node: viewportNode } = usePagerViewport();
+  const [deckNode, setDeckNode] = useState<HTMLDivElement | null>(null);
+  const pageWheelRef = useRef(INITIAL_PAGE_WHEEL_STATE);
 
   const renderViewStrip = (
     entry: ResolvedViewChannel,
@@ -293,6 +301,61 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     };
   }, [nextPage, previousPage]);
 
+  // The pager listens across the whole deck, so the gaps between strips and the rail turn pages
+  // too. It only ever learns about faders through the gesture tracker, never directly.
+  useEffect(() => {
+    if (deckNode === null) {
+      return;
+    }
+    const handleWheel = (event: WheelEvent) => {
+      const { target } = event;
+      const onTrack = target instanceof Element && target.closest('[data-wheel="level"]') !== null;
+      const owner = wheelGestureTracker.owner();
+      if (owner !== null && !sameOwner(owner, 'page')) {
+        // A fader owns this gesture, even if the pointer has since left its track.
+        wheelGestureTracker.touch();
+        event.preventDefault();
+        return;
+      }
+      if (owner === null) {
+        // A fader track keeps its own wheel unless Shift asks for the pager instead.
+        if (onTrack && !event.shiftKey) {
+          return;
+        }
+        if (!sameOwner(wheelGestureTracker.begin('page', NO_GESTURE_END), 'page')) {
+          return;
+        }
+      }
+      // Too short a viewport leaves the page taller than the space for it; scrolling to see the
+      // rest of a strip has to come before turning to the next one.
+      if (
+        !onTrack &&
+        !event.shiftKey &&
+        viewportNode !== null &&
+        viewportNode.scrollHeight > viewportNode.clientHeight
+      ) {
+        wheelGestureTracker.touch();
+        return;
+      }
+      event.preventDefault();
+      wheelGestureTracker.touch();
+      const { state, page } = reducePageWheel(pageWheelRef.current, {
+        delta: pagingDelta(event),
+        now: performance.now(),
+      });
+      pageWheelRef.current = state;
+      if (page === 1) {
+        nextPage();
+      } else if (page === -1) {
+        previousPage();
+      }
+    };
+    deckNode.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      deckNode.removeEventListener('wheel', handleWheel);
+    };
+  }, [deckNode, viewportNode, nextPage, previousPage]);
+
   return (
     <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
       <header className="console-header">
@@ -325,7 +388,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       {emptyState !== null ? (
         <EmptyConsole state={emptyState} onOpenConnection={onOpenConnection} />
       ) : (
-        <div className="mixer-deck">
+        <div className="mixer-deck" ref={setDeckNode}>
           <div className="mixer-bays" ref={attachViewport} data-view-id={activeView?.id}>
             <StripPages pages={pages} chrome={chrome} pageIndex={pager.pageIndex} />
           </div>
