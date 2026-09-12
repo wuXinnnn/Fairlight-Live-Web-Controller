@@ -100,7 +100,7 @@ function layoutRects(): Map<Element, DOMRect> {
         rects.set(band, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_SLOT_HEIGHT));
       }
     } else if (block.classList.contains('panel-empty')) {
-      // The empty notice is a row of the list, but nothing ever drops on it.
+      // The empty notice is a row of the list. It steps aside for a drag, so nothing drops on it.
       rects.set(block, rect(LIST_LEFT, y, STUB_ROW_WIDTH, STUB_ROW_HEIGHT));
       y += STUB_ROW_HEIGHT;
     } else {

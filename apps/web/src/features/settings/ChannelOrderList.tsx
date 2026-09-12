@@ -176,7 +176,9 @@ export function ChannelOrderList(props: ChannelOrderListProps) {
   return (
     <SortableContext items={rootItems} strategy={previewSortingStrategy}>
       <ol className="view-channel-list" ref={listRef}>
-        {view.items.length === 0 && <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>}
+        {view.items.length === 0 && !dragging && (
+          <li className="panel-empty">THIS VIEW HAS NO CHANNELS</li>
+        )}
         {blocks.map((block) => {
           const slotBefore = slotAt(slotBeforeBlock.get(block));
           if (block.kind === 'single') {

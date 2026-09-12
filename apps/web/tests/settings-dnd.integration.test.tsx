@@ -687,6 +687,27 @@ describe('settings drag and drop (mouse sensor)', () => {
     expect(await page.savedItems()).toEqual([row(BASS)]);
   });
 
+  it('takes a channel dropped where the first row of an empty view would be', async () => {
+    const page = await openSettings({ id: 'new', name: 'New', items: [] });
+    const handle = page.availableHandle('channel/1');
+    // The notice an empty list shows stands exactly where the first row goes. It steps aside for
+    // the drag, so the slot that fills the list starts at the very top of it.
+    const top = STUB_LIST_PADDING + STUB_ROW_HEIGHT * 0.5;
+
+    await pointerDown(handle, 0, top);
+    await pointerMoveTo(0, top + STUB_ROW_HEIGHT);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toHaveTextContent('BASS'));
+    expect(screen.queryByText('THIS VIEW HAS NO CHANNELS')).toBeNull();
+
+    await pointerMoveTo(X, top);
+    await waitFor(() => expect(page.orderedNames()).toEqual(['BASS']));
+    await pointerUp(X, top);
+    await waitFor(() => expect(document.querySelector('.drag-overlay')).toBeNull());
+    expect(page.orderedNames()).toEqual(['BASS']);
+    expect(screen.getByRole('checkbox', { name: /BASS/ })).toBeChecked();
+    expect(await page.savedItems()).toEqual([row(BASS)]);
+  });
+
   it('reaches the last member of a group and the row right after it from below', async () => {
     // Rows: header | MAIN | FX | BASS | SUB
     const page = await openSettings({
