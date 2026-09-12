@@ -64,15 +64,13 @@ button {
 }
 
 .mixer-shell {
-  min-height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
 }
 
 .console-header {
-  position: sticky;
   z-index: 10;
-  top: 0;
   display: grid;
   grid-template-columns: auto auto auto auto auto 1fr;
   min-height: 3rem;
@@ -618,34 +616,51 @@ body.is-modal-open {
   opacity: 0.38;
 }
 
+.mixer-deck {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 1fr auto;
+}
+
+/*
+ * The pager viewport. It never scrolls sideways — a strip is either on the page you are looking
+ * at or on another one. It does scroll down, but only in the degraded case below: a page is at
+ * least `--strip-min-height` tall, so a viewport shorter than that overflows rather than
+ * squashing the faders into uselessness.
+ */
 .mixer-bays {
-  display: flex;
   min-width: 0;
-  align-content: flex-start;
-  flex-wrap: wrap;
-  column-gap: 1px;
-  row-gap: 0.9rem;
-  padding: 1.6rem 1.5rem 2.5rem;
+  overflow: hidden auto;
+  padding: 0;
 }
 
-.mixer-section,
-.channel-bay {
-  display: contents;
+.mixer-pages {
+  display: flex;
+  height: 100%;
+  transform: translateX(calc(-100% * var(--page-index, 0)));
+  transition: transform var(--page-transition) ease;
 }
 
-.channel-group-lead {
+.mixer-page {
+  display: flex;
+  min-height: var(--strip-min-height);
+  flex: 0 0 100%;
+  align-items: stretch;
+  padding: 0.9rem 1.5rem;
+}
+
+.mixer-section {
   display: flex;
   min-width: 0;
-  flex: 0 0 auto;
-  gap: 1px;
+  gap: var(--strip-gap);
 }
 
 .mixer-section__header {
   display: flex;
-  width: 3.2rem;
-  min-width: 3.2rem;
-  min-height: 33rem;
-  flex: 0 0 3.2rem;
+  width: var(--section-header-width);
+  min-width: var(--section-header-width);
+  height: 100%;
+  flex: 0 0 var(--section-header-width);
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
@@ -662,8 +677,7 @@ body.is-modal-open {
   color: var(--channel-accent);
   transition:
     flex-basis var(--motion-medium) ease,
-    width var(--motion-medium) ease,
-    min-height var(--motion-medium) ease;
+    width var(--motion-medium) ease;
 }
 
 .mixer-section__header::after {
@@ -688,65 +702,18 @@ body.is-modal-open {
   writing-mode: vertical-rl;
 }
 
-.mixer-section:not(:first-child) .mixer-section__header {
-  margin-left: 0.85rem;
-}
-
-.mixer-bays.is-view-mode:not(.is-type-rows) .channel-strip.is-after-group {
-  margin-left: 0.85rem;
-}
-
-/* In TYPE ROWS mode ungrouped strips that follow a group start their own row. */
-.view-row-break {
-  display: none;
-}
-
-.mixer-bays.is-type-rows .view-row-break {
-  display: block;
-  width: 100%;
-  height: 0;
-  flex-basis: 100%;
-}
-
-.mixer-bays.is-type-rows .mixer-section__header {
-  width: 100%;
-  min-width: 100%;
-  min-height: 2.3rem;
-  flex-basis: 100%;
-  flex-direction: row;
-  justify-content: flex-start;
-  margin-left: 0;
-  padding: 0.55rem 0.8rem;
-}
-
-.mixer-bays.is-type-rows .channel-group-lead {
-  display: contents;
-}
-
-.mixer-bays.is-type-rows .mixer-section__header::after {
-  width: auto;
-  height: 1px;
-  min-height: 0;
-  background: linear-gradient(90deg, var(--channel-accent), transparent);
-}
-
-.mixer-bays.is-type-rows .mixer-section__header h2,
-.mixer-bays.is-type-rows .mixer-section__header span {
-  writing-mode: horizontal-tb;
-}
-
-.mixer-bays.is-type-rows .mixer-section__header span {
-  order: 3;
+.mixer-section + .mixer-section {
+  margin-left: var(--segment-gap);
 }
 
 .channel-strip {
   position: relative;
   display: grid;
-  width: 9.25rem;
-  min-width: 9.25rem;
-  min-height: 33rem;
-  flex: 0 0 9.25rem;
-  grid-template-rows: auto auto 1fr;
+  width: var(--strip-width);
+  min-width: var(--strip-width);
+  height: 100%;
+  flex: 0 0 var(--strip-width);
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: 0 0.65rem 0.8rem;
   border: 1px solid var(--line);
   border-top-color: color-mix(in srgb, var(--channel-accent) 68%, var(--line));
@@ -864,6 +831,7 @@ body.is-modal-open {
 
 .missing-channel-strip__trace {
   display: grid;
+  min-height: 0;
   align-content: center;
   gap: 1.4rem;
   padding: 2.1rem 0.8rem;
@@ -883,7 +851,9 @@ body.is-modal-open {
 
 .channel-strip__controls {
   display: grid;
+  min-height: 0;
   grid-template-columns: 3.25rem 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.45rem;
   padding: 0.8rem 0 0;
 }
@@ -893,7 +863,7 @@ body.is-modal-open {
   display: grid;
   min-width: 0;
   grid-template-columns: 1fr 1.55rem;
-  grid-template-rows: 21rem 2.6rem;
+  grid-template-rows: minmax(0, 1fr) 2.6rem;
   row-gap: 0.35rem;
   transition: opacity var(--motion-fast) ease;
 }
@@ -1160,7 +1130,7 @@ html.fader-cap-dragging * {
 
 .meter {
   display: grid;
-  grid-template-rows: 21rem 2.6rem;
+  grid-template-rows: minmax(0, 1fr) 2.6rem;
   row-gap: 0.35rem;
   min-width: 0;
   transition: opacity var(--motion-medium) ease;
@@ -2829,8 +2799,8 @@ html.fader-cap-dragging * {
     justify-self: stretch;
   }
 
-  .mixer-bays {
-    padding: 1rem 0.75rem 2rem;
+  .mixer-page {
+    padding: 0.6rem 0.75rem;
   }
 
   .settings-header {
@@ -2894,6 +2864,10 @@ html.fader-cap-dragging * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mixer-pages {
+    transition: none;
+  }
+
   :root {
     --motion-fast: 1ms;
     --motion-medium: 1ms;

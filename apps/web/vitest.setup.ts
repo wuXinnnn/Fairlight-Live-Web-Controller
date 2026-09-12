@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
+import { stubMixerLayout } from './tests/stub-mixer-layout.js';
+import { stubResizeObserver } from './tests/stub-resize-observer.js';
 
 // jsdom does not implement window.scrollTo; the app resets scroll on every route change.
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
@@ -12,6 +14,10 @@ Element.prototype.animate = vi.fn(() => {
   setTimeout(() => animation.onfinish?.(), 0);
   return animation as unknown as Animation;
 });
+
+// jsdom implements neither ResizeObserver nor layout, and the mixer pages itself from both.
+stubResizeObserver();
+stubMixerLayout();
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/');

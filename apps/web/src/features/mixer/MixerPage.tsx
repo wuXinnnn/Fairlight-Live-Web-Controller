@@ -5,7 +5,7 @@ import {
   type ChannelKind,
   type ViewGroup,
 } from '@flwc/shared';
-import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -19,15 +19,27 @@ import { ControlLock } from './ControlLock.js';
 import { EmptyConsole } from './EmptyConsole.js';
 import { resolveMixerEmptyState } from './empty-state.js';
 import { MissingChannelStrip } from './MissingChannelStrip.js';
+import {
+  PAGE_RAIL_WIDTH_PX,
+  PAGE_TRANSITION_MS,
+  SECTION_HEADER_WIDTH_PX,
+  SEGMENT_GAP_PX,
+  STRIP_GAP_PX,
+  STRIP_MIN_HEIGHT_PX,
+  STRIP_WIDTH_PX,
+} from './page-layout.js';
+import { paginate, type LayoutSegment } from './pagination.js';
+import { StripPages, type SegmentChrome, type StripStub } from './StripPages.js';
 import { TypeRowToggle } from './TypeRowToggle.js';
 import { useChannelPresence, type PresenceChannel } from './use-channel-presence.js';
 import { useControlLockPreference } from './use-control-lock-preference.js';
+import { usePager } from './use-pager.js';
+import { usePagerViewport } from './use-pager-viewport.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
 import {
   resolveViewChannels,
   segmentViewChannels,
   type ResolvedViewChannel,
-  type ViewSegment,
 } from './view-resolver.js';
 import { ViewSelector } from './ViewSelector.js';
 
@@ -42,14 +54,21 @@ const SECTION_LABELS: Record<ChannelKind, string> = {
 
 const EMPTY_RESOLVED: ResolvedViewChannel[] = [];
 
+/** The geometry the pager and the stylesheet share, published once on the shell. */
+const LAYOUT_VARIABLES = {
+  '--strip-width': `${STRIP_WIDTH_PX}px`,
+  '--section-header-width': `${SECTION_HEADER_WIDTH_PX}px`,
+  '--strip-gap': `${STRIP_GAP_PX}px`,
+  '--segment-gap': `${SEGMENT_GAP_PX}px`,
+  '--strip-min-height': `${STRIP_MIN_HEIGHT_PX}px`,
+  '--page-rail-width': `${PAGE_RAIL_WIDTH_PX}px`,
+  '--page-transition': `${PAGE_TRANSITION_MS}ms`,
+} as CSSProperties;
+
 interface MixerPageProps {
   controlClient: ControlClient;
   onOpenSettings(): void;
   onOpenConnection(): void;
-}
-
-function segmentAccent(segment: ViewSegment): string {
-  return groupAccent(segment.group);
 }
 
 export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: MixerPageProps) {
@@ -89,7 +108,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     resolvedView.map((entry) => entry.channel?.id).filter((id) => id !== undefined),
   );
   const liveIds = new Set(channels.map((channel) => channel.id));
-  const [typeRows, toggleTypeRows] = useTypeRowsPreference();
+  const [typePages, toggleTypePages] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
   const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
@@ -101,10 +120,11 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     viewChannelCount: activeView === null ? null : viewChannelRefs(activeView).length,
   });
 
+  const { width: viewportWidth, attach: attachViewport } = usePagerViewport();
+
   const renderViewStrip = (
     entry: ResolvedViewChannel,
     position: number,
-    extraClass?: string,
     // The group a strip belongs to, so a colour of `'group'` resolves the same as in the editor.
     group?: ViewGroup,
   ): ReactNode => {
@@ -135,7 +155,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           key={`ref-${index}`}
           reference={reference}
           index={position}
-          className={extraClass}
           group={group}
         />
       );
@@ -146,7 +165,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         item={item}
         controlClient={controlClient}
         lockMode={lockMode}
-        className={extraClass}
         style={
           {
             '--strip-index': position,
@@ -157,72 +175,95 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     );
   };
 
-  const renderViewSegment = (
-    segment: ViewSegment,
-    offset: number,
-    afterGroup: boolean,
-  ): ReactNode => {
-    const { group, entries } = segment;
-    const first = entries[0];
-    if (group === undefined || first === undefined) {
-      return (
-        <Fragment key={`loose-${first?.index ?? offset}`}>
-          {offset > 0 && <span className="view-row-break" aria-hidden="true" />}
-          {entries.map((entry, position) =>
-            renderViewStrip(
-              entry,
-              offset + position,
-              afterGroup && position === 0 ? 'is-after-group' : undefined,
-            ),
-          )}
-        </Fragment>
-      );
-    }
-    const headingId = `view-group-${group.id}-${first.index}`;
-    const presentCount = entries.filter((entry) => entry.channel !== undefined).length;
-    return (
-      <section
-        className="mixer-section"
-        key={`group-${group.id}-${first.index}`}
-        aria-labelledby={headingId}
-        data-view-group-id={group.id}
-        style={{ '--channel-accent': segmentAccent(segment) } as CSSProperties}
-      >
-        <div className="channel-group-lead">
-          <header className="mixer-section__header">
-            <h2 id={headingId}>{group.name}</h2>
-            <span>{presentCount.toString().padStart(2, '0')}</span>
-          </header>
-          {renderViewStrip(first, offset, undefined, group)}
-        </div>
-        <div className="channel-bay">
-          {entries
-            .slice(1)
-            .map((entry, position) =>
-              renderViewStrip(entry, offset + position + 1, undefined, group),
-            )}
-        </div>
-      </section>
-    );
-  };
+  // The pager works on segments of render stubs: the same continuous runs the console has always
+  // drawn, but sliced into pages by measured width rather than wrapped by the browser.
+  const segments: LayoutSegment<StripStub>[] = [];
+  const chrome = new Map<string, SegmentChrome>();
 
-  const renderViewLayout = (): ReactNode => {
-    if (activeView === null) {
-      return null;
+  if (activeView === null) {
+    for (const kind of CHANNEL_KINDS) {
+      const group = renderedChannels.filter(({ channel }) => channel.kind === kind);
+      if (group.length === 0) {
+        continue;
+      }
+      const key = `kind-${kind}`;
+      chrome.set(key, {
+        headingId: `section-${kind}`,
+        label: SECTION_LABELS[kind],
+        count: group.filter((item) => !item.exiting).length,
+        accent: channelTypeColor(kind),
+        channelKind: kind,
+      });
+      segments.push({
+        key,
+        header: true,
+        entries: group.map((item) => ({
+          key: item.channel.id,
+          render: (position: number) => (
+            <ChannelStrip
+              key={item.channel.id}
+              item={item}
+              controlClient={controlClient}
+              lockMode={lockMode}
+              style={{ '--strip-index': position } as CSSProperties}
+            />
+          ),
+        })),
+      });
     }
-    const segments = segmentViewChannels(activeView, resolvedView);
-    let offset = 0;
-    let previousWasGroup = false;
-    return segments.map((segment) => {
-      const rendered = renderViewSegment(segment, offset, previousWasGroup);
-      previousWasGroup = segment.group !== undefined;
-      offset += segment.entries.length;
-      return rendered;
-    });
-  };
+  } else {
+    for (const segment of segmentViewChannels(activeView, resolvedView)) {
+      const first = segment.entries[0];
+      if (first === undefined) {
+        continue;
+      }
+      const { group } = segment;
+      if (group === undefined) {
+        segments.push({
+          key: `loose-${first.index}`,
+          header: false,
+          entries: segment.entries.map((entry) => ({
+            key: `ref-${entry.index}`,
+            render: (position: number) => renderViewStrip(entry, position),
+          })),
+        });
+        continue;
+      }
+      const key = `group-${group.id}-${first.index}`;
+      chrome.set(key, {
+        headingId: `view-group-${group.id}-${first.index}`,
+        label: group.name,
+        count: segment.entries.filter((entry) => entry.channel !== undefined).length,
+        accent: groupAccent(group),
+        viewGroupId: group.id,
+      });
+      segments.push({
+        key,
+        header: true,
+        entries: segment.entries.map((entry) => ({
+          key: `ref-${entry.index}`,
+          render: (position: number) => renderViewStrip(entry, position, group),
+        })),
+      });
+    }
+  }
+
+  const showTypePages = activeView === null || viewHasGroups;
+  const pages = paginate(
+    segments,
+    {
+      containerWidth: viewportWidth,
+      stripWidth: STRIP_WIDTH_PX,
+      headerWidth: SECTION_HEADER_WIDTH_PX,
+      stripGap: STRIP_GAP_PX,
+      segmentGap: SEGMENT_GAP_PX,
+    },
+    { newPagePerHeaderedSegment: typePages && showTypePages },
+  );
+  const pager = usePager(Math.max(1, pages.length), activeViewId);
 
   return (
-    <main className="mixer-shell" data-theme="dark">
+    <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
       <header className="console-header">
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
@@ -234,14 +275,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         <ConnectionStatus onOpen={onOpenConnection} />
         <div className="console-preferences">
           <ViewSelector />
-          {(activeView === null || viewHasGroups) && (
+          {showTypePages && (
             <TypeRowToggle
-              enabled={typeRows}
-              onToggle={toggleTypeRows}
+              enabled={typePages}
+              onToggle={toggleTypePages}
               label={
                 activeView === null
-                  ? 'Start each channel type on a new row'
-                  : 'Start each group on a new row'
+                  ? 'Start each channel type on a new page'
+                  : 'Start each group on a new page'
               }
             />
           )}
@@ -252,64 +293,11 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
 
       {emptyState !== null ? (
         <EmptyConsole state={emptyState} onOpenConnection={onOpenConnection} />
-      ) : activeView !== null ? (
-        <div
-          className={`mixer-bays is-view-mode ${typeRows && viewHasGroups ? 'is-type-rows' : ''}`}
-          data-view-id={activeView.id}
-        >
-          {renderViewLayout()}
-        </div>
       ) : (
-        <div className={`mixer-bays ${typeRows ? 'is-type-rows' : ''}`}>
-          {CHANNEL_KINDS.map((kind) => {
-            const group = renderedChannels.filter(({ channel }) => channel.kind === kind);
-            const firstItem = group[0];
-            if (firstItem === undefined) {
-              return null;
-            }
-            return (
-              <section
-                className="mixer-section"
-                key={kind}
-                aria-labelledby={`section-${kind}`}
-                data-channel-kind={kind}
-                style={
-                  {
-                    '--channel-accent': channelTypeColor(kind),
-                  } as CSSProperties
-                }
-              >
-                <div className="channel-group-lead">
-                  <header className="mixer-section__header">
-                    <h2 id={`section-${kind}`}>{SECTION_LABELS[kind]}</h2>
-                    <span>
-                      {group
-                        .filter((item) => !item.exiting)
-                        .length.toString()
-                        .padStart(2, '0')}
-                    </span>
-                  </header>
-                  <ChannelStrip
-                    item={firstItem}
-                    controlClient={controlClient}
-                    lockMode={lockMode}
-                    style={{ '--strip-index': 0 } as CSSProperties}
-                  />
-                </div>
-                <div className="channel-bay">
-                  {group.slice(1).map((item, index) => (
-                    <ChannelStrip
-                      key={item.channel.id}
-                      item={item}
-                      controlClient={controlClient}
-                      lockMode={lockMode}
-                      style={{ '--strip-index': index + 1 } as CSSProperties}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+        <div className="mixer-deck">
+          <div className="mixer-bays" ref={attachViewport} data-view-id={activeView?.id}>
+            <StripPages pages={pages} chrome={chrome} pageIndex={pager.pageIndex} />
+          </div>
         </div>
       )}
       <footer className="console-footer">

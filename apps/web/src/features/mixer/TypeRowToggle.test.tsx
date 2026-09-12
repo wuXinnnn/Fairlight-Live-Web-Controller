@@ -33,14 +33,14 @@ describe('type row preference', () => {
       toggles += 1;
     };
     const { rerender } = render(<TypeRowToggle enabled={false} onToggle={onToggle} />);
-    expect(screen.getByText('TYPE ROWS')).toBeInTheDocument();
+    expect(screen.getByText('TYPE PAGES')).toBeInTheDocument();
     expect(
-      screen.getByRole('switch', { name: 'Start each channel type on a new row' }),
+      screen.getByRole('switch', { name: 'Start each channel type on a new page' }),
     ).toHaveAttribute('aria-checked', 'false');
 
     rerender(<TypeRowToggle enabled onToggle={onToggle} />);
     expect(
-      screen.getByRole('switch', { name: 'Start each channel type on a new row' }),
+      screen.getByRole('switch', { name: 'Start each channel type on a new page' }),
     ).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('switch'));
     expect(toggles).toBe(1);

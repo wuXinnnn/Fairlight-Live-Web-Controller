@@ -225,9 +225,9 @@ describe('mixer socket integration', () => {
     expect(screen.getByText('MIXER NOT CONNECTED')).toBeInTheDocument();
   });
 
-  it('places ON above the fader and persists the optional type-row layout', async () => {
+  it('places ON above the fader and persists the optional type-page layout', async () => {
     const socket = new FakeSocket();
-    const { container } = render(<App socket={socket} />);
+    render(<App socket={socket} />);
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     const bassHeading = await screen.findByRole('heading', { name: 'BASS' });
     const strip = bassHeading.closest('article');
@@ -244,10 +244,12 @@ describe('mixer socket integration', () => {
     expect(strip?.children[2]?.children[0]).toHaveClass('meter');
     expect(strip?.children[2]?.children[1]).toHaveClass('fader');
 
-    const layout = container.querySelector('.mixer-bays');
-    expect(layout).not.toHaveClass('is-type-rows');
-    fireEvent.click(screen.getByRole('switch', { name: 'Start each channel type on a new row' }));
-    expect(layout).toHaveClass('is-type-rows');
+    const layout = screen.getByRole('switch', {
+      name: 'Start each channel type on a new page',
+    });
+    expect(layout).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(layout);
+    expect(layout).toHaveAttribute('aria-checked', 'true');
     expect(window.localStorage.getItem(TYPE_ROWS_STORAGE_KEY)).toBe('true');
   });
 
@@ -270,11 +272,9 @@ describe('mixer socket integration', () => {
         .querySelector<HTMLElement>('[data-channel-kind="main"]')
         ?.style.getPropertyValue('--channel-accent'),
     ).toBe(CHANNEL_PALETTE.red);
-    const inputLead = container.querySelector<HTMLElement>(
-      '[data-channel-kind="channel"] .channel-group-lead',
-    );
-    expect(inputLead).toContainElement(screen.getByRole('heading', { name: 'INPUTS' }));
-    expect(inputLead).toContainElement(
+    const inputSection = container.querySelector<HTMLElement>('[data-channel-kind="channel"]');
+    expect(inputSection).toContainElement(screen.getByRole('heading', { name: 'INPUTS' }));
+    expect(inputSection).toContainElement(
       screen.getByRole('heading', { name: 'BASS' }).closest('article'),
     );
   });
