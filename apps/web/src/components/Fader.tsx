@@ -1,5 +1,6 @@
 import { LEVEL_DB_MAX, LEVEL_DB_MIN } from '@flwc/shared';
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -18,9 +19,14 @@ import {
   ratioToLevelDb,
   stepLevelDb,
 } from '../lib/fader-scale.js';
+import { INITIAL_FADER_WHEEL_STATE, reduceFaderWheel } from '../lib/fader-wheel.js';
+import { normalizeWheelDelta } from '../lib/wheel-delta.js';
+import { sameOwner, wheelGestureTracker, type WheelOwner } from '../lib/wheel-gesture.js';
 
 interface FaderProps {
   label: string;
+  /** Identifies this fader to the wheel gesture tracker; the channel id. */
+  wheelId: string;
   value: number;
   disabled?: boolean;
   pending?: boolean;
@@ -50,6 +56,7 @@ function levelFromRelativePointer(
 
 export function Fader({
   label,
+  wheelId,
   value,
   disabled = false,
   pending = false,
@@ -65,10 +72,98 @@ export function Fader({
   const unityFromPointerRef = useRef(false);
   const lastCapPointerDownRef = useRef<{ at: number; y: number } | undefined>(undefined);
   const skipInputCommitRef = useRef(false);
+  const wheelStateRef = useRef(INITIAL_FADER_WHEEL_STATE);
+  const wheelActiveRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [inputInvalid, setInputInvalid] = useState(false);
+
+  const latest = useRef({ disabled, dragging, value, onInteractionStart, onValueChange, onCommit });
+  useEffect(() => {
+    latest.current = { disabled, dragging, value, onInteractionStart, onValueChange, onCommit };
+  });
+
+  /**
+   * Ends a wheel gesture. The wheel does not commit per step the way the keyboard does: a
+   * gesture is one continuous move of the fader, so it writes once when the wheel stops.
+   */
+  const commitWheelGesture = useCallback(() => {
+    if (!wheelActiveRef.current) {
+      return;
+    }
+    wheelActiveRef.current = false;
+    wheelStateRef.current = INITIAL_FADER_WHEEL_STATE;
+    latest.current.onCommit(latestValueRef.current);
+  }, []);
+
+  // Locked or disconnected mid-gesture: write what the operator had reached rather than
+  // stranding it. Ownership stays put, so the rest of the gesture is ignored, not repurposed.
+  useEffect(() => {
+    if (disabled) {
+      commitWheelGesture();
+    }
+  }, [disabled, commitWheelGesture]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (track === null) {
+      return;
+    }
+    const mine: WheelOwner = { fader: wheelId };
+    const handleWheel = (event: WheelEvent) => {
+      const owner = wheelGestureTracker.owner();
+      if (owner !== null && !sameOwner(owner, mine)) {
+        // Someone else's gesture is passing over this track: swallow it and keep theirs alive.
+        wheelGestureTracker.touch();
+        event.preventDefault();
+        return;
+      }
+      if (owner === null) {
+        // Shift is the escape hatch to the pager, and it only counts on the opening event.
+        if (event.shiftKey) {
+          return;
+        }
+        if (!sameOwner(wheelGestureTracker.begin(mine, commitWheelGesture), mine)) {
+          wheelGestureTracker.touch();
+          event.preventDefault();
+          return;
+        }
+      }
+      event.preventDefault();
+      wheelGestureTracker.touch();
+
+      const current = latest.current;
+      // A locked, disconnected or dragging fader ignores the wheel outright; it never turns
+      // into a page turn, so the rule does not change with the mode.
+      if (current.disabled || current.dragging) {
+        return;
+      }
+      const { state, steps } = reduceFaderWheel(wheelStateRef.current, {
+        deltaY: normalizeWheelDelta(event).y,
+      });
+      wheelStateRef.current = state;
+      if (steps === 0) {
+        return;
+      }
+      if (!wheelActiveRef.current) {
+        wheelActiveRef.current = true;
+        latestValueRef.current = current.value;
+        current.onInteractionStart();
+      }
+      const direction = steps > 0 ? 1 : -1;
+      let next = latestValueRef.current;
+      for (let step = 0; step < Math.abs(steps); step += 1) {
+        next = stepLevelDb(next, direction, event.altKey);
+      }
+      latestValueRef.current = next;
+      current.onValueChange(next);
+    };
+    track.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      track.removeEventListener('wheel', handleWheel);
+    };
+  }, [wheelId, commitWheelGesture]);
 
   useEffect(() => {
     if (!dragging) {
@@ -112,6 +207,8 @@ export function Fader({
       return;
     }
     event.preventDefault();
+    // A wheel gesture on this fader is over the moment a hand lands on the cap.
+    commitWheelGesture();
     cancelEditing();
     if (isCapDoubleClick(event)) {
       lastCapPointerDownRef.current = undefined;
@@ -293,6 +390,7 @@ export function Fader({
       <div
         ref={trackRef}
         className="fader__track"
+        data-wheel="level"
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={`${label} level`}
