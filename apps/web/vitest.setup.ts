@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
+import { stubMixerLayout } from './tests/stub-mixer-layout.js';
+import { stubResizeObserver } from './tests/stub-resize-observer.js';
+import { wheelGestureTracker } from './src/lib/wheel-gesture.js';
 
 // jsdom does not implement window.scrollTo; the app resets scroll on every route change.
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
@@ -13,9 +16,17 @@ Element.prototype.animate = vi.fn(() => {
   return animation as unknown as Animation;
 });
 
+// jsdom implements neither ResizeObserver nor layout, and the mixer pages itself from both.
+stubResizeObserver();
+stubMixerLayout();
+
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   vi.mocked(window.scrollTo).mockClear();
 });
 
 afterEach(cleanup);
+// The wheel tracker is a module singleton, so a gesture left open would leak into the next test.
+afterEach(() => {
+  wheelGestureTracker.reset();
+});

@@ -7,6 +7,7 @@ import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
 import { ACTIVE_VIEW_STORAGE_KEY, resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
+import { resizePager } from './stub-mixer-layout.js';
 import { FakeViewsClient } from './fake-views-client.js';
 import { channelGroup as grp, channelRow as row } from './view-fixtures.js';
 
@@ -206,10 +207,10 @@ describe('views integration', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
       target: { value: 'foh' },
     });
-    expect(screen.queryByRole('switch', { name: /new row/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /new page/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText('GUEST missing channel')).toHaveTextContent('MISSING');
     expect(screen.getByRole('slider', { name: 'BASS level' })).toBeInTheDocument();
-    const headings = [...container.querySelectorAll('.mixer-bays > article h3')].map(
+    const headings = [...container.querySelectorAll('article.channel-strip h3')].map(
       (heading) => heading.textContent,
     );
     expect(headings).toEqual(['MAIN', 'GUEST', 'BASS']);
@@ -300,7 +301,7 @@ describe('views integration', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
       target: { value: 'view-1' },
     });
-    const headings = [...container.querySelectorAll('.mixer-bays > article h3')].map(
+    const headings = [...container.querySelectorAll('article.channel-strip h3')].map(
       (heading) => heading.textContent,
     );
     expect(headings).toEqual(['MAIN', 'BASS']);
@@ -546,13 +547,11 @@ describe('views integration', () => {
     expect(
       [...container.querySelectorAll('.mixer-bays h3')].map((heading) => heading.textContent),
     ).toEqual(['FX', 'MAIN', 'BASS']);
-    expect(section?.querySelector('.channel-group-lead')).toContainElement(
-      screen.getByRole('heading', { name: 'MAIN', level: 3 }),
-    );
-    const toggle = screen.getByRole('switch', { name: 'Start each group on a new row' });
-    expect(container.querySelector('.mixer-bays')).not.toHaveClass('is-type-rows');
+    expect(section).toContainElement(screen.getByRole('heading', { name: 'MAIN', level: 3 }));
+    const toggle = screen.getByRole('switch', { name: 'Start each group on a new page' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(toggle);
-    expect(container.querySelector('.mixer-bays')).toHaveClass('is-type-rows');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
   it('adds a gap after a group before a loose strip, but not between adjacent loose strips', async () => {
@@ -587,17 +586,19 @@ describe('views integration', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
       target: { value: 'gaps' },
     });
-    expect(container.querySelector('[data-channel-id="main/1"]')).toHaveClass('is-after-group');
-    expect(container.querySelector('[data-channel-id="channel/1"]')).not.toHaveClass(
-      'is-after-group',
-    );
-    expect(container.querySelector('[data-channel-id="aux/1"]')).not.toHaveClass('is-after-group');
+    // One page wide enough for everything, so segment boundaries are the only thing in play.
+    resizePager(2000);
+    const segmentOf = (id: string) =>
+      container.querySelector(`[data-channel-id="${id}"]`)?.closest('.mixer-section');
+    expect(segmentOf('main/1')).not.toBe(segmentOf('channel/1'));
+    expect(segmentOf('main/1')).not.toBe(segmentOf('aux/1'));
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
       target: { value: 'adjacent' },
     });
-    expect(container.querySelector('[data-channel-id="main/1"]')).toHaveClass('is-after-group');
-    expect(container.querySelector('[data-channel-id="aux/1"]')).not.toHaveClass('is-after-group');
+    resizePager(2000);
+    expect(segmentOf('main/1')).not.toBe(segmentOf('channel/1'));
+    expect(segmentOf('aux/1')).toBe(segmentOf('main/1'));
   });
 
   it('ungroups in one click, discards unsaved group edits, and flags duplicate names', async () => {

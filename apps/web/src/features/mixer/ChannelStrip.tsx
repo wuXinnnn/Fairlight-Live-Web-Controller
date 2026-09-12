@@ -112,6 +112,7 @@ export function ChannelStrip({
         <Meter id={channel.id} label={liveChannel.name} active={controlsEnabled} />
         <Fader
           label={liveChannel.name}
+          wheelId={channel.id}
           value={liveChannel.levelDb}
           disabled={faderDisabled}
           pending={levelPending}

@@ -2,11 +2,16 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { levelDbToRatio, ratioToLevelDb } from '../lib/fader-scale.js';
+import { WHEEL_GESTURE_IDLE_MS, wheelGestureTracker } from '../lib/wheel-gesture.js';
 import { Fader } from './Fader.js';
+
+/** The gesture tracker reads `performance.now`, so that has to be faked alongside the timers. */
+const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'performance'] as const;
 
 function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
   const props: ComponentProps<typeof Fader> = {
     label: 'BASS',
+    wheelId: 'channel/1',
     value: -20,
     onInteractionStart: vi.fn(),
     onValueChange: vi.fn(),
@@ -165,6 +170,7 @@ describe('Fader', () => {
     const { container } = render(
       <Fader
         label="BASS"
+        wheelId="channel/1"
         value={-100}
         onInteractionStart={vi.fn()}
         onValueChange={vi.fn()}
@@ -174,6 +180,94 @@ describe('Fader', () => {
     expect(container.querySelector<HTMLElement>('.fader__cap')?.style.bottom).toBe('0%');
     expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-∞');
     expect(screen.queryByText('LVL')).not.toBeInTheDocument();
+  });
+
+  it('steps the fader with the wheel and commits once the wheel stops', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    try {
+      const props = renderFader();
+      const slider = screen.getByRole('slider', { name: 'BASS level' });
+
+      // One mouse notch upwards is two 1 dB steps, applied as a single change.
+      fireEvent.wheel(slider, { deltaY: -100, deltaMode: 0 });
+      expect(props.onInteractionStart).toHaveBeenCalledTimes(1);
+      expect(props.onValueChange).toHaveBeenLastCalledWith(-18);
+      expect(props.onCommit).not.toHaveBeenCalled();
+
+      fireEvent.wheel(slider, { deltaY: -100, deltaMode: 0 });
+      expect(props.onValueChange).toHaveBeenLastCalledWith(-16);
+      // Still one gesture, so still no write.
+      expect(props.onInteractionStart).toHaveBeenCalledTimes(1);
+      expect(props.onCommit).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(WHEEL_GESTURE_IDLE_MS);
+      expect(props.onCommit).toHaveBeenCalledTimes(1);
+      expect(props.onCommit).toHaveBeenCalledWith(-16);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('takes the coarse step while Alt is held, matching PageUp', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    try {
+      const props = renderFader();
+
+      fireEvent.wheel(screen.getByRole('slider', { name: 'BASS level' }), {
+        deltaY: -100,
+        deltaMode: 0,
+        altKey: true,
+      });
+
+      expect(props.onValueChange).toHaveBeenLastCalledWith(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('swallows the wheel while disabled rather than letting it page', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    try {
+      const props = renderFader({ disabled: true });
+      const slider = screen.getByRole('slider', { name: 'BASS level' });
+      const event = new WheelEvent('wheel', {
+        deltaY: -100,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      slider.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(props.onValueChange).not.toHaveBeenCalled();
+      expect(props.onInteractionStart).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(WHEEL_GESTURE_IDLE_MS);
+      expect(props.onCommit).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves a Shift wheel to the pager without claiming it', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    try {
+      const props = renderFader();
+      const slider = screen.getByRole('slider', { name: 'BASS level' });
+      const event = new WheelEvent('wheel', {
+        deltaY: -100,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      slider.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(props.onValueChange).not.toHaveBeenCalled();
+      expect(wheelGestureTracker.owner()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('edits and commits a precise level value', () => {
