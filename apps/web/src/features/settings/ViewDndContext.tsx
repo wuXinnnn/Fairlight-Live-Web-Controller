@@ -453,12 +453,12 @@ export function ViewDndContext({
         const live = reference?.channelId === undefined ? undefined : channels[reference.channelId];
         const kind = live?.kind ?? reference?.kind ?? 'channel';
         // The clone keeps the colour the row had when it was picked up, so it does not change
-        // under the pointer as the preview moves it around. That means the group it belonged to
-        // then - looked up in the current view, so a rename or recolour mid-drag still shows.
-        // The index is an index into `startView`, and after a preview it points at a different
-        // row of `current`, so the group has to be resolved in the view the index belongs to.
-        const startGroupId = groupOfIndex(drag.startView, drag.source.index)?.id;
-        const group = viewGroups(current).find((candidate) => candidate.id === startGroupId);
+        // under the pointer as the preview moves it around. That means the group as it was then,
+        // members and all: a group with no colour of its own takes one from its members, so
+        // reading it out of the preview would repaint the clone the moment this row left it.
+        // The index is an index into `startView` too - after a preview it points at a different
+        // row of `current` - so both have to come from the view the index belongs to.
+        const group = groupOfIndex(drag.startView, drag.source.index);
         return {
           variant,
           label,

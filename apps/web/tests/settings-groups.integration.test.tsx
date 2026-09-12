@@ -358,6 +358,34 @@ describe('settings group colours', () => {
     await press('Escape');
   });
 
+  it('keeps the clone still when the group it left takes its colour from its members', async () => {
+    const page = await openSettings([
+      {
+        id: 'v1',
+        name: 'Stage',
+        // No colour of its own, so the group reads as its members' most common type: two auxes
+        // against one main is navy. Take an aux out and the remaining tie goes to main, red - so
+        // a clone that read the group out of the preview would change colour under the pointer.
+        items: [grp(RHYTHM, [MAIN, REV, { ...FX, color: 'group' }]), row(BASS)],
+      },
+    ]);
+    const overlayAccent = () =>
+      (document.querySelector('.drag-overlay') as HTMLElement | null)?.style.getPropertyValue(
+        '--channel-row-accent',
+      );
+
+    await pickUp(page.handle('FX'));
+    expect(overlayAccent()).toBe(CHANNEL_PALETTE.navy);
+
+    await press('ArrowDown');
+    await waitFor(() => expect(page.memberNames('g1')).toEqual(['MAIN', 'REV']));
+    // The group itself is red now; the clone is not.
+    const header = page.container.querySelector('[data-view-group-id="g1"]') as HTMLElement;
+    expect(header.style.getPropertyValue('--channel-row-accent')).toBe(CHANNEL_PALETTE.red);
+    expect(overlayAccent()).toBe(CHANNEL_PALETTE.navy);
+    await press('Escape');
+  });
+
   it('paints the mixer group section with the same dominant colour', async () => {
     const socket = new FakeSocket();
     const viewsClient = new FakeViewsClient([
