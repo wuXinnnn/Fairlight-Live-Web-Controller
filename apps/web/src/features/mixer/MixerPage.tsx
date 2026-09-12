@@ -5,7 +5,7 @@ import {
   type ChannelKind,
   type ViewGroup,
 } from '@flwc/shared';
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -19,6 +19,7 @@ import { ControlLock } from './ControlLock.js';
 import { EmptyConsole } from './EmptyConsole.js';
 import { resolveMixerEmptyState } from './empty-state.js';
 import { MissingChannelStrip } from './MissingChannelStrip.js';
+import { PageRail } from './PageRail.js';
 import {
   PAGE_RAIL_WIDTH_PX,
   PAGE_TRANSITION_MS,
@@ -260,7 +261,37 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     },
     { newPagePerHeaderedSegment: typePages && showTypePages },
   );
-  const pager = usePager(Math.max(1, pages.length), activeViewId);
+  const pageCount = Math.max(1, pages.length);
+  const pager = usePager(pageCount, activeViewId);
+  const { next: nextPage, previous: previousPage } = pager;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== 'PageDown' && event.key !== 'PageUp')) {
+        return;
+      }
+      // A focused fader owns PageUp and PageDown as its coarse step; so does anything being
+      // typed into. The fader marks the event handled, but check the target too so a control
+      // that never calls preventDefault still keeps its keys.
+      const { target } = event;
+      if (
+        target instanceof Element &&
+        target.closest('[role="slider"], input, select, textarea, [contenteditable]') !== null
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (event.key === 'PageDown') {
+        nextPage();
+      } else {
+        previousPage();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [nextPage, previousPage]);
 
   return (
     <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
@@ -298,6 +329,12 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           <div className="mixer-bays" ref={attachViewport} data-view-id={activeView?.id}>
             <StripPages pages={pages} chrome={chrome} pageIndex={pager.pageIndex} />
           </div>
+          <PageRail
+            pageIndex={pager.pageIndex}
+            pageCount={pageCount}
+            onPrevious={previousPage}
+            onNext={nextPage}
+          />
         </div>
       )}
       <footer className="console-footer">

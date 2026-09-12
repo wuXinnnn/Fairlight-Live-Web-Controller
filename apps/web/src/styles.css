@@ -706,6 +706,78 @@ body.is-modal-open {
   margin-left: var(--segment-gap);
 }
 
+/*
+ * The page rail. It is always there on every pointer device, in the same place whatever the page
+ * count, because it is the only surface an operator can grab without risking the sound.
+ */
+.page-rail {
+  display: flex;
+  width: var(--page-rail-width);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 0.4rem;
+  border-left: 1px solid var(--line-strong);
+  background: rgb(17 19 24 / 94%);
+  touch-action: none;
+  user-select: none;
+}
+
+/* Physical keys, in the same bevelled language as the ON button. */
+.page-rail__step {
+  display: flex;
+  width: 100%;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3d424d;
+  background: #171a20;
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 3%),
+    0 0.2rem 0.45rem rgb(0 0 0 / 30%);
+  color: #8f95a1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform 90ms ease;
+}
+
+.page-rail__step svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.page-rail__step:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
+}
+
+.page-rail__step:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.page-rail__step:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.page-rail__count {
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* Reserved for the swipe gesture: it takes the leftover height and swallows touches. */
+.page-rail__track {
+  width: 100%;
+  flex: 1;
+  touch-action: none;
+}
+
 .channel-strip {
   position: relative;
   display: grid;
