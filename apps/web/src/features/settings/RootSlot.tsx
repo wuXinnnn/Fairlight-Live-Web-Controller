@@ -27,12 +27,12 @@ interface RootSlotProps {
  */
 export function RootSlot({ position, label, current, fill = false }: RootSlotProps) {
   const data: DndItemData = { kind: 'slot', label, position, current, fill };
-  const { setNodeRef, isOver } = useDroppable({ id: rootSlotDndId(position, fill), data });
+  const { setNodeRef } = useDroppable({ id: rootSlotDndId(position, fill), data });
   return (
     <li className={`root-slot ${fill ? 'root-slot--fill' : ''}`} aria-hidden="true">
       <div
         ref={setNodeRef}
-        className={`root-slot__band ${isOver ? 'is-over' : ''}`}
+        className="root-slot__band"
         data-root-slot={position}
         data-root-slot-fill={fill ? '' : undefined}
         style={

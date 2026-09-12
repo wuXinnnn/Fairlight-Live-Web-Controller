@@ -2529,6 +2529,10 @@ html.fader-cap-dragging * {
 /*
  * Root slots: drop targets at the block boundaries next to groups, shown only while a channel is
  * dragged. The item is zero height; its band overlays the top of the block below the boundary.
+ * They have no appearance of their own. Hitting one moves the preview's placeholder row to that
+ * position, and the placeholder is the answer to "where would this land" - a marker on the slot
+ * as well only tells the same thing twice, and cannot tell it consistently: once the placeholder
+ * is at the end of the list it covers the top of the slot that put it there.
  */
 .root-slot {
   position: relative;
@@ -2566,30 +2570,6 @@ html.fader-cap-dragging * {
 .view-channel-list > .panel-empty {
   display: block;
   flex: 0 0 auto;
-}
-
-/*
- * A boundary slot has no height of its own, so the line is all there is to see of it. The slot at
- * the end of the list is an area rather than a boundary: a line across it reads as a divider
- * cutting the empty space in two, so that one lights up whole, the way a group does.
- */
-.root-slot:not(.root-slot--fill) .root-slot__band::before {
-  position: absolute;
-  top: 0;
-  right: 0.5rem;
-  left: 0.5rem;
-  border-top: 2px dashed color-mix(in srgb, var(--amber) 55%, transparent);
-  content: '';
-}
-
-.root-slot:not(.root-slot--fill) .root-slot__band.is-over::before {
-  border-top-color: var(--amber);
-}
-
-.root-slot--fill .root-slot__band.is-over {
-  outline: 1px solid var(--amber);
-  outline-offset: -1px;
-  background: #171610;
 }
 
 /* The clone that follows the pointer, drawn in dnd-kit's overlay portal above everything. */
