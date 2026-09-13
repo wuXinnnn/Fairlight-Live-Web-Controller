@@ -1158,7 +1158,7 @@ html.fader-cap-dragging * {
   display: grid;
   min-width: 0;
   grid-column: 1 / -1;
-  grid-template-columns: 1.5rem minmax(0, 1fr) 0.9rem;
+  grid-template-columns: 1.4rem minmax(0, 1fr) 0.9rem;
   align-items: center;
   padding: 0.16rem 0.3rem;
   border: 1px solid #343945;
@@ -1198,6 +1198,9 @@ html.fader-cap-dragging * {
   min-width: 0;
   grid-column: 2;
   overflow: hidden;
+  /* One inset on both lines, so the digits share a right edge even though only one wears a box. */
+  padding: 0.02rem 0.16rem;
+  border: 1px solid transparent;
   color: inherit;
   font-family: inherit;
   font-size: inherit;
@@ -1207,26 +1210,40 @@ html.fader-cap-dragging * {
   text-overflow: ellipsis;
 }
 
-/* The target is the whole value cell, not only the digits standing in it. */
+/*
+ * The level can be typed and the meter reading can only be read, so the level value wears a
+ * field's border whether or not anyone is using it — the same idiom as the page counter, and for
+ * the same reason: a touch screen has no hover to discover it with. The target is the whole cell.
+ */
 .fader__readout button {
   align-self: stretch;
   justify-self: stretch;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  border-color: #2f333c;
+  background: #12141a;
   cursor: text;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
 }
 
+.fader__readout button:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
+}
+
+/* A locked or disconnected fader must not go on advertising a field that will not open. */
 .fader__readout button:disabled {
+  border-color: #23262d;
   cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .fader__readout input {
   width: 100%;
-  padding: 0.04rem 0.1rem;
-  border: 1px solid var(--channel-accent);
+  border-color: var(--channel-accent);
   outline: 0;
   background: #090b0e;
+  caret-color: var(--channel-accent);
   appearance: textfield;
 }
 
@@ -1236,8 +1253,8 @@ html.fader-cap-dragging * {
   appearance: none;
 }
 
+/* The field carries the state, not the panel around it. */
 .fader__readout.is-invalid {
-  border-color: var(--red);
   color: var(--red);
 }
 
