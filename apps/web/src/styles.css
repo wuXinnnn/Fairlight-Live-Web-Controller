@@ -1312,31 +1312,59 @@ html.fader-cap-dragging * {
     );
 }
 
+/*
+ * The bar is a window over a gradient that never moves. The window slides down by the part of
+ * the well that is not lit; the gradient inside slides up by exactly as much, so it stays put
+ * against the scale while only the amount on show changes. Both are transforms, which keeps a
+ * reading off the main thread — `bottom` and `clip-path` cost a layout and a paint per frame.
+ */
 .meter__fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform: translateY(calc((1 - var(--meter-ratio, 0)) * 100%));
+  transition: transform 45ms linear;
+  will-change: transform;
+}
+
+.meter__fill-bar {
   position: absolute;
   inset: 0;
   background: linear-gradient(0deg, var(--green) 0 70%, var(--amber) 70% 90%, var(--red) 90% 100%);
   box-shadow: 0 0 0.55rem currentColor;
-  clip-path: inset(var(--meter-reveal, 100%) 0 0);
+  transform: translateY(calc((var(--meter-ratio, 0) - 1) * 100%));
   transition:
-    clip-path 45ms linear,
+    transform 45ms linear,
     background-color var(--motion-fast) ease;
 }
 
 .meter.is-clipping .meter__fill {
+  transform: none;
+}
+
+.meter.is-clipping .meter__fill-bar {
   background: var(--red);
-  clip-path: inset(0);
+  transform: none;
   animation: clipping-alert 420ms steps(2, jump-none) infinite;
 }
 
 .meter__peak {
   position: absolute;
+  inset: 0;
+  transform: translateY(calc((1 - var(--meter-peak, 0)) * 100%));
+  transition: transform 60ms linear;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.meter__peak-line {
+  position: absolute;
+  top: -2px;
   right: -1px;
   left: -1px;
   height: 2px;
   background: #f5eee0;
   box-shadow: 0 0 0.35rem #fff0c4;
-  transition: bottom 60ms linear;
 }
 
 .meter__readout {

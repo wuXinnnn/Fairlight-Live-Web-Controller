@@ -74,15 +74,23 @@ export function Meter({ id, label, active }: MeterProps) {
     >
       <div className="meter__well" aria-hidden="true">
         <div className="meter__zones" />
+        {/*
+         * Both the bar and the peak move by transform alone, so a reading costs the compositor a
+         * translation instead of costing the main thread a paint and a layout twenty times a
+         * second. The window slides down to uncover the reading and the bar inside it slides back
+         * up by the same amount, which keeps the colour gradient pinned to the well: the two
+         * translations are the same number with opposite signs, so they stay aligned partway
+         * through the transition as well as at rest.
+         */}
         <div
           className="meter__fill"
-          style={
-            {
-              '--meter-reveal': `${(1 - meterRatio(value)) * 100}%`,
-            } as CSSProperties
-          }
-        />
-        <div className="meter__peak" style={{ bottom: `${meterRatio(peak) * 100}%` }} />
+          style={{ '--meter-ratio': meterRatio(value) } as CSSProperties}
+        >
+          <div className="meter__fill-bar" />
+        </div>
+        <div className="meter__peak" style={{ '--meter-peak': meterRatio(peak) } as CSSProperties}>
+          <div className="meter__peak-line" />
+        </div>
       </div>
       <output className="meter__readout" aria-label={`${label} meter value`}>
         <span className="readout__label">MTR</span>
