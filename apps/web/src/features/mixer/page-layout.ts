@@ -22,6 +22,6 @@ export const PAGE_PADDING_X_PX = 24;
 /** Below this height a page stops shrinking and the pager viewport scrolls instead. */
 export const STRIP_MIN_HEIGHT_PX = 528;
 /** Width of the page rail down the right-hand side of the deck. */
-export const PAGE_RAIL_WIDTH_PX = 56;
+export const PAGE_RAIL_WIDTH_PX = 72;
 /** Duration of the slide between two pages. */
 export const PAGE_TRANSITION_MS = 220;

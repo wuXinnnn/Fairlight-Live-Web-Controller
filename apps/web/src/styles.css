@@ -734,7 +734,7 @@ body.is-modal-open {
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.9rem 0.4rem;
+  padding: 0.9rem 0.55rem;
   border-left: 1px solid var(--line-strong);
   background: rgb(17 19 24 / 94%);
   touch-action: none;
