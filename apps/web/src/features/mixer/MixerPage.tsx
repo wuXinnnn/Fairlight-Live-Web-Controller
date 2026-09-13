@@ -90,6 +90,28 @@ function atScrollEnd(scroller: Element, delta: number): boolean {
     : scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
 }
 
+/** The page in view, which is the one that scrolls when the viewport is too short for it. */
+function currentScroller(viewport: HTMLElement | null): Element | null {
+  return viewport?.querySelector('.mixer-page[data-current]') ?? null;
+}
+
+/** Whether the page in view still has somewhere to scroll the way the travel is going. */
+function pageScrolls(scroller: Element | null, delta: number): boolean {
+  return (
+    scroller !== null &&
+    scroller.scrollHeight > scroller.clientHeight &&
+    !atScrollEnd(scroller, delta)
+  );
+}
+
+/**
+ * Whether the travel started on the safe strip. Nothing there scrolls, so a wheel or a finger on
+ * it always means the page — the one surface an operator may touch must never come up dead.
+ */
+function inRail(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('.page-rail') !== null;
+}
+
 interface MixerPageProps {
   controlClient: ControlClient;
   onOpenSettings(): void;
@@ -361,15 +383,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       }
       // Too short a viewport leaves the page taller than the space for it; scrolling to see the
       // rest of a strip has to come before turning to the next one. The page is what scrolls, not
-      // the viewport, because the track already owns the viewport's vertical axis.
+      // the viewport, because the track already owns the viewport's vertical axis. The rail is
+      // outside all of that, and keeps turning pages whatever the strips beside it are doing.
       const delta = pagingDelta(event);
-      const scroller = viewportNode?.querySelector('.mixer-page[data-current]') ?? null;
       if (
         !onTrack &&
         !event.shiftKey &&
-        scroller !== null &&
-        scroller.scrollHeight > scroller.clientHeight &&
-        !atScrollEnd(scroller, delta)
+        !inRail(target) &&
+        pageScrolls(currentScroller(viewportNode), delta)
       ) {
         // The browser is about to scroll this, so none of it is travel towards a page turn: the
         // page at the end of the strips has to be asked for by a movement of its own.

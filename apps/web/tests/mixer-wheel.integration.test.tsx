@@ -399,6 +399,20 @@ describe('wheel ownership between faders and the pager', () => {
     expect(page()).toMatch(/^2 \//);
   });
 
+  it('17. turns the page from the rail whatever the page below it is doing', () => {
+    mount();
+    // A viewport too short for a page: the strips scroll, but not under the rail. Nothing there
+    // has anywhere to scroll to, so a wheel over the safe strip has to mean the page it always
+    // meant — otherwise the one surface an operator may touch does nothing at all.
+    resizePager(PAGE_WIDTH, 300, 600);
+    const rail = screen.getByRole('complementary', { name: 'Pages' });
+
+    const turned = wheel(rail);
+
+    expect(turned.defaultPrevented).toBe(true);
+    expect(page()).toMatch(/^2 \//);
+  });
+
   it('15. drops the travel it had banked at the end once the page scrolls again', () => {
     mount();
     resizePager(PAGE_WIDTH, 300, 600);
