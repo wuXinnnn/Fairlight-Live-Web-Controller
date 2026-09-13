@@ -910,10 +910,14 @@ input.page-rail__jump {
   transform: translateY(0.6rem);
 }
 
+/*
+ * Sized by what is in it rather than to a fixed height. Every name is one line — they are clipped
+ * with an ellipsis, never wrapped — so the headers of two strips come out the same height anyway,
+ * and a fixed one only left dead space between the name and the ON key.
+ */
 .channel-strip__header {
   min-width: 0;
-  height: 4.15rem;
-  padding: 0.85rem 0.15rem;
+  padding: 0.8rem 0.15rem 0.6rem;
   border-bottom: 1px solid var(--line);
 }
 
@@ -941,7 +945,7 @@ input.page-rail__jump {
 
 .channel-strip > .on-button {
   width: 100%;
-  margin-top: 0.8rem;
+  margin-top: 0.55rem;
 }
 
 .missing-channel-strip {
