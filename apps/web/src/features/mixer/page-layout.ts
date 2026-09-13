@@ -7,11 +7,13 @@
  */
 
 /**
- * Width of a channel strip, and the most it may be stretched to. Pages are split at the narrow
- * figure; the wider one is only ever reached by spending space a page could not fill anyway.
+ * Width of a channel strip, and the most it may be stretched to. A strip is the same width at
+ * every viewport: the ceiling is set to the floor, so the width a page cannot fill goes into its
+ * gaps and its centring rather than into the strips. Raising the ceiling reopens the stretch;
+ * pages are split at the floor, so only the floor changes how many strips fit on one.
  */
-export const STRIP_WIDTH_PX = 148;
-export const STRIP_WIDTH_MAX_PX = 176;
+export const STRIP_WIDTH_PX = 125;
+export const STRIP_WIDTH_MAX_PX = 125;
 /** Width of the vertical header that labels a type section or a group. */
 export const SECTION_HEADER_WIDTH_PX = 52;
 /**
