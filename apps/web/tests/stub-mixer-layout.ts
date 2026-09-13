@@ -4,6 +4,9 @@
  * leaves every other element alone. The default is wide enough for one section header and two
  * channel strips, so a page boundary is easy to reason about in a test.
  *
+ * The pages inside the viewport are the same height as it and answer for the same `scrollHeight`,
+ * because a page taller than the viewport is the one that scrolls.
+ *
  * The configuration page has its own stub for `getBoundingClientRect` (`stub-layout.ts`); the two
  * cover different properties and are independent.
  */
@@ -32,8 +35,12 @@ interface PagerSize {
 
 const sizes = new WeakMap<Element, PagerSize>();
 
-function isPager(element: Element): boolean {
-  return element.classList.contains('mixer-bays');
+/** The pager viewport an element is measured against, or null when it is not part of one. */
+function pagerOf(element: Element): Element | null {
+  if (element.classList.contains('mixer-bays')) {
+    return element;
+  }
+  return element.classList.contains('mixer-page') ? element.closest('.mixer-bays') : null;
 }
 
 function sizeOf(element: Element): PagerSize {
@@ -61,8 +68,9 @@ export function stubMixerLayout(): () => void {
     Object.defineProperty(Element.prototype, name, {
       configurable: true,
       get(this: Element): number {
-        if (isPager(this)) {
-          return read(sizeOf(this));
+        const pager = pagerOf(this);
+        if (pager !== null) {
+          return read(sizeOf(pager));
         }
         return (original?.get?.call(this) as number | undefined) ?? 0;
       },

@@ -623,35 +623,53 @@ body.is-modal-open {
 }
 
 /*
- * The pager viewport. It never scrolls sideways — a strip is either on the page you are looking
- * at or on another one. It does scroll down, but only in the degraded case below: a page is at
- * least `--strip-min-height` tall, so a viewport shorter than that overflows rather than
- * squashing the faders into uselessness.
+ * The pager viewport. It only ever clips: a strip is either on the page you are looking at or on
+ * another one, and the track slides by whole pages. Nothing scrolls here, because the track moves
+ * on the same axis a scroll would — a page taller than the viewport scrolls inside itself instead.
  */
 .mixer-bays {
   min-width: 0;
-  overflow: hidden auto;
+  overflow: hidden;
   padding: 0;
 }
 
+/* Pages are stacked downwards and the track slides up, so a page turn reads as a scroll. */
 .mixer-pages {
   display: flex;
   height: 100%;
-  transform: translateX(calc(-100% * var(--page-index, 0)));
+  flex-direction: column;
+  transform: translateY(calc(-100% * var(--page-index, 0)));
   transition: transform var(--page-transition) ease;
 }
 
+/*
+ * A page is exactly one viewport tall, so the track is always `pageCount` viewports and the
+ * translation lands square. The degraded case — a viewport shorter than `--strip-min-height` —
+ * is carried by the strips inside, which overflow the page and let it scroll.
+ *
+ * That scrollbar stays hidden. It would otherwise take its width out of the page's content box
+ * while the pager is sized from the viewport, and the last strip on a full page would be clipped.
+ */
 .mixer-page {
   display: flex;
-  min-height: var(--strip-min-height);
+  height: 100%;
+  min-height: 0;
   flex: 0 0 100%;
   align-items: stretch;
+  overflow: hidden auto;
   padding: 0.9rem var(--page-padding-x);
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.mixer-page::-webkit-scrollbar {
+  display: none;
 }
 
 .mixer-section {
   display: flex;
   min-width: 0;
+  min-height: var(--strip-min-height);
   gap: var(--strip-gap);
 }
 

@@ -113,6 +113,23 @@ describe('mixer pagination', () => {
     expect(currentPage()).toBe(`1 / ${pages}`);
   });
 
+  it('marks the page in view, which is the one that scrolls', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+
+    const marked = () =>
+      Array.from(container.querySelectorAll('.mixer-page')).findIndex((page) =>
+        page.hasAttribute('data-current'),
+      );
+    expect(container.querySelectorAll('.mixer-page[data-current]')).toHaveLength(1);
+    expect(marked()).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+
+    expect(container.querySelectorAll('.mixer-page[data-current]')).toHaveLength(1);
+    expect(marked()).toBe(1);
+  });
+
   it('disables the page key that would run off the end', async () => {
     const { container } = await renderDesk();
     resizePager(widthFor(6));

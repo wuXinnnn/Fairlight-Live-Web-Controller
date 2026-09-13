@@ -29,21 +29,24 @@ interface StripPagesProps {
 }
 
 /**
- * The pager track. Every page is a full-width flex row and the track slides by whole pages, so a
- * page's strips are either fully on screen or fully off it — the mixer never half-shows a strip.
- * Only the current page and its immediate neighbours render their strips; the rest are empty
- * boxes that hold their place in the track, which keeps the number of live meters bounded.
+ * The pager track. Every page is a flex row one viewport tall and the track slides up by whole
+ * pages, so a page's strips are either fully on screen or fully off it — the mixer never
+ * half-shows a strip. Only the current page and its immediate neighbours render their strips; the
+ * rest are empty boxes that hold their place in the track, which keeps the number of live meters
+ * bounded. The page in view is marked `data-current`: it is the one that scrolls when the
+ * viewport is too short for a strip, and the wheel has to ask it how far it has left to go.
  */
 export function StripPages({ pages, chrome, pageIndex }: StripPagesProps) {
   return (
     <div className="mixer-pages" style={{ '--page-index': pageIndex } as CSSProperties}>
       {pages.map((page, index) => {
+        const current = index === pageIndex ? '' : undefined;
         if (Math.abs(index - pageIndex) > MOUNTED_PAGE_RADIUS) {
-          return <div className="mixer-page" key={index} />;
+          return <div className="mixer-page" key={index} data-current={current} />;
         }
         let position = 0;
         return (
-          <div className="mixer-page" key={index}>
+          <div className="mixer-page" key={index} data-current={current}>
             {page.segments.map((segment) => {
               const strips = segment.entries.map((entry) => {
                 const rendered = entry.render(position);

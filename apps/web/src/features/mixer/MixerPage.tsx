@@ -331,12 +331,14 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         }
       }
       // Too short a viewport leaves the page taller than the space for it; scrolling to see the
-      // rest of a strip has to come before turning to the next one.
+      // rest of a strip has to come before turning to the next one. The page is what scrolls, not
+      // the viewport, because the track already owns the viewport's vertical axis.
+      const scroller = viewportNode?.querySelector('.mixer-page[data-current]') ?? null;
       if (
         !onTrack &&
         !event.shiftKey &&
-        viewportNode !== null &&
-        viewportNode.scrollHeight > viewportNode.clientHeight
+        scroller !== null &&
+        scroller.scrollHeight > scroller.clientHeight
       ) {
         wheelGestureTracker.touch();
         return;
