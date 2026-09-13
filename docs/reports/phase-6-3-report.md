@@ -9,9 +9,10 @@
 | 3. 翻页状态、安全区与键盘 | 完成 |
 | 4. 滚轮:归属模块与两个 reducer | 完成 |
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
-| 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
+| 6. 电平表实测与 transform 改绘 | 完成(云端跳过,由本地会话补做,见第 14 节) |
 | 7. 文档 | 完成 |
 | 评审后修订(Bugbot 五条 findings + 自查补 1 条) | 完成,见第 10 节 |
+| 本地收尾批次(电平表实测与改绘、触控板翻页、浏览器样式实测) | 完成,见第 14 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -50,7 +51,7 @@ git diff pnpm-lock.yaml                无改动
 
 **4. 滚轮 reducer 与归属 — 通过,以测试为证;手感移交用户。** 单测:`wheel-delta.test.ts`(三种 `deltaMode`、Shift 下 x/y 取舍、两轴都动取竖向)、`fader-wheel.test.ts`(鼠标一格 100px 出 2 步、触控板 12px×5 累计 60 出 1 步余 10、方向反转清零、大 delta 一次多步、零位移)、`page-wheel.test.ts`(鼠标一格恰好一页且紧随第二格被冷却吞掉、触控板 30 个递减事件只出一页、冷却结束需**同时**满足静默与最短间隔、方向反转清零、静默后反向再出一页)、`wheel-gesture.test.ts`(`begin` 不换人、`touch` 续期十次不早结束、静默后 `onEnd` 恰好一次且不重复、过期后可被新持有者 `begin`、过期但定时器未跑到时补发 `onEnd`、`reset` 不触发 `onEnd`)。九种归属边界情形在 `apps/web/tests/mixer-wheel.integration.test.tsx` 里一例一条,编号与提示词第 5 节一致。**手感(多少格一页、跟不跟手)移交用户真机调参。**
 
-**5. 电平表 — 未做。** 见第 8 节「关键决策与偏离」。两种视口的帧间隔与长任务数字**本报告没有**,`.meter__fill` 的 `clip-path` 绘制未改。
+**5. 电平表 — 云端未做,本地补做完毕。** 云端跳过的经过见第 8 节第 1 条;两种视口的实测数字、改绘与复测见**第 14 节**。结论:提示词给的预算在实测机器上**改绘前就已经过了**(静止页 p95 2.9 / 5.5 ms,>34 ms 帧 0%,长任务 0),但每帧一次布局的成因查清后仍然改了绘,数字与理由都在第 14 节。
 
 **6. 全量质量门 — 通过。** 见第 1 节。远端 CI 结果见第 12 节。
 
@@ -108,7 +109,7 @@ git diff pnpm-lock.yaml                无改动
 
 冒泡是子先父后,所以 `Fader` 的 handler 一定先于 `.mixer-deck` 的跑,九种情形在这个顺序下自洽:轨道上非 Shift 起手 → Fader 先认领、视口随后在第 2 步吞掉;Shift 起手 → Fader 在第 2 步不认领也不 `preventDefault`,视口在第 3 步认领 `page`。
 
-### 3.6 电平表实测 —— 本节整节未执行
+### 3.6 电平表实测 —— 云端整节未执行,本地补做(见第 14 节)
 
 提示词第 6 节要求在云端起合成电平服务(临时目录装 `socket.io`)+ Playwright 驱动预装 Chromium,在 1920×1080 与 3840×1080 两种视口实测 40 通道 20 Hz 下的帧间隔 p50/p95/最大值、>34 ms 帧占比与长任务次数,超预算则把 `.meter__fill` 改为 `transform: scaleY()` 绘制并重测。
 
@@ -118,7 +119,7 @@ git diff pnpm-lock.yaml                无改动
 - **两种视口的原始数字本报告一个也没有**;
 - `.meter__fill` 的 `clip-path: inset(var(--meter-reveal) 0 0)` 与 `.meter__peak` 的 `bottom` 绘制**保持原样未改**,`Meter.tsx` 与 `Meter.test.tsx` 未动(它们读的都是百分比,条带高度翻倍不影响断言)。
 
-条带高度大约翻倍是这次布局改动的直接后果,电平表的重绘面积随之翻倍,**这个开销目前没有任何测量数据支撑**。见第 11 节移交事项。
+条带高度大约翻倍是这次布局改动的直接后果,电平表的重绘面积随之翻倍,**这个开销在云端会话里没有任何测量数据支撑**。本地会话已经补测并改绘,见第 14 节;本小节保留云端当时的状态记录。
 
 ### 3.7 文档
 
@@ -155,7 +156,9 @@ git diff pnpm-lock.yaml                无改动
 
 另有两个非「初值」性质的内部常量:`MOUNTED_PAGE_RADIUS = 1`(`StripPages.tsx`,当前页前后各挂载几页)与测试夹具 `STUB_PAGER_WIDTH_PX` / `STUB_PAGER_HEIGHT_PX`(`apps/web/tests/stub-mixer-layout.ts`,由 `page-layout.ts` 的常量算出,不是独立数值)。
 
-已知的初值取舍(提示词已点明,原样保留):Firefox 的一格是 `deltaMode` 1、`deltaY` ±3,归一化为 48px,**不足 60px 阈值,翻不了页**。这一条由用户真机调参。
+已知的初值取舍(提示词已点明,原样保留):Firefox 的一格是 `deltaMode` 1、`deltaY` ±3,归一化为 48px,**不足 60px 阈值,翻不了页**。这一条由用户真机调参。(本地收尾批次之后,分页路径改由 `wheel-gestures` 归一化,它的行高是 18 而不是 16,Firefox 的一格在分页路径上变成 54px——仍然不足 60px,结论不变;推子路径仍用 `WHEEL_LINE_HEIGHT_PX` = 16。)
+
+**本地收尾批次没有新增、修改或删除任何数值常量**:上表全部照旧。`reducePageWheel` 多收的 `momentum` 是一个入参而不是数值;惯性判定的门限(衰减比率 0.6–0.96、需要连续 5 个合并采样点)在 `wheel-gestures` 内部,不是本仓库的可调数值。
 
 ## 5. 真机验收操作清单(移交用户)
 
@@ -239,17 +242,26 @@ git diff pnpm-lock.yaml                无改动
 | `apps/web/tests/mixer-pages.integration.test.tsx` | 分页、翻页、自适应布局与页码跳转二十三例 |
 | `apps/web/tests/mixer-wheel.integration.test.tsx` | 滚轮归属、滚动接续与连续翻页十八例 |
 | `apps/web/tests/mixer-touch.integration.test.tsx` | 手指翻页八例(验收反馈补) |
+| `apps/web/src/lib/page-wheel.trace.test.ts` | 合成触控板轨迹经 `WheelGestures.feedWheel()` 驱动 reducer 的四例(本地收尾补) |
 | `docs/reports/phase-6-3-report.md` | 本报告 |
 
-修改:`apps/web/src/features/mixer/MixerPage.tsx`、`TypeRowToggle.tsx`、`TypeRowToggle.test.tsx`、`ChannelStrip.tsx`、`apps/web/src/components/Fader.tsx`、`Fader.test.tsx`、`apps/web/src/styles.css`、`apps/web/vitest.setup.ts`、`apps/web/tests/mixer.integration.test.tsx`、`apps/web/tests/views.integration.test.tsx`、`docs/architecture.md`。
+修改:`apps/web/src/features/mixer/MixerPage.tsx`、`TypeRowToggle.tsx`、`TypeRowToggle.test.tsx`、`ChannelStrip.tsx`、`apps/web/src/components/Fader.tsx`、`Fader.test.tsx`、`apps/web/src/styles.css`、`apps/web/vitest.setup.ts`、`apps/web/tests/mixer.integration.test.tsx`、`apps/web/tests/views.integration.test.tsx`、`docs/architecture.md`;本地收尾批次另改 `apps/web/src/components/Meter.tsx`、`Meter.test.tsx`、`apps/web/src/lib/wheel-delta.ts`、`wheel-delta.test.ts`、`apps/web/src/lib/page-wheel.ts`、`page-wheel.test.ts`、`apps/web/tests/mixer-wheel.integration.test.tsx`、`apps/web/package.json`、`pnpm-lock.yaml`。
 
-未改动:`apps/server`、`packages/shared`、`packages/test-utils`、`features/settings/`、CONNECTION 面板、`Meter.tsx` / `Meter.test.tsx`、CI 流水线、`docs/development-plan.md`、`docs/fairlight-ember.md`、`pnpm-lock.yaml`。
+未改动:`apps/server`、`packages/shared`、`packages/test-utils`、`features/settings/`、CONNECTION 面板、CI 流水线、`docs/development-plan.md`、`docs/fairlight-ember.md`。(`Meter.tsx` / `Meter.test.tsx` / `pnpm-lock.yaml` 在云端会话未改动,本地收尾批次改了,见第 14 节。)
 
 ## 7. 依赖清单
 
-**无新增依赖,`pnpm-lock.yaml` 无 diff**(`git diff --stat pnpm-lock.yaml` 为空,已核对)。
+云端会话:**无新增依赖,`pnpm-lock.yaml` 无 diff**。
 
-临时目录里也**没有**装任何东西:提示词第 6 节要求的 `socket.io`(合成电平服务)与 `playwright-core`(冒烟驱动)因该节整节跳过而未安装。`/opt/pw-browsers` 的预装 Chromium 未使用。
+本地收尾批次新增一个依赖:
+
+| 依赖 | 版本 | 许可 | 运行时依赖 | 用途 |
+| --- | --- | --- | --- | --- |
+| `wheel-gestures` | 2.3.0 | MIT | 无 | 滚轮惯性判定(区分「手指还在推」与「系统在惯性滑行」),顺带归一化单位与轴向 |
+
+`pnpm-lock.yaml` 因此**有 diff**(+9 行,只有这一项),`apps/web/package.json` 多一行。这是对本批次「不新增依赖」硬性约束的一次**有意偏离**,由用户在本地收尾时拍板选择(备选是自研衰减检测);理由与取舍见 14.2。
+
+临时目录(不进仓库):`playwright-core`(驱动本机已装的 Chrome 做实测与截图)。合成电平服务直接复用 `apps/server/node_modules` 里已有的 `socket.io`,没有另外安装。
 
 ## 8. 关键决策与偏离
 
@@ -291,6 +303,14 @@ git diff pnpm-lock.yaml                无改动
 | `src/components/Fader.test.tsx` | `renderFader` 夹具、`uses the full shortened track…` | 无 `wheelId` | 补 `wheelId`(必填 prop) |
 
 `tests/settings-groups.integration.test.tsx` 用的是 `article.channel-strip`(后代选择器),未受影响,未改。
+
+本地收尾批次另改三处,同样只改读法、不动意图:
+
+| 文件 | 用例 | 原断言 | 改为 |
+| --- | --- | --- | --- |
+| `src/components/Meter.test.tsx` | `reveals a fixed meter gradient by clipping…` → 标题改 `…by sliding it` | `.meter__fill` 的 `--meter-reveal` 为 `50%` | `--meter-ratio` 为 `0.5`,并断言 `.meter__fill-bar` 在场(渐变靠它反向平移保持不动) |
+| 同上 | `holds a peak before returning to the current reading` | `.meter__peak` 的内联 `bottom` 为 `95%` / `50%`(3 处) | 同一元素的 `--meter-peak` 为 `0.95` / `0.5` |
+| `src/lib/wheel-delta.test.ts` | `pagingDelta` 四例 | 传整个 `WheelEvent` 形状,横轴在 `deltaY === 0` 时一律生效 | 改传 `{ x, y }` 与 `shiftKey`;「Shift 下读横轴」保留,新增「无 Shift 时不读横轴」 |
 
 ## 10. 评审后的修订
 
@@ -362,9 +382,9 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 ## 11. 遗留问题与移交事项
 
-1. **电平表实测与可能的 transform 改绘 —— 留给本地新建的小批次。** 40 通道 20 Hz 下两种视口(1920×1080、3840×1080)的帧间隔 p50/p95/最大值、>34 ms 帧占比、长任务次数一个都没测。预算是静止页 p95 ≤ 20 ms、>34 ms 帧占比 ≤ 1%、长任务 0,翻页期间每次允许 ≤ 2 帧超 34 ms。超预算时的改法提示词第 6 节写得很具体(`.meter__fill` 改 `transform: scaleY(var(--meter-ratio))` + `transform-origin: bottom` + `will-change: transform`,`.meter__peak` 改 `translateY`,`Meter.tsx` 只改写入的自定义属性,`Meter.test.tsx` 断言改读新属性)。**条带高度翻倍已经落地,电平表重绘面积随之翻倍,风险敞口是实打实的。**
+1. ~~**电平表实测与可能的 transform 改绘**~~ —— 本地收尾批次已完成,见第 14 节。
 
-2. **纯 CSS 的东西本会话一律没有视觉验证。** jsdom 不求值 CSS,本会话又没做浏览器冒烟。页头单行的实际观感、条带是否真撑满、推子轨道拉长后的手感、翻页动效、视口过矮时的页内滚动、安全区按钮的质感——全部只有代码层面的把握,**移交用户**。
+2. ~~**纯 CSS 的东西本会话一律没有视觉验证。**~~ —— 本地收尾批次已在真实 Chrome 里扫过 16 组视口并逐张看图,见 14.3;仍然**移交用户**的只剩主观观感与真机手感。
 
 3. **Firefox 的鼠标一格翻不了页。** `deltaMode` 1 × 3 行 × 16px = 48px < 60px 阈值。提示词把这列为已知取舍、由真机调参,本会话未动初值。
 
@@ -512,5 +532,126 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `6079de2` | `fix(web): always turn a page from the safe rail`(验收反馈 12.6) |
 | `91400aa` | `feat(web): turn pages by dragging a finger`(验收反馈 12.7) |
 | `8bf5ece` | `feat(web): jump to a page by typing its number`(验收反馈 12.8) |
+| `340ae6f` | `docs: record the rail paging and page jump changes`(验收反馈第二轮文档) |
+| `4e50f30` | `perf(web): move a meter reading onto the compositor`(本地收尾 14.1) |
+| `e914da9` | `fix(web): only read the sideways wheel axis under Shift`(本地收尾 14.2) |
+| `0c06a70` | `fix(web): never let a trackpad's coast turn a second page`(本地收尾 14.2) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
+
+## 14. 本地收尾批次
+
+云端会话结束、两轮验收反馈之后,还剩三件只能在有真实浏览器的本地机器上做的事,在**同一条分支、同一个 PR** 上补做。
+
+**实测环境**:Windows 11,Chrome(已装,经 `playwright-core` 驱动,不下载浏览器),真实 GPU(RTX 4090,已确认不是软件光栅)。被测的是 **`pnpm --filter @flwc/web build` 的生产构建**,不是 dev server。数据源是一个只在会话临时目录里存在的**合成电平服务**(Node + `apps/server/node_modules` 里现成的 `socket.io`,监听 3100,发 40 通道快照与每 50 ms 一帧 `meters:frame`,事件名与形状取自 `packages/shared` 的 schema,另答两个前端启动会打的 REST)。**全程没有启动 `apps/server`、没有连真实 Fairlight**;本机当时正跑着连真机的 `pnpm dev`(3000 / 5173),实测另起端口,没有碰它。
+
+视口用 CDP `Emulation.setDeviceMetricsOverride` 覆写而不是靠窗口大小——本机两块屏都是 1920×1080,3840 宽装不进窗口,所以 **3840×1080 是 `deviceScaleFactor: 0.5` 模拟出来的**(CSS 像素数与真实 4K 台面一致,物理光栅面积是一半)。这一点在读下面的数字时要记住。
+
+### 14.1 电平表实测与 transform 改绘
+
+**先说结论:提示词给的预算,改绘前就已经通过了。** 两种视口、每轮「静止 10 s + 每 2 s 翻一页翻 5 次」:
+
+| 改绘前(1x) | 静止 p50 | 静止 p95 | 最大 | >34 ms 帧占比 | 长任务 | 翻页时每次 >34 ms 的帧 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1920×1080(22 条 / 22 表) | 2.8 ms | 2.9 ms | 5.6 ms | 0% | 0 | 0 |
+| 3840×1080(40 条 / 40 表) | 2.8 ms | 5.5 ms | 8.4 ms | 0% | 0 | 0 |
+
+预算是静止页 p95 ≤ 20 ms、>34 ms ≤ 1%、长任务 0,翻页每次 ≤ 2 帧超 34 ms——**六项全过**。
+
+但这台机器的 rAF 跑在 **~360 fps**(不是 60;`about:blank` 也是 360,不是被测页面的原因),每帧只有 2.8 ms 的活要干,「p95 ≤ 20 ms」在这里几乎不可能不过,**这条预算在本机没有区分度**。所以另外采了两个与刷新率无关的指标:主线程每秒耗时(CDP `Performance.getMetrics` 差值)与 CPU 降频压力测试。它们立刻显出问题:
+
+| 改绘前 | 主线程 task | script | style | layout | **布局次数** |
+| --- | --- | --- | --- | --- | --- |
+| 1920×1080 | 382 ms/s | 14.6 | 33.3 | 53.7 | **371.5 次/秒 ≈ 每帧一次** |
+| 3840×1080 | 618 ms/s | 19.5 | 51.4 | 92.3 | **351.9 次/秒 ≈ 每帧一次** |
+
+**每帧一次整页布局**,而电平数据每秒只来 20 次。逐项摘除做归因(1x,3840×1080):
+
+| 变体 | task ms/s | layout ms/s | 布局次数/帧 |
+| --- | --- | --- | --- |
+| 原样 | 633 | 96 | **1.06** |
+| 关掉 `.meter__peak` 的过渡 | 541 | 72 | **0.10** |
+| 关掉 `.meter__fill` 的过渡 | 454 | 93 | 1.05 |
+| 关掉 `.meter__fill` 的辉光 | 609 | 90 | 1.02 |
+| 隐藏整个表体 | 140 | 71 | 0.06 |
+
+成因清楚:`.meter__peak` 用 `bottom` 定位加 `transition: bottom`,**`bottom` 是触发布局的属性**,40 个表的峰值几乎一直在补间,于是每帧一次布局(≈92 ms/s);`.meter__fill` 的 `clip-path` 过渡另占 ≈180 ms/s 的样式与绘制。电平表合计占主线程约 78%。
+
+**改绘做了,理由是这个成因而不是预算**(提示词写的是「未超预算则不改」,这里是一次有意偏离,请复核是否认可):
+
+- `.meter__fill` 改成**一扇罩在固定渐变上的窗**:窗按「没有点亮的那部分」`translateY` 向下平移,窗内新增的 `.meter__fill-bar` 向上平移同样的量。两个位移是同一个数的正负两面,所以渐变的分色**在过渡的每一个瞬间**都钉在刻度上。提示词原本写的是 `transform: scaleY()`——那会把渐变一起压扁,−30 dB 的表会在顶端显出红色,与 `.meter__zones` 的刻度线对不上;截图比对确认了平移方案分色正确(−15.6 dB 的条在 70% 处转琥珀、−2.4 dB 的条在 90% 处转红)。
+- `.meter__peak` 改成满高容器带着 2px 线一起 `translateY`(`top: -2px` 补掉原来 `bottom` 定位的 2px 差),不再碰布局。
+- `Meter.tsx` 只改写入的自定义属性(`--meter-reveal` 百分比 → `--meter-ratio` / `--meter-peak` 两个无单位数),clamp、峰值保持、clipping 逻辑一行未动;`Meter.test.tsx` 的三条断言改读新属性,意图不变。
+
+**改绘后复测**:
+
+| 3840×1080 / 40 通道 | 改绘前 | 改绘后 |
+| --- | --- | --- |
+| 主线程 task(1x) | 618 ms/s | **455 ms/s**(−26%) |
+| 布局次数(1x) | 351.9 次/秒 | **19.9 次/秒**(= 20 Hz 数据帧率,只剩读数文本那一次) |
+| 静止 p95(1x) | 5.5 ms | 5.6 ms(两者都远在预算内) |
+| CPU 降频 2 倍:帧率 | 142.5 fps | **249.3 fps** |
+| CPU 降频 2 倍:每帧主线程 | 5.82 ms | **3.03 ms** |
+| CPU 降频 2 倍:p95 | 16.7 ms | 13.9 ms |
+
+1920×1080 同向:主线程 382 → 248 ms/s,布局 371.5 → 19.8 次/秒;降频 2 倍时 749 → 562 ms/s。
+
+**一条如实记下的反例**:CPU 降频 **3 倍**时,3840×1080 上改绘后反而更差(帧率 83.8 → 62 fps,>34 ms 帧占比 0.24% → 10.9%)。这一档两版的主线程都已经打满(927 vs 969 ms/s),饱和之后 fps 只反映每帧成本,测量本身失去区分度;重复三次结果稳定,所以不是噪声,但也没有找到令人满意的解释。降频 6 倍时两版都不可用(>34 ms 帧占比 74–82%)。**1x 与 2x 改绘明显更好,3x 更差,6x 都不行**——这是全部实情。
+
+顺带验证过的两件事:`will-change: transform` 留着是对的(去掉后 3840 的主线程从 455 回到 530 ms/s、布局次数从 19.8 涨到 32.9);对读数文本加 CSS `contain` 想把那 20 次/秒的整页布局局部化,实测**没有收益甚至更差**,因此没有引入。剩下的布局全部来自 40 个读数文本每秒 20 次的更新(把读数隐藏,layout 从 149 降到 1 ms/s),那是产品功能,不动。
+
+### 14.2 触控板翻页的两个根因
+
+用户反馈两条:一次滑动会因惯性翻过多页;双指往下滑动时有时莫名往下翻页。读代码定位到两个各自独立的缺陷,都写了先红后绿的回归锁。
+
+**其一,方向错:横轴被无条件当成翻页行程。** `pagingDelta()` 原本在 `deltaY === 0` 时回落读 `deltaX`。这个回落是为 Shift 准备的(浏览器在 Shift 下把竖向滚动换到 `deltaX`),但代码没有判 `shiftKey`。触控板做竖向滑动时,竖向位移还不够一整像素的那些帧照样会把手在板上的横向漂移报在 `deltaX` 上——这些帧于是按漂移的符号累计成竖向行程,轻则把上滑的累计反复清零(滑不动),重则攒够阈值往反方向翻一页。改法只有一句:横轴**只在 Shift 按下时**才读。
+
+回归锁两条:`wheel-delta.test.ts` 的 `ignores sideways travel without Shift`;`mixer-wheel.integration.test.tsx` 第 5b 例(在页面空白处连发 6 个纯横向滚轮 → 页码不动;带 Shift 的一格 → 翻页)。摘掉修复两条都变红,后者的失败形态正是「上滑手势一页都翻不动」。
+
+**其二,翻过多页:阈值分不出「手指还在推」和「系统在惯性滑行」。** 12.4 把重新武装改成只看冷却、不看静默之后,防惯性全靠「同一手势内续翻要 120 px(首翻的两倍)」。但用力甩一下的惯性尾巴总行程有十来页之多,每个 180 ms 冷却窗口里都轻松凑得满 120 px。用合成轨迹复现:一次用力甩(峰值 80 px/帧、按 0.94 衰减,尾巴总行程 > 10 个阈值)**翻 3 页**,连甩两次**翻 6 页**。
+
+惯性是**形状**不是大小——逐帧衰减,且两轴按同一比率衰减——看单个事件判不出来,要看一串。所以按用户拍板的方案引入 `wheel-gestures`(MIT,零运行时依赖,2026-09-07 仍在维护)读这一串并给出 `isMomentum`,`reducePageWheel` 多收一个 `momentum` 入参:**这次手势已经翻过页之后,标为惯性的行程一律吞掉且不入账**;还没翻过页时不拦(那是甩劲刚到,该给它一页);手指重新按上板时库会取消惯性态,翻页权立刻交还。
+
+没有动任何数值:`PAGE_WHEEL_THRESHOLD_PX` 60、`PAGE_WHEEL_REPEAT_THRESHOLD_PX` 120、`PAGE_WHEEL_QUIET_MS` 150、`PAGE_WHEEL_COOLDOWN_MS` 180 全部照旧。阈值那一层保留作为「手指还在推」时的节奏——**如果真机上觉得持续滑动翻得太慢,把 `PAGE_WHEEL_REPEAT_THRESHOLD_PX` 降到 60 是唯一要动的旋钮**,惯性已经由判定兜住,不再需要它当防线。触摸路径共用同一个 reducer,手指没有 OS 惯性、`momentum` 恒为 false,**行为一字未变**(触屏这轮没测,不引入未经验证的改动)。
+
+接法上的三个决定:`preventWheelAction: false`(拦不拦要由归属、安全区与让位规则决定,不能交给库)、`reverseSign: false`(保持原生符号,`axisDelta[1]` 直接就是 reducer 要的「向下为正」)、跳过 `isEnding` 那次由定时器发出的收尾回调(它没有新的真实事件)。库自己的监听就是 `{ passive: false }`、回调在事件派发中同步执行,所以回调里 `preventDefault` 依然有效。推子的滚轮路径**没有改**,仍走 `wheel-delta.ts`。
+
+一处需要点名的差异:库的行高常量是 `16 × 1.125 = 18`,我们的 `WHEEL_LINE_HEIGHT_PX` 是 16。于是 Firefox 的一格(`deltaMode` 1 × 3 行)在分页路径上归一化为 54 px、在推子路径上仍是 48 px,**两者都仍然不足 60 px 的翻页阈值**——第 11 节第 3 条的已知取舍没有改变,只是数字更近了一点。
+
+回归锁:`page-wheel.test.ts` 新增三例(惯性不给第二页、还没翻过页的惯性照给、手指中途按回来立刻恢复翻页);新建 `page-wheel.trace.test.ts`,把合成的触控板轨迹**经 `WheelGestures.feedWheel()` 真的过一遍库**再喂给 reducer,断言「一次甩恰好一页」「甩两次恰好两页」「手指持续推时连翻」「上滑手势不被横向漂移带偏」。逐条验证过摘掉修复即变红。**这些轨迹是按精密触控板的已知特征构造的,不是录制的**——原计划要在用户的笔记本上采真实事件序列,但用户换了机器、那台笔记本不在手边,这一步没做。**真实手感仍然移交用户**。
+
+### 14.3 真实浏览器样式实测
+
+16 组视口(宽 3840→640 各档 × 高 1080→520 各档)逐个截图,并自动检查五类故障。**没有检出任何一类**:
+
+- 横向溢出:`document` 与 `.mixer-bays` 在所有视口下 `scrollWidth == clientWidth`,**横向永远没有滚动条**;
+- 满页最后一条被裁(第 10.1 条的回归):所有视口下最后一条的右缘都在页内容盒之内;
+- 页头元素互相重叠:两两包围盒无交叠;
+- 文字截断:唯一报出来的是 `.control-lock legend`,那是刻意的无障碍隐藏写法(1px + `clip`,可见文字由 `::before` 画),**误报**;
+- 安全区不可见:所有视口下都在视口内、宽 72px。
+
+页头按内容换行的实际档位(12.5 改成无断点之后):**≥1440 一行(48px)**,**1280–800 两行(68px)**,**640 三行(82px)**。都是内容真的放不下才换,换行后条带高度随之减少但布局成立。视口高度 ≤600 时页内出现纵向滚动(`scrollHeight − clientHeight` 为 36–140 px),布局不塌,条带保持 528px 最小高度。
+
+另外在真实 Chrome 里跑了 12 项 jsdom 测不了的交互断言,**全部通过**:鼠标一格恰好一页、翻页过渡真的在动、轨道上的一格只调推子不翻页、Shift 在轨道上翻页、矮视口先滚到底再翻页、安全区在矮视口下照样翻页且不去滚条带、纯横向滚轮不翻页(14.2 那条修复的真实浏览器验证)。
+
+**一条留给用户决定的观感问题**:矮视口(如 1440×520)下条带底部的 MTR 读数与电平读数落在折叠线以下,而滚动条是隐藏的(12.1 的几何取舍),**没有任何「下面还有」的提示**。这是第 12.9 节已经列出的开放问题,不是这次改动引入的;加一个渐隐提示属于设计增补而不是修 bug,没有擅自做,请拍板。
+
+### 14.4 本地收尾批次的质量门
+
+```
+pnpm lint (eslint + prettier)                成功
+pnpm --filter @flwc/web typecheck            0 error
+pnpm --filter @flwc/web test --coverage      56 文件 / 447 用例 全绿
+pnpm --filter @flwc/web build                成功
+git diff --stat pnpm-lock.yaml               +9 行(只有 wheel-gestures)
+```
+
+覆盖率:Statements 97.04% / Branches 92.47% / Functions 99.43% / Lines 97.01%(门槛 80%,未调整、未新增排除项)。用例 438 → 447(净增 9)。
+
+### 14.5 仍然移交用户的事项
+
+1. **触控板真实手感**——14.2 的轨迹是构造的不是录制的。回到那台笔记本后请重点试:用力甩一次是不是恰好一页;持续滑动的节奏跟不跟手(觉得慢就把 `PAGE_WHEEL_REPEAT_THRESHOLD_PX` 降到 60);「双指下滑莫名往下翻页」是否彻底消失。
+2. **触屏与真机 40 通道**——触屏路径这轮完全没测(用户另行安排);真机 40 通道盯着电平表看 1 分钟这一条仍然需要在真实 Fairlight 上做。
+3. **电平表改绘的认可**——预算本来就过了,改绘是基于「每帧一次布局」的成因做的,并且在 CPU 降频 3 倍这一档有一处未解释的反例(14.1)。要不要保留这次改绘,请拍板。
+4. **矮视口的滚动提示**——见 14.3 末尾。
+5. 第 5 节的**安全约束原样继续生效**:滚轮与翻页验收请在台面空白处、安全区与页码上做;确需动推子时只允许 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道,测后复原,不得切 ON/mute、不得动其它通道、不得删改任何通道。
