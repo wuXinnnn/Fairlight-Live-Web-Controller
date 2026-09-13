@@ -9,6 +9,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import {
+  PAGE_PADDING_X_PX,
   SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_WIDTH_PX,
@@ -26,9 +27,12 @@ function refOf(channel: ChannelState): ViewChannelRef {
   return { kind: channel.kind, name: channel.name, channelId: channel.id };
 }
 
-/** Width that fits a section header and `strips` channel strips, to the pixel. */
+/**
+ * Viewport width that fits a section header and `strips` channel strips, to the pixel. The page's
+ * own side padding comes out of that width, so it has to be included here too.
+ */
 function widthFor(strips: number): number {
-  return SECTION_HEADER_WIDTH_PX + strips * (STRIP_GAP_PX + STRIP_WIDTH_PX);
+  return SECTION_HEADER_WIDTH_PX + strips * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
 }
 
 const INVENTORY: Array<[ChannelKind, number, string]> = [
@@ -80,6 +84,18 @@ describe('mixer pagination', () => {
     resetMeterStore();
     resetViewStore();
     window.localStorage.clear();
+  });
+
+  it('packs a page to its content box, not over it', async () => {
+    const { container } = await renderDesk();
+
+    // The page's side padding is not room for strips: one pixel under what six of them need,
+    // and only five may be laid out — anything more is painted outside the clip.
+    resizePager(widthFor(6));
+    expect(container.querySelector('.mixer-page')?.querySelectorAll('article')).toHaveLength(6);
+
+    resizePager(widthFor(6) - 1);
+    expect(container.querySelector('.mixer-page')?.querySelectorAll('article')).toHaveLength(5);
   });
 
   it('turns pages with the rail buttons and reports where it is', async () => {

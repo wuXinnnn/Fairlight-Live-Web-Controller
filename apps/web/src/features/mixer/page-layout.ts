@@ -14,6 +14,11 @@ export const SECTION_HEADER_WIDTH_PX = 52;
 export const STRIP_GAP_PX = 1;
 /** Space between two adjacent segments. */
 export const SEGMENT_GAP_PX = 14;
+/**
+ * Space a page keeps on each side of its strips. It comes out of the page's width, so the
+ * pagination function has to be given the width without it.
+ */
+export const PAGE_PADDING_X_PX = 24;
 /** Below this height a page stops shrinking and the pager viewport scrolls instead. */
 export const STRIP_MIN_HEIGHT_PX = 528;
 /** Width of the page rail down the right-hand side of the deck. */

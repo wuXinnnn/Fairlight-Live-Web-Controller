@@ -24,6 +24,7 @@ import { resolveMixerEmptyState } from './empty-state.js';
 import { MissingChannelStrip } from './MissingChannelStrip.js';
 import { PageRail } from './PageRail.js';
 import {
+  PAGE_PADDING_X_PX,
   PAGE_RAIL_WIDTH_PX,
   PAGE_TRANSITION_MS,
   SECTION_HEADER_WIDTH_PX,
@@ -65,6 +66,7 @@ const LAYOUT_VARIABLES = {
   '--strip-gap': `${STRIP_GAP_PX}px`,
   '--segment-gap': `${SEGMENT_GAP_PX}px`,
   '--strip-min-height': `${STRIP_MIN_HEIGHT_PX}px`,
+  '--page-padding-x': `${PAGE_PADDING_X_PX}px`,
   '--page-rail-width': `${PAGE_RAIL_WIDTH_PX}px`,
   '--page-transition': `${PAGE_TRANSITION_MS}ms`,
 } as CSSProperties;
@@ -261,7 +263,9 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const pages = paginate(
     segments,
     {
-      containerWidth: viewportWidth,
+      // A page's side padding comes out of its width, so it is not room for strips: hand the
+      // pager the content box or the last strip on a full page is laid out past the clip.
+      containerWidth: Math.max(0, viewportWidth - 2 * PAGE_PADDING_X_PX),
       stripWidth: STRIP_WIDTH_PX,
       headerWidth: SECTION_HEADER_WIDTH_PX,
       stripGap: STRIP_GAP_PX,

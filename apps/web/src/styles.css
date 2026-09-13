@@ -646,7 +646,7 @@ body.is-modal-open {
   min-height: var(--strip-min-height);
   flex: 0 0 100%;
   align-items: stretch;
-  padding: 0.9rem 1.5rem;
+  padding: 0.9rem var(--page-padding-x);
 }
 
 .mixer-section {
@@ -2871,8 +2871,9 @@ html.fader-cap-dragging * {
     justify-self: stretch;
   }
 
+  /* Only the vertical padding gives way; the sides stay at the width the pager was told. */
   .mixer-page {
-    padding: 0.6rem 0.75rem;
+    padding-block: 0.6rem;
   }
 
   .settings-header {

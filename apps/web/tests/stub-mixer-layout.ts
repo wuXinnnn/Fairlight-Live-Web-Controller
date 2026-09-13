@@ -10,6 +10,7 @@
 
 import { act } from '@testing-library/react';
 import {
+  PAGE_PADDING_X_PX,
   SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_MIN_HEIGHT_PX,
@@ -17,8 +18,9 @@ import {
 } from '../src/features/mixer/page-layout.js';
 import { notifyResizeObservers } from './stub-resize-observer.js';
 
-/** One header plus two strips, to the pixel. */
-export const STUB_PAGER_WIDTH_PX = SECTION_HEADER_WIDTH_PX + 2 * (STRIP_GAP_PX + STRIP_WIDTH_PX);
+/** One header plus two strips, to the pixel, plus the side padding that is not room for them. */
+export const STUB_PAGER_WIDTH_PX =
+  SECTION_HEADER_WIDTH_PX + 2 * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
 /** Taller than a page's minimum height, so the viewport does not scroll by default. */
 export const STUB_PAGER_HEIGHT_PX = STRIP_MIN_HEIGHT_PX + 100;
 
