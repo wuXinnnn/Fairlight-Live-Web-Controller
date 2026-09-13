@@ -279,6 +279,26 @@ describe('wheel ownership between faders and the pager', () => {
     });
   });
 
+  it('10. finishes the gesture on the strip still on screen after a remount', () => {
+    const { socket } = mount();
+    // IN-3 lives on the second page at this width.
+    wheel(track('IN-3'));
+    expect(levelOf('IN-3')).toBe('-22');
+
+    // Widening mid-gesture collapses three pages into one, so the strip is torn down and built
+    // again under a different page. The tracker must follow it, not the instance that left.
+    resizePager(20000);
+    wheel(track('IN-3'));
+    expect(levelOf('IN-3')).toBe('-24');
+
+    flushThrottle();
+    const beforeSettling = levelWrites(socket).length;
+    settle();
+    const writes = levelWrites(socket);
+    expect(writes.length).toBe(beforeSettling + 1);
+    expect(writes.at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -24 });
+  });
+
   it('9. scrolls a viewport too short for a page instead of turning it', () => {
     mount();
     // The page no longer fits: scrolling has to reach the rest of the strip first.

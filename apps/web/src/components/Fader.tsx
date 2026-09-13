@@ -119,16 +119,16 @@ export function Fader({
         event.preventDefault();
         return;
       }
-      if (owner === null) {
-        // Shift is the escape hatch to the pager, and it only counts on the opening event.
-        if (event.shiftKey) {
-          return;
-        }
-        if (!sameOwner(wheelGestureTracker.begin(mine, commitWheelGesture), mine)) {
-          wheelGestureTracker.touch();
-          event.preventDefault();
-          return;
-        }
+      // Shift is the escape hatch to the pager, and it only counts on the opening event.
+      if (owner === null && event.shiftKey) {
+        return;
+      }
+      // Claim the wheel, or — when this fader already owns it — re-register, since a remount
+      // mid-gesture leaves the tracker holding the previous instance's callback.
+      if (!sameOwner(wheelGestureTracker.begin(mine, commitWheelGesture), mine)) {
+        wheelGestureTracker.touch();
+        event.preventDefault();
+        return;
       }
       event.preventDefault();
       wheelGestureTracker.touch();

@@ -53,7 +53,11 @@ export function extend(state: WheelGestureState, now: number): WheelGestureState
 }
 
 export interface WheelGestureTracker {
-  /** Claims the wheel, or reports who already has it — an owner is never displaced mid-gesture. */
+  /**
+   * Claims the wheel, or reports who already has it — an owner is never displaced mid-gesture.
+   * The owner beginning again adopts the callback it passes, which is how a remounted component
+   * takes over its own gesture.
+   */
   begin(owner: WheelOwner, onEnd: () => void): WheelOwner;
   /** Keeps the current gesture alive. */
   touch(): void;
@@ -98,6 +102,12 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
       const now = clock.now();
       const existing = currentOwner(state, now);
       if (existing !== null) {
+        // The same owner beginning again is a new component instance for it — React can remount
+        // a strip mid-gesture. Adopt its callback: the instance that ends the gesture has to be
+        // the one still on screen, or the gesture is finished with a value nobody is holding.
+        if (sameOwner(existing, owner)) {
+          onEnd = end;
+        }
         state = extend(state, now);
         schedule();
         return existing;

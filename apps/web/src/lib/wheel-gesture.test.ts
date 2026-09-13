@@ -64,6 +64,28 @@ describe('createWheelGestureTracker', () => {
     advance(20);
     expect(tracker.begin('page', other)).toEqual({ fader: 'channel/1' });
     expect(other).not.toHaveBeenCalled();
+
+    // Nor does the interloper's callback quietly take the place of the owner's.
+    advance(WHEEL_GESTURE_IDLE_MS);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it('adopts the callback of the same owner beginning again', () => {
+    const { clock, advance } = testClock();
+    const tracker = createWheelGestureTracker(clock);
+    const stale = vi.fn();
+    const live = vi.fn();
+
+    tracker.begin({ fader: 'channel/1' }, stale);
+    advance(20);
+    // Same channel, different component instance: the strip was remounted mid-gesture, and it
+    // is the live instance that knows where the fader has got to.
+    expect(tracker.begin({ fader: 'channel/1' }, live)).toEqual({ fader: 'channel/1' });
+
+    advance(WHEEL_GESTURE_IDLE_MS);
+    expect(stale).not.toHaveBeenCalled();
+    expect(live).toHaveBeenCalledTimes(1);
   });
 
   it('ends a gesture once, after the wheel has been quiet', () => {
