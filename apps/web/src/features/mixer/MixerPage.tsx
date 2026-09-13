@@ -170,6 +170,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const { width: viewportWidth, attach: attachViewport, node: viewportNode } = usePagerViewport();
   const [deckNode, setDeckNode] = useState<HTMLDivElement | null>(null);
   const pageWheelRef = useRef(INITIAL_PAGE_WHEEL_STATE);
+  const touchRef = useRef<{ lastY: number; turned: boolean } | null>(null);
 
   const renderViewStrip = (
     entry: ResolvedViewChannel,
@@ -411,9 +412,75 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         previousPage();
       }
     };
+
+    // A finger is the same travel by another road, so it goes through the same accumulator: the
+    // thresholds, the quiet time and the cooldown are the pager's, not the wheel's.
+    const handleTouchStart = (event: TouchEvent) => {
+      const { target } = event;
+      const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+      if (
+        touch === undefined ||
+        (target instanceof Element && target.closest('[data-wheel="level"]') !== null)
+      ) {
+        // A fader owns the finger that lands on it, and a second finger is not a page turn.
+        touchRef.current = null;
+        return;
+      }
+      // The finger starts counting from nothing; a page turn just before it still has to land.
+      pageWheelRef.current = { ...pageWheelRef.current, accumulated: 0, direction: 0 };
+      touchRef.current = { lastY: touch.clientY, turned: false };
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const drag = touchRef.current;
+      const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+      if (drag === null || touch === undefined) {
+        return;
+      }
+      // A finger moving up asks for the next page, the way a wheel turning down does.
+      const delta = drag.lastY - touch.clientY;
+      drag.lastY = touch.clientY;
+      if (!inRail(event.target) && pageScrolls(currentScroller(viewportNode), delta)) {
+        // The browser is panning the strips, so none of this is travel towards a page turn.
+        pageWheelRef.current = INITIAL_PAGE_WHEEL_STATE;
+        return;
+      }
+      const { state, page } = reducePageWheel(pageWheelRef.current, {
+        delta,
+        now: performance.now(),
+      });
+      pageWheelRef.current = state;
+      if (page === 0) {
+        return;
+      }
+      drag.turned = true;
+      if (page === 1) {
+        nextPage();
+      } else {
+        previousPage();
+      }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (touchRef.current?.turned === true) {
+        // The gesture meant the page. It must not also press what it came to rest on: the page
+        // keys and the ON button are both a finger's width from somewhere it is safe to drag.
+        event.preventDefault();
+      }
+      touchRef.current = null;
+    };
+
     deckNode.addEventListener('wheel', handleWheel, { passive: false });
+    deckNode.addEventListener('touchstart', handleTouchStart, { passive: true });
+    deckNode.addEventListener('touchmove', handleTouchMove, { passive: true });
+    deckNode.addEventListener('touchend', handleTouchEnd);
+    deckNode.addEventListener('touchcancel', handleTouchEnd);
     return () => {
       deckNode.removeEventListener('wheel', handleWheel);
+      deckNode.removeEventListener('touchstart', handleTouchStart);
+      deckNode.removeEventListener('touchmove', handleTouchMove);
+      deckNode.removeEventListener('touchend', handleTouchEnd);
+      deckNode.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, [deckNode, viewportNode, nextPage, previousPage]);
 

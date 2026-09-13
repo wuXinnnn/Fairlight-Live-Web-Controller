@@ -39,7 +39,8 @@ export function PageRail({ pageIndex, pageCount, onPrevious, onNext }: PageRailP
           <path d="M5 9l7 7 7-7" fill="none" stroke="currentColor" strokeWidth="2.4" />
         </svg>
       </button>
-      {/* Reserved for the swipe gesture; empty for now, but it must already swallow touches. */}
+      {/* The swipe surface: the deck turns pages from a finger dragged anywhere on the rail, and
+          this is the part of it that is always empty to grab. */}
       <div className="page-rail__track" data-swipe-surface />
     </aside>
   );
