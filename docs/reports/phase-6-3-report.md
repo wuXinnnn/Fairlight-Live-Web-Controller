@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 399 用例 全绿
+vitest run --coverage (@flwc/web)      54 文件 / 422 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -126,31 +126,36 @@ git diff pnpm-lock.yaml                无改动
 
 ## 4. 数值初值清单
 
-全部为提示词给定的初值,**一个都没有自行调整,也没有调换单位**。
+表中标 †  的是**验收反馈后改动或新增的**(见第 13 节),其余全部为提示词给定的初值,一个都没有自行调整,也没有调换单位。
 
 | 名称 | 值 | 含义 | 文件 |
 | --- | --- | --- | --- |
-| `STRIP_WIDTH_PX` | 148 | 通道条宽度(原 9.25rem) | `apps/web/src/features/mixer/page-layout.ts` |
+| `STRIP_WIDTH_PX` | 148 | 通道条宽度(原 9.25rem),也是切页用的最窄值 | `apps/web/src/features/mixer/page-layout.ts` |
+| † `STRIP_WIDTH_MAX_PX` | 176 | 通道条可被拉宽到的上限 | 同上 |
 | `SECTION_HEADER_WIDTH_PX` | 52 | 分区/分组竖排表头宽度(原 3.2rem) | 同上 |
+| † `SECTION_HEADER_GAP_PX` | 1 | 表头与其后首条之间的间距,**固定,不参与放大** | 同上 |
 | `STRIP_GAP_PX` | 1 | 同段两条通道条之间的间距 | 同上 |
+| † `STRIP_GAP_MAX_PX` | 6 | 条间距可开到的上限 | 同上 |
 | `SEGMENT_GAP_PX` | 14 | 相邻两段之间的间距(原 0.85rem) | 同上 |
+| † `SEGMENT_GAP_MAX_PX` | 28 | 段间距可开到的上限 | 同上 |
 | `PAGE_PADDING_X_PX` | 24 | 每页左右各留的内边距(原 1.5rem),**不是**放条带的地方,切页宽度要先减掉它 | 同上 |
 | `STRIP_MIN_HEIGHT_PX` | 528 | 页的最小高度(原 33rem),低于它降级为页内滚动 | 同上 |
-| `PAGE_RAIL_WIDTH_PX` | 56 | 右侧安全区宽度 | 同上 |
+| † `PAGE_RAIL_WIDTH_PX` | 72 | 右侧安全区宽度(原 56,验收后加宽) | 同上 |
 | `PAGE_TRANSITION_MS` | 220 | 翻页 transform 过渡时长 | 同上 |
 | `WHEEL_LINE_HEIGHT_PX` | 16 | `deltaMode` 1(行)归一化为像素的系数 | `apps/web/src/lib/wheel-delta.ts` |
 | `WHEEL_PAGE_HEIGHT_PX` | 800 | `deltaMode` 2(页)归一化为像素的系数 | 同上 |
 | `FADER_WHEEL_STEP_PX` | 50 | 推子滚轮每出一步所需的累计位移 | `apps/web/src/lib/fader-wheel.ts` |
-| `PAGE_WHEEL_THRESHOLD_PX` | 60 | 翻一页所需的累计位移 | `apps/web/src/lib/page-wheel.ts` |
-| `PAGE_WHEEL_QUIET_MS` | 150 | 冷却结束所需的滚轮静默时长 | 同上 |
-| `PAGE_WHEEL_COOLDOWN_MS` | 300 | 两次翻页之间的最短间隔 | 同上 |
+| `PAGE_WHEEL_THRESHOLD_PX` | 60 | 一次手势翻第一页所需的累计位移 | `apps/web/src/lib/page-wheel.ts` |
+| † `PAGE_WHEEL_REPEAT_THRESHOLD_PX` | 120 | 同一手势内续翻所需的累计位移 | 同上 |
+| † `PAGE_WHEEL_QUIET_MS` | 150 | 判定手势结束的静默时长(语义改为「续翻阈值降回首翻阈值」) | 同上 |
+| † `PAGE_WHEEL_COOLDOWN_MS` | 180 | 两次翻页之间的最短间隔(原 300;须小于 `PAGE_TRANSITION_MS`) | 同上 |
 | `WHEEL_GESTURE_IDLE_MS` | 150 | 判定一次滚轮手势结束的静默时长 | `apps/web/src/lib/wheel-gesture.ts` |
 
-(`PAGE_PADDING_X_PX` 是评审后补的,见第 11 节;它不是提示词给的初值,而是把原本硬编码在 CSS 里的 `1.5rem` 提出来,让 TS 与 CSS 继续只有一个真相来源。)
+(`PAGE_PADDING_X_PX` 是评审后补的,见第 10 节;它不是提示词给的初值,而是把原本硬编码在 CSS 里的 `1.5rem` 提出来,让 TS 与 CSS 继续只有一个真相来源。)
 
 另有两个非「初值」性质的内部常量:`MOUNTED_PAGE_RADIUS = 1`(`StripPages.tsx`,当前页前后各挂载几页)与测试夹具 `STUB_PAGER_WIDTH_PX` / `STUB_PAGER_HEIGHT_PX`(`apps/web/tests/stub-mixer-layout.ts`,由 `page-layout.ts` 的常量算出,不是独立数值)。
 
-已知的初值取舍(提示词已点明,本会话原样保留):Firefox 的一格是 `deltaMode` 1、`deltaY` ±3,归一化为 48px,**不足 60px 阈值,翻不了页**。这一条由用户真机调参。
+已知的初值取舍(提示词已点明,原样保留):Firefox 的一格是 `deltaMode` 1、`deltaY` ±3,归一化为 48px,**不足 60px 阈值,翻不了页**。这一条由用户真机调参。
 
 ## 5. 真机验收操作清单(移交用户)
 
@@ -210,9 +215,11 @@ git diff pnpm-lock.yaml                无改动
 
 | 文件 | 作用 |
 | --- | --- |
-| `apps/web/src/features/mixer/page-layout.ts` | 七个像素常量,TS 与 CSS 的共同真相来源 |
+| `apps/web/src/features/mixer/page-layout.ts` | 像素常量,TS 与 CSS 的共同真相来源 |
 | `apps/web/src/features/mixer/pagination.ts` | `paginate()` 切页纯函数 |
 | `apps/web/src/features/mixer/pagination.test.ts` | 切页七例 |
+| `apps/web/src/features/mixer/page-fit.ts` | `fitPages()`:排完页之后把余量花成间隙、条宽与居中(验收反馈补) |
+| `apps/web/src/features/mixer/page-fit.test.ts` | 自适应布局十一例 |
 | `apps/web/src/features/mixer/use-pager-viewport.ts` | 量分页视口宽度(callback ref + ResizeObserver) |
 | `apps/web/src/features/mixer/use-pager-viewport.test.tsx` | 挂载即测量、无 ResizeObserver 时的退化 |
 | `apps/web/src/features/mixer/use-pager.ts` | `pageIndex` 状态与 `clampPageIndex` / `nextPageIndex` |
@@ -228,9 +235,9 @@ git diff pnpm-lock.yaml                无改动
 | `apps/web/src/lib/wheel-gesture.ts` | 手势归属(纯函数核心 + 注入时钟的包装 + 模块单例) |
 | `apps/web/src/lib/wheel-gesture.test.ts` | 同上 |
 | `apps/web/tests/stub-resize-observer.ts` | 可控 `ResizeObserver` 双替 |
-| `apps/web/tests/stub-mixer-layout.ts` | 分页视口 `clientWidth` / `clientHeight` / `scrollHeight` 与 `resizePager()` |
-| `apps/web/tests/mixer-pages.integration.test.tsx` | 分页与翻页十例 |
-| `apps/web/tests/mixer-wheel.integration.test.tsx` | 滚轮归属九种边界情形 |
+| `apps/web/tests/stub-mixer-layout.ts` | 分页视口与页的 `clientWidth` / `clientHeight` / `scrollHeight` / `scrollTop`,以及 `resizePager()` / `scrollPage()` |
+| `apps/web/tests/mixer-pages.integration.test.tsx` | 分页、翻页与自适应布局十六例 |
+| `apps/web/tests/mixer-wheel.integration.test.tsx` | 滚轮归属、滚动接续与连续翻页十七例 |
 | `docs/reports/phase-6-3-report.md` | 本报告 |
 
 修改:`apps/web/src/features/mixer/MixerPage.tsx`、`TypeRowToggle.tsx`、`TypeRowToggle.test.tsx`、`ChannelStrip.tsx`、`apps/web/src/components/Fader.tsx`、`Fader.test.tsx`、`apps/web/src/styles.css`、`apps/web/vitest.setup.ts`、`apps/web/tests/mixer.integration.test.tsx`、`apps/web/tests/views.integration.test.tsx`、`docs/architecture.md`。
@@ -350,7 +357,7 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 回归锁:`Fader.test.tsx` 的 `commits an inherited gesture when the strip that replaced it is locked`——卸载 A、挂载同 `wheelId` 的 B 并锁定,断言 B 立刻写一次 −18,且推进两倍静默时间后 **A 的 onCommit 一次都没被调用**。
 
-改完的质量门:53 文件 / **399** 用例全绿,覆盖率 Statements **97.03%** / Branches **92.49%** / Functions **99.41%** / Lines **96.99%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+改完的质量门:53 文件 / **399** 用例全绿,覆盖率 Statements **97.03%** / Branches **92.49%** / Functions **99.41%** / Lines **96.99%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。(验收反馈的六条改完之后是 **54 文件 / 422 用例**,Statements 96.93% / Branches 92.31% / Functions 99.42% / Lines 96.89%;见第 12 节。)
 
 ## 11. 遗留问题与移交事项
 
@@ -372,7 +379,76 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 9. **`apps/server` 与 `packages/test-utils` 本会话未安装也未运行**(本批次没改它们)。它们由远端 CI 的 `pnpm install --frozen-lockfile` 覆盖。
 
-## 12. 提交记录
+## 12. 验收反馈后的布局调整
+
+用户在真机上试用 Phase 6.3 后提了 6 条,全部做在同一分支、同一 PR 上。三个手感决策由用户拍板,记在下面各条里。
+
+### 12.1 翻页动画改为纵向 —— `5ec78f5`
+
+`translateX` 改 `translateY`,轨道改列向。安全区的两个箭头本来就是上/下,方向现在才对得上。
+
+**这一条不是改一行 transform 就完的**:原先翻页轴(X)与溢出轴(Y)是分开的,所以页可以用 `min-height` 撑高、由 `.mixer-bays` 纵向滚动。两轴一重合,页若高于视口,轨道总高就不再是「页数 × 视口高」,`translateY(-100% × index)` 会错位。改法是把滚动主体下沉一层:`.mixer-bays` 只裁剪不滚动,页恒为一个视口高,`min-height: var(--strip-min-height)` 移到页内的 `.mixer-section` 上,超出时由**页自己**滚动。
+
+页的滚动条隐藏(`scrollbar-width: none` + `::-webkit-scrollbar`)。这是用户拍板的取舍,理由是几何:滚动条若占宽,会从页的内容盒里扣掉 15px 左右,而分页量的是视口宽度——那正是第 10.1 条「满页最后一条被裁掉」的复发路径。代价是矮视口下少了一个可见的可滚提示,靠滚轮/触摸滑动与安全区页码兜底。
+
+### 12.2 安全区加宽 —— `a8da2f5`
+
+`PAGE_RAIL_WIDTH_PX` 56 → 72,内边距 0.4rem → 0.55rem。安全区里仍然没有任何会影响声音的控件,原有集成用例继续把关。
+
+### 12.3 通道条居中、间隙响应式、条宽自适应 —— `c4b0515`
+
+新增纯函数模块 `page-fit.ts`。**`paginate` 一行没改**:切页继续只用最窄的一套几何,`fitPages` 只在排完页之后把填不满的余量花掉,而且每个数字只增不减——所以它在原理上不可能反过来改动页的切法,也就不可能重演第 10.1 条。
+
+花法(依次):
+
+1. 余量先开间隙,条间距 1→6、段间距 14→28 封顶;
+2. 间隙吃不下的才拉宽通道条,148→176 封顶;
+3. 还有剩就居中。
+
+条宽取**各页允许量的最小值**作为全局唯一值。用户的口径是「条宽全局统一、间隙允许各页不同」:统一条宽保证翻页时推子不在手下改变宽度,也保证没有一页会溢出(最紧的那页说了算);间隙逐页算,因为各页的表头数与段数本就不同。
+
+不满的页(还塞得下一条通道,即末页或 `TYPE PAGES` 下的短页)不自己居中,而是**左对齐地沿用前一页的间隙与首条位置**,链式向后传递。这是用户明确要的:页内条数奇偶变化时,末页的通道位置不跟着大幅漂移。带一层「装不下就退回本页自算」的保险,正常路径走不到。
+
+标题列与其后首条之间的间隙固定为 1px、不参与放大(用户追加的口径)。实现是给表头一个负的 `margin-inline-end` 抵掉 flex `gap` 的增量,`--section-header-gap` 恒定。
+
+有一条值得记下的性质:**填得满的页,居中量恒为 0**。一页 n 条的间隙容量加拉伸容量约 `5(n-1) + 28n`,n ≥ 5 时就已经超过一条通道的宽度,而满页的余量按定义不足一条——所以余量总被间隙与条宽吃光。居中只在稀疏的页上真正发生(≤4 条,如 `TYPE PAGES` 下只有 2 条的 MAIN 页)。集成用例因此用单通道快照和分组视图来验证,而不是 40 通道台面。
+
+### 12.4 触摸板连续滑动翻不了页 —— `72e8be8`
+
+**用户说的「CD 太长」不是根因。**根因是重新武装的条件:翻页后要求 `quiet && settled`,而连续滑动时 `lastEventAt` 每帧刷新,`quiet` 永远为假——第一页之后**一页都不会再翻**,滑多久都没用。隔一会儿滑一下之所以正常,是因为中间的停顿满足了 `quiet`。只调 CD 修不好这个。
+
+先写复现用例(每 12ms 一个不衰减的事件、连发 80 个,断言 `turns > 1`),确认红,再改:
+
+- 重新武装**只看冷却**,冷却中吞掉且不攒行程,冷却结束从零重新计数;
+- 防惯性飞页改由阈值承担:同一手势内(中途没静默过)续翻要 120px,是首翻 60px 的两倍;静默 150ms 后降回 60px。惯性尾巴是衰减的行程,够不到 120px;还在推的手指够得到。原有那条「一次 flick 只翻一页」的衰减用例不改也仍然是绿的。
+- `PAGE_WHEEL_COOLDOWN_MS` 300 → 180,略小于 `PAGE_TRANSITION_MS = 220`,下一页在上一页落定前起步。两个常量分居 `lib/` 与 `features/mixer/`,由一条集成断言锁住这层关系(lib 单测不该反向依赖 feature)。
+
+手感的取舍由用户拍板:选了「同一手势内阈值加倍」,而不是「一律 60px」(更跟手但 macOS 惯性可能自己多翻 2-3 页)。
+
+同一提交里,矮视口的滚轮归属按用户选择改为**滚到底再接着翻页**:当前页还有可滚余量时不 `preventDefault`,交给浏览器滚;滚到那个方向的尽头才翻页。滚动期间把翻页累计**清零**,所以回到边界必须重新攒满一个阈值——这是对「边界抖动」的防护,也是这一条唯一有实质风险的地方,真机要重点看。
+
+这里有个自查:第一版的「清零」写完之后我去验证它是不是真的被测到,发现**不是**——原来那条用例里滚动分支在调 reducer 之前就 `return` 了,根本没攒过行程,摘掉清零用例照样绿。真正会出事的顺序是「在页底攒了半程 → 往回滚(走滚动分支)→ 再回到页底」,用例改成这个顺序后,摘掉清零就变红了。
+
+### 12.5 header 换行阈值太小 —— `a47f970`
+
+原来是 6 列 grid,只有 `@media (max-width: 800px)` 才切成换行的 flex;用户在远大于 800px 的宽度上就已经看到顶部元素打架。
+
+没有去换一个更大的 px 值——那只是把同一个 bug 推远。改成**基础规则就是 `display: flex; flex-wrap: wrap`**,断点整个删掉:cell 是标签与读数,需要多宽取决于字体与文本,任何写死的数字都会对某些情况是错的。现在它在内容真正放不下的那一刻换行。`.loudness-panel` 的 `justify-self: end` 换成 `margin-inline-start: auto`。
+
+### 12.6 本次仍然做不到的验证
+
+纯 CSS 的观感与真机手感,本会话一律无法验证,只有代码层面的把握:
+
+- 纵向翻页的动效、居中与条宽放大的实际观感、header 的实际换行点;
+- **触摸板连翻的真实手感**(120px / 180ms 两个数字是推算,不是实测),以及 macOS 惯性尾巴到底会不会多翻;
+- **矮视口 scroll chaining 的边界抖动**——用例锁住了「回到边界要重新攒满」,但真机上快速来回滑动是什么感觉不知道;
+- 隐藏滚动条后,矮视口下操作员是否还能意识到页面可以往下滚。
+
+Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻倍带来的重绘开销至今没有任何测量数据,留给本地小批次。
+
+复核这几条时,第 5 节的安全约束原样继续生效:**连续翻页与 scroll chaining 请在台面空白处、安全区与页码上做,不要落在推子上**;确需动推子时只允许 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道,测后复原,不得切 ON/mute、不得动其它通道、不得删改任何通道。
+
+## 13. 提交记录
 
 | 提交 | 说明 |
 | --- | --- |
@@ -391,6 +467,11 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 | `18546b8` | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
 | `04289f6` | `fix(web): keep gesture state with the gesture, not the strip`(评审后第四条,治根) |
 | `1ff5967` | `fix(web): adopt the gesture before declining the event`(评审后第五条) |
-| (下一条) | `fix(web): settle a gesture from whichever strip holds it`(自查补的残留) |
+| `fd191a5` | `fix(web): settle a gesture from whichever strip holds it`(自查补的残留) |
+| `5ec78f5` | `feat(web): turn mixer pages vertically`(验收反馈 12.1) |
+| `a8da2f5` | `feat(web): widen the page rail`(验收反馈 12.2) |
+| `c4b0515` | `feat(web): centre a page and spend the width it cannot fill`(验收反馈 12.3) |
+| `72e8be8` | `fix(web): let a wheel that keeps going keep turning pages`(验收反馈 12.4) |
+| `a47f970` | `fix(web): wrap the console header on its content, not on a width`(验收反馈 12.5) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
