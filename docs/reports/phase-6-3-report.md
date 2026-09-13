@@ -11,7 +11,7 @@
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
 | 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
 | 7. 文档 | 完成 |
-| 评审后修订(Bugbot 两条 findings) | 完成,见第 10 节 |
+| 评审后修订(Bugbot 三条 findings,含对修复本身的一条) | 完成,见第 10 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 393 用例 全绿
+vitest run --coverage (@flwc/web)      53 文件 / 394 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -29,12 +29,12 @@ git diff pnpm-lock.yaml                无改动
 
 | 指标 | 改动前 | 改动后 |
 | --- | --- | --- |
-| Statements | 96.75% | **96.97%** |
-| Branches | 91.97% | **92.39%** |
+| Statements | 96.75% | **97.01%** |
+| Branches | 91.97% | **92.44%** |
 | Functions | 99.20% | **99.41%** |
-| Lines | 96.70% | **96.93%** |
+| Lines | 96.70% | **96.97%** |
 
-用例数 327 → 393(净增 66,含评审后补的 3 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 394(净增 67,含评审后补的 4 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -286,7 +286,7 @@ git diff pnpm-lock.yaml                无改动
 
 ## 10. 评审后的修订
 
-PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 报了两条,核对下来都成立,都是本批次引入的真 bug**,已各修一个提交。两条都先写出会红的用例复现,再改,改完确认用例转绿。
+PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了三条(第三条是针对第二条的修复本身的),核对下来全部成立,全是本批次引入的真 bug**,已各修一个提交。三条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
 
 ### 10.1(High)页内边距把最后一条通道条切掉
 
@@ -304,7 +304,15 @@ PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 报了两条,核对下来�
 
 回归锁:`wheel-gesture.test.ts` 的 `adopts the callback of the same owner beginning again`,以及 `mixer-wheel.integration.test.tsx` 的第 10 例(手势中把视口从三页拉成一页、迫使条带重挂,静默后只有一次 commit 且是新实例的最终值)。两例都验证过:把修复摘掉就变红。
 
-改完的质量门:53 文件 / **393** 用例全绿,覆盖率 Statements **96.97%** / Branches **92.39%** / Functions **99.41%** / Lines **96.93%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+### 10.3(Medium)重新挂载后手势可能一次都不写 —— 10.2 那版修复的续病
+
+Bugbot 在 10.2 的修复上又报了一条,**同样成立,是我自己的修复引入的**。`commitWheelGesture` 在 `wheelActiveRef` 为 false 时直接 return,而新挂载的实例这个 ref 就是 false。于是:旧实例 A 已经出过步(`onInteractionStart` 调过,通道进了 `pendingLevels`,值累到 −22),重挂后新实例 B 在下一个滚轮事件上把回调换成了自己的;**如果那个事件小到不够一步**(触控板惯性的尾巴),B 永远不出步、`wheelActiveRef` 一直是 false,静默时 B 的回调直接 return——**A 的值没人写,B 也没得写,通道就卡在 pending**,不再跟随设备的远端更新。10.2 只是把「写错值」换成了「一次都不写」,后者其实更难察觉。
+
+改法:`Fader` 增加卸载时的收尾 —— 组件卸载时若手势还开着就先 commit。接管手势的新实例本来就无从知道旧实例累到了哪里,让离场的实例自己把话说完最直接;新实例之后若真出了步,静默时再写一次它自己的终值。重挂这种少见情形下会有两次写,但两次写的都是操作员真的经过的电平,最后一次是终值,而 pending 卡死的状态被彻底消掉。10.2 的 re-adopt 仍然需要:没有它,新实例出的步依然没人写。
+
+回归锁:`mixer-wheel.integration.test.tsx` 第 11 例——手势中重挂,再派一个不够一步的尾巴事件,断言仍然恰好多出一次写、值为 −22,且 `await act` 冲掉 ack 的微任务后 `.fader` 不再带 `is-pending`。摘掉修复即变红,已验证。
+
+改完的质量门:53 文件 / **394** 用例全绿,覆盖率 Statements **97.01%** / Branches **92.44%** / Functions **99.41%** / Lines **96.97%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
 
 ## 11. 遗留问题与移交事项
 
@@ -339,5 +347,7 @@ PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 报了两条,核对下来�
 | `66459ef` | `docs: add the Phase 6.3 execution report` |
 | `5317bf9` | `fix(web): pack a mixer page to its content box, not over it`(评审后) |
 | `c6bb0e0` | `fix(web): let a remounted fader finish its own wheel gesture`(评审后) |
+| `bc73bcf` | `docs: record the two post-review fixes in the Phase 6.3 report` |
+| (下一条) | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。

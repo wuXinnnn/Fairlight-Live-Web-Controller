@@ -105,6 +105,17 @@ export function Fader({
     }
   }, [disabled, commitWheelGesture]);
 
+  // A strip can be torn down mid-gesture: a patch reorders the channels, or a resize moves it to
+  // another page. Write what the operator had reached rather than leaving the channel pending —
+  // the instance that takes the gesture over cannot know this one's value, and an event too
+  // small to be worth a step would otherwise end the gesture with nobody writing anything.
+  useEffect(
+    () => () => {
+      commitWheelGesture();
+    },
+    [commitWheelGesture],
+  );
+
   useEffect(() => {
     const track = trackRef.current;
     if (track === null) {

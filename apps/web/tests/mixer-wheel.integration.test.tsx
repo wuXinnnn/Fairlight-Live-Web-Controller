@@ -299,6 +299,30 @@ describe('wheel ownership between faders and the pager', () => {
     expect(writes.at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -24 });
   });
 
+  it('11. still writes when the remounted strip never gets a step of its own', async () => {
+    const { socket } = mount();
+    wheel(track('IN-3'));
+    expect(levelOf('IN-3')).toBe('-22');
+    flushThrottle();
+    const beforeRemount = levelWrites(socket).length;
+
+    resizePager(20000);
+    // The tail of a flick: too small to be worth a step, so the new strip never starts a
+    // gesture of its own. The level the operator already reached still has to be written, or
+    // the channel is left pending and stops following the desk.
+    wheel(track('IN-3'), { deltaY: 10 });
+    settle();
+
+    const writes = levelWrites(socket);
+    expect(writes.length).toBe(beforeRemount + 1);
+    expect(writes.at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -22 });
+
+    // And the write is acknowledged, so the channel stops being pending and follows the desk
+    // again — that was the real damage of dropping the commit.
+    await act(async () => {});
+    expect(track('IN-3').closest('.fader')).not.toHaveClass('is-pending');
+  });
+
   it('9. scrolls a viewport too short for a page instead of turning it', () => {
     mount();
     // The page no longer fits: scrolling has to reach the rest of the strip first.
