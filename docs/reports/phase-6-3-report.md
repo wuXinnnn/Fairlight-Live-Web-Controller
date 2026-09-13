@@ -548,6 +548,7 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `c40bc9a` | `fix(web): stop the loudness readings being squeezed into each other`(用户实测 729×596,14.6) |
 | `9a62767` | `fix(web): give each channel reading a line of its own`(用户实测,14.7) |
 | `da62ddf` | `adjust(web): pin the channel strip to a fixed 125px width`(用户手调,14.7) |
+| `69ca70c` | `style(web): make the level field look editable and the meter reading not`(用户复看,14.7) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
 
@@ -700,6 +701,8 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | 文档横向溢出 | 0 |
 
 编辑态(点开 level 值输入框)一并量过,数字与静态态一致。16 档视口的完整扫描重跑:无横向溢出、无页头重叠、末条不被裁、安全区各档可见,`.readout__value` 在任何宽度都不截字;每页条数随定宽上升(1920 由 11 → 13 条,总页数 4)。真实浏览器的 13 项交互断言全部通过。
+
+**可编辑与只读要分得开**(用户复看后补的一条)。两块读数画法一样,没有任何东西说明其中一块可以点开输入、另一块只是印上去的。改成:LVL 的值格常驻一圈字段边框与下沉底色(`#2f333c` / `#12141a`),悬停时边框提亮、文字转琥珀,输入态换成通道色边框与同色光标,推子被锁定或断线时边框退色、整格淡到 0.45——**这正是安全区页码已经在用的写法**,理由也一样:触摸屏没有 hover,常驻的边框是「可点」的唯一提示。MTR 的值不加盒子,保持面板底色。两者用同一份内边距、MTR 那份带一圈透明边框,所以**数字仍然收在同一条竖线上**(实测偏差 0.00px,两格都没有因为让出内边距而丢字)。四个状态(静止 / 悬停 / 输入 / 锁定)各截了一张 4× DPR 的特写。
 
 > 扫描脚本在每一档都报一条 `clipped: CONTROL LOCK`。查过了,那是 `.control-lock legend`——一个 `1px × 1px` + `clip` 的**只读给读屏器的**标题,`scrollWidth > clientWidth` 是它的正常状态,不是缺陷。脚本的检测口径问题,与本次改动无关。
 
