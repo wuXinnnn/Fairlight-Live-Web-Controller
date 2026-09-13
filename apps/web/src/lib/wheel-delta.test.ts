@@ -27,20 +27,27 @@ describe('normalizeWheelDelta', () => {
 });
 
 describe('pagingDelta', () => {
-  it('reads the vertical axis when that is the one moving', () => {
-    expect(pagingDelta({ deltaX: 0, deltaY: 100, deltaMode: 0 })).toBe(100);
+  it('reads the vertical axis', () => {
+    expect(pagingDelta({ x: 0, y: 100 }, false)).toBe(100);
   });
 
   it('reads the horizontal axis Shift moves the wheel onto', () => {
-    expect(pagingDelta({ deltaX: -100, deltaY: 0, deltaMode: 0 })).toBe(-100);
-    expect(pagingDelta({ deltaX: 3, deltaY: 0, deltaMode: 1 })).toBe(3 * WHEEL_LINE_HEIGHT_PX);
+    expect(pagingDelta({ x: -100, y: 0 }, true)).toBe(-100);
   });
 
-  it('prefers the vertical axis when both are moving', () => {
-    expect(pagingDelta({ deltaX: 80, deltaY: -20, deltaMode: 0 })).toBe(-20);
+  it('prefers the vertical axis when both are moving, Shift or not', () => {
+    expect(pagingDelta({ x: 80, y: -20 }, false)).toBe(-20);
+    expect(pagingDelta({ x: 80, y: -20 }, true)).toBe(-20);
+  });
+
+  it('ignores sideways travel without Shift', () => {
+    // A two-finger swipe reports its sideways wander here in frames where the vertical travel
+    // has not yet rounded up to a pixel. Reading it turns a swipe into a page turn the other way.
+    expect(pagingDelta({ x: 14, y: 0 }, false)).toBe(0);
+    expect(pagingDelta({ x: -90, y: 0 }, false)).toBe(0);
   });
 
   it('is zero when nothing moves', () => {
-    expect(pagingDelta({ deltaX: 0, deltaY: 0, deltaMode: 0 })).toBe(0);
+    expect(pagingDelta({ x: 0, y: 0 }, false)).toBe(0);
   });
 });

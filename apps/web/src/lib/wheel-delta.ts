@@ -18,11 +18,12 @@ export function normalizeWheelDelta(event: WheelDelta): { x: number; y: number }
 }
 
 /**
- * The delta that should turn a page. Holding Shift makes the browser report a vertical wheel on
- * `deltaX` instead, so whichever axis is moving is the one that counts; if both are, the vertical
- * one wins.
+ * The travel that counts towards a page turn. Only the vertical axis does, except under Shift:
+ * the browser reports a vertical wheel on `deltaX` while it is held, and that is the escape hatch
+ * for turning a page from a fader track. A trackpad reports the sideways wander of a two-finger
+ * swipe on `deltaX` too, in frames where the finger has not yet moved far enough down to round to
+ * a whole pixel — reading that axis unasked turns a swipe into a page turn the other way.
  */
-export function pagingDelta(event: WheelDelta): number {
-  const { x, y } = normalizeWheelDelta(event);
-  return y !== 0 ? y : x;
+export function pagingDelta(axis: { x: number; y: number }, shiftKey: boolean): number {
+  return shiftKey && axis.y === 0 ? axis.x : axis.y;
 }

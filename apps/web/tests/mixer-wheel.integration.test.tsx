@@ -221,6 +221,24 @@ describe('wheel ownership between faders and the pager', () => {
     expect(page()).toMatch(/^2 \//);
   });
 
+  it('5b. leaves the page alone for sideways travel nobody asked to page with', () => {
+    mount();
+    const surface = document.querySelector('.mixer-page');
+    expect(surface).not.toBeNull();
+
+    // A two-finger swipe reports the wander of the hand across the pad on the other axis in
+    // frames where the downward travel has not yet rounded up to a pixel. Reading it turned a
+    // swipe into a page turn, sometimes the other way.
+    for (let event = 0; event < 6; event += 1) {
+      wheel(surface as Element, { deltaX: 40, deltaY: 0 });
+    }
+    expect(page()).toMatch(/^1 \//);
+
+    // Held Shift still moves the axis, because that is where the browser puts it.
+    wheel(surface as Element, { deltaX: NOTCH_PX, deltaY: 0, shiftKey: true });
+    expect(page()).toMatch(/^2 \//);
+  });
+
   it('6. writes what the operator reached when the fader locks mid-gesture', () => {
     const { socket } = mount();
     wheel(track('IN-1'));
