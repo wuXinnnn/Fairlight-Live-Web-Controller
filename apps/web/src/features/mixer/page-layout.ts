@@ -40,7 +40,7 @@ export const PAGE_PADDING_X_PX = 24;
  * the page's own vertical padding and the shell's header and footer. Lower it to cover a shorter
  * window; every pixel off here is a pixel off the window the mixer needs.
  */
-export const STRIP_MIN_HEIGHT_PX = 511;
+export const STRIP_MIN_HEIGHT_PX = 452;
 /** Width of the page rail down the right-hand side of the deck. */
 export const PAGE_RAIL_WIDTH_PX = 72;
 /** Duration of the slide between two pages. */
