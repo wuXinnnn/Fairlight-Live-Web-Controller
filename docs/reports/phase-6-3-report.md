@@ -11,7 +11,7 @@
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
 | 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
 | 7. 文档 | 完成 |
-| 评审后修订(Bugbot 五条 findings,后三条是对修复本身的) | 完成,见第 10 节 |
+| 评审后修订(Bugbot 五条 findings + 自查补 1 条) | 完成,见第 10 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 398 用例 全绿
+vitest run --coverage (@flwc/web)      53 文件 / 399 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -34,7 +34,7 @@ git diff pnpm-lock.yaml                无改动
 | Functions | 99.20% | **99.41%** |
 | Lines | 96.70% | **96.98%** |
 
-用例数 327 → 398(净增 71,含评审后补的 8 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 399(净增 72,含评审后补的 9 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -340,7 +340,17 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 **这一处一共报了四次(10.2–10.5)**,前三次都是我在补状态归属,第四次才发现即使状态归属对了,「取得回调」与「有能力兑现回调」这两件事仍然可以被一个提前返回拆开。教训记在这里:凡是「抢过某个跨组件的回调」的代码,抢的那一步和「让自己有能力兑现」的那一步之间不允许有任何提前返回。
 
-改完的质量门:53 文件 / **398** 用例全绿,覆盖率 Statements **97.02%** / Branches **92.46%** / Functions **99.41%** / Lines **96.98%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+### 10.6 顺手补上的残留:接班人在收到任何滚轮事件之前就被锁定
+
+10.5 的次序修复解决了 Bugbot 描述的那条端到端路径,但它那句「lock / disconnect / 手落到帽子上都会空转」还剩一个我没覆盖的分支:**接班人挂载后一个滚轮事件都还没收到,就先被锁定(或断线、或被抓住帽子)**。此时它的 `wheelActiveRef` 仍是 false,`commitWheelGesture` 空转。值不会丢——tracker 手里还是离场实例的回调,静默时由它写出——但**写晚了约 150 ms**,如果用户在这 150 ms 内飞快地抓一下帽子再放开,那次拖动的终值可能先落地、旧的 −22 后落地把它盖掉。这条是我自己顺着 Bugbot 的描述查出来的,不在它报的范围内。
+
+改法:`commitWheelGesture` 不再只看本实例的 `wheelActiveRef`,而是先看**这次手势是否还活着**(`isActive()`),再看**是不是本推子持有它**(`sameOwner`);两者都成立时,即便本实例没出过步也照样交差,取 store 的当前值(正是前一个实例推到的位置)。CONTROL LOCK 会同时禁用所有推子,所以「是不是本推子持有」这道判断是必须的,否则别的通道会跟着乱写。
+
+这带来一个新的双写风险:早交差之后,离场实例的回调静默时还会再触发一次。因此同时把 `isActive()` 变成所有 commit 路径的前置条件,并把 tracker 的 `finish()` 调整为**先调回调、后清 active**——于是「谁先交差谁 `clearActive()`,后来的一律空转」,一次手势仍然恰好写一次。
+
+回归锁:`Fader.test.tsx` 的 `commits an inherited gesture when the strip that replaced it is locked`——卸载 A、挂载同 `wheelId` 的 B 并锁定,断言 B 立刻写一次 −18,且推进两倍静默时间后 **A 的 onCommit 一次都没被调用**。
+
+改完的质量门:53 文件 / **399** 用例全绿,覆盖率 Statements **97.03%** / Branches **92.49%** / Functions **99.41%** / Lines **96.99%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
 
 ## 11. 遗留问题与移交事项
 
@@ -380,6 +390,7 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 | `bc73bcf` | `docs: record the two post-review fixes in the Phase 6.3 report` |
 | `18546b8` | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
 | `04289f6` | `fix(web): keep gesture state with the gesture, not the strip`(评审后第四条,治根) |
-| (下一条) | `fix(web): adopt the gesture before declining the event`(评审后第五条) |
+| `1ff5967` | `fix(web): adopt the gesture before declining the event`(评审后第五条) |
+| (下一条) | `fix(web): settle a gesture from whichever strip holds it`(自查补的残留) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。

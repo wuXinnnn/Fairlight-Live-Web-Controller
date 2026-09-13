@@ -79,9 +79,25 @@ export function Fader({
   const [draftValue, setDraftValue] = useState('');
   const [inputInvalid, setInputInvalid] = useState(false);
 
-  const latest = useRef({ disabled, dragging, value, onInteractionStart, onValueChange, onCommit });
+  const latest = useRef({
+    disabled,
+    dragging,
+    value,
+    wheelId,
+    onInteractionStart,
+    onValueChange,
+    onCommit,
+  });
   useEffect(() => {
-    latest.current = { disabled, dragging, value, onInteractionStart, onValueChange, onCommit };
+    latest.current = {
+      disabled,
+      dragging,
+      value,
+      wheelId,
+      onInteractionStart,
+      onValueChange,
+      onCommit,
+    };
   });
 
   /**
@@ -89,13 +105,23 @@ export function Fader({
    * gesture is one continuous move of the fader, so it writes once when the wheel stops.
    */
   const commitWheelGesture = useCallback(() => {
-    if (!wheelActiveRef.current) {
+    // Nothing to settle, or someone already has.
+    if (!wheelGestureTracker.isActive()) {
       return;
     }
+    const current = latest.current;
+    // This instance may be a replacement holding a gesture it has not yet had an event for, in
+    // which case the store carries the level its predecessor reached. It still has to answer for
+    // the move; another channel's fader, locked by the same switch, must not.
+    const ownsGesture = sameOwner(wheelGestureTracker.owner(), { fader: current.wheelId });
+    if (!wheelActiveRef.current && !ownsGesture) {
+      return;
+    }
+    const committed = wheelActiveRef.current ? latestValueRef.current : current.value;
     wheelActiveRef.current = false;
     wheelStateRef.current = INITIAL_FADER_WHEEL_STATE;
     wheelGestureTracker.clearActive();
-    latest.current.onCommit(latestValueRef.current);
+    current.onCommit(committed);
   }, []);
 
   // Locked or disconnected mid-gesture: write what the operator had reached rather than

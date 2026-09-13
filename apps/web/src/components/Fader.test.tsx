@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { levelDbToRatio, ratioToLevelDb } from '../lib/fader-scale.js';
@@ -265,6 +265,45 @@ describe('Fader', () => {
       expect(event.defaultPrevented).toBe(false);
       expect(props.onValueChange).not.toHaveBeenCalled();
       expect(wheelGestureTracker.owner()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('commits an inherited gesture when the strip that replaced it is locked', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    try {
+      const first = renderFader();
+      fireEvent.wheel(screen.getByRole('slider', { name: 'BASS level' }), { deltaY: -100 });
+      expect(first.onValueChange).toHaveBeenLastCalledWith(-18);
+
+      // The strip is torn down mid-gesture and rebuilt at the level it had reached — the
+      // replacement has had no wheel event of its own yet when the desk is locked.
+      cleanup();
+      const onCommit = vi.fn();
+      const replacement = (disabled: boolean) => (
+        <Fader
+          label="BASS"
+          wheelId="channel/1"
+          value={-18}
+          disabled={disabled}
+          onInteractionStart={vi.fn()}
+          onValueChange={vi.fn()}
+          onCommit={onCommit}
+        />
+      );
+      const { rerender } = render(replacement(false));
+      rerender(replacement(true));
+
+      // Locking still has to answer for the move, and answer for it now rather than leaving it
+      // to a callback belonging to a component that no longer exists.
+      expect(onCommit).toHaveBeenCalledExactlyOnceWith(-18);
+
+      // And the gesture is now settled, so the callback still registered against the strip that
+      // left must not write a second time when the wheel finally goes quiet.
+      vi.advanceTimersByTime(WHEEL_GESTURE_IDLE_MS * 2);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(first.onCommit).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

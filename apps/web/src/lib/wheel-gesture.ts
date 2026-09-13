@@ -101,8 +101,10 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
     const ending = onEnd;
     state = INITIAL_WHEEL_GESTURE_STATE;
     onEnd = null;
-    active = false;
+    // Run the callback while the gesture still reads as active: that is how it knows there is
+    // something to settle, and clearing it is how an early settle stops a second write.
     ending?.();
+    active = false;
   };
 
   const schedule = () => {
