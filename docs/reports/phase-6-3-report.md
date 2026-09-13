@@ -11,7 +11,7 @@
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
 | 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
 | 7. 文档 | 完成 |
-| 评审后修订(Bugbot 三条 findings,含对修复本身的一条) | 完成,见第 10 节 |
+| 评审后修订(Bugbot 四条 findings,后两条是对修复本身的) | 完成,见第 10 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 394 用例 全绿
+vitest run --coverage (@flwc/web)      53 文件 / 397 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -29,12 +29,12 @@ git diff pnpm-lock.yaml                无改动
 
 | 指标 | 改动前 | 改动后 |
 | --- | --- | --- |
-| Statements | 96.75% | **97.01%** |
-| Branches | 91.97% | **92.44%** |
+| Statements | 96.75% | **97.02%** |
+| Branches | 91.97% | **92.46%** |
 | Functions | 99.20% | **99.41%** |
-| Lines | 96.70% | **96.97%** |
+| Lines | 96.70% | **96.98%** |
 
-用例数 327 → 394(净增 67,含评审后补的 4 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 397(净增 70,含评审后补的 7 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -286,7 +286,9 @@ git diff pnpm-lock.yaml                无改动
 
 ## 10. 评审后的修订
 
-PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了三条(第三条是针对第二条的修复本身的),核对下来全部成立,全是本批次引入的真 bug**,已各修一个提交。三条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
+PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了四条(后两条都是针对上一次修复本身的),核对下来全部成立,全是本批次引入的真 bug**。每条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
+
+其中 10.2 / 10.3 / 10.4 是**同一处的三连报**,到第三次才承认前两次都在打补丁;10.4 一节记了根因与治根的改法。这三条(以及 10.1)全部落在 jsdom 看不见的地方——页面几何与组件生命周期——我原来的用例都建立在「组件树稳定」的前提上,从没在手势进行中拆过组件。这是测试方式的缺口,不是四次运气不好。
 
 ### 10.1(High)页内边距把最后一条通道条切掉
 
@@ -312,7 +314,23 @@ Bugbot 在 10.2 的修复上又报了一条,**同样成立,是我自己的修复
 
 回归锁:`mixer-wheel.integration.test.tsx` 第 11 例——手势中重挂,再派一个不够一步的尾巴事件,断言仍然恰好多出一次写、值为 −22,且 `await act` 冲掉 ack 的微任务后 `.fader` 不再带 `is-pending`。摘掉修复即变红,已验证。
 
-改完的质量门:53 文件 / **394** 用例全绿,覆盖率 Statements **97.01%** / Branches **92.44%** / Functions **99.41%** / Lines **96.97%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+### 10.4(Medium)卸载即 commit 会把还没结束的手势拽回去 —— 10.3 那版修复的续病,也是**根因所在**
+
+Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完 `onCommit` → ack → `finishLevelInteraction`:后者清掉 `pendingLevels[id]`,并把期间攒下的 `remoteValue`(设备回声)应用上去。可操作员**根本还没松手**——重挂后的新实例还在继续滚。于是 pending 一清,设备的旧值就盖回本地值,**操作员正在推的推子会往回跳**。
+
+到这里已经是同一处连报三条(10.2 / 10.3 / 10.4),说明前两次都在打补丁而没治根。**根因是:一次滚轮手势的生命周期比组件实例长,但「这次手势是否已经动过东西、动到了哪里」这两样状态却存在实例的 ref 里。** 谁持有真相随着重挂来回变,补丁只是把漏洞从一个位置挪到另一个位置。
+
+治根的改法:把「本次手势是否已经动过东西」这一位状态**移进 `wheelGestureTracker`**(`isActive` / `markActive` / `clearActive`,认领新持有者与手势结束时自动清零)——它本来就是手势的属性,不是组件的属性。于是:
+
+- **卸载时不再 commit**(10.4 消失)。离场实例的回调仍挂在 tracker 上、`wheelActiveRef` 仍为 true,若此后再无事件,静默时由它写出终值、pending 正常清除(10.3 想要的效果照旧成立)。
+- 重挂后的新实例在自己第一次处理事件时,若发现「我持有这次手势、但我还没动过、而 tracker 说这次手势已经动过」,就**接管**:把 `wheelActiveRef` 置真、`latestValueRef` 取 store 的当前值(正是前一个实例推到的位置),不重复 `onInteractionStart`。它随后的静默 commit 覆盖整段手势(10.3 消失)。
+- 10.2 的 re-adopt 保留:没有它,tracker 手里还是旧实例的回调。
+
+结果是三条一并解决,而且是同一条规则:**一次手势自始至终只写一次,由最后持有它的那个实例写,且绝不在手势还活着的时候写。**
+
+回归锁:`mixer-wheel.integration.test.tsx` 第 12 例——手势中重挂,断言通道仍是 pending、随后设备推来旧值的 patch 也不会把推子拽回去,继续滚仍从 −22 走到 −24,静默后只写一次终值;外加 `wheel-gesture.test.ts` 两例覆盖 active 位的生命周期。第 10、11、12 例都验证过「摘掉对应那半边修复就变红」。
+
+改完的质量门:53 文件 / **397** 用例全绿,覆盖率 Statements **97.02%** / Branches **92.46%** / Functions **99.41%** / Lines **96.98%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
 
 ## 11. 遗留问题与移交事项
 
@@ -348,6 +366,7 @@ Bugbot 在 10.2 的修复上又报了一条,**同样成立,是我自己的修复
 | `5317bf9` | `fix(web): pack a mixer page to its content box, not over it`(评审后) |
 | `c6bb0e0` | `fix(web): let a remounted fader finish its own wheel gesture`(评审后) |
 | `bc73bcf` | `docs: record the two post-review fixes in the Phase 6.3 report` |
-| (下一条) | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
+| `18546b8` | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
+| (下一条) | `fix(web): keep gesture state with the gesture, not the strip`(评审后第四条,治根) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。

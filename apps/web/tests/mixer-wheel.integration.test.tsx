@@ -323,6 +323,33 @@ describe('wheel ownership between faders and the pager', () => {
     expect(track('IN-3').closest('.fader')).not.toHaveClass('is-pending');
   });
 
+  it('12. does not write, or let the desk answer back, while the gesture is still live', async () => {
+    const { socket } = mount();
+    wheel(track('IN-3'));
+    expect(levelOf('IN-3')).toBe('-22');
+    flushThrottle();
+
+    resizePager(20000);
+    await act(async () => {});
+    // Tearing the strip down must not end the gesture: the operator has not let go, so the
+    // channel stays pending and the desk's echo stays held rather than applied.
+    expect(track('IN-3').closest('.fader')).toHaveClass('is-pending');
+
+    act(() => {
+      socket.serverEmit(SOCKET_EVENTS.MIXER_PATCH, {
+        upserts: [{ ...snapshot.channels[2], levelDb: -20 }],
+      });
+    });
+    wheel(track('IN-3'));
+
+    // Carries on from where it was, rather than snapping back to what the desk last said.
+    expect(levelOf('IN-3')).toBe('-24');
+
+    flushThrottle();
+    settle();
+    expect(levelWrites(socket).at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -24 });
+  });
+
   it('9. scrolls a viewport too short for a page instead of turning it', () => {
     mount();
     // The page no longer fits: scrolling has to reach the rest of the strip first.

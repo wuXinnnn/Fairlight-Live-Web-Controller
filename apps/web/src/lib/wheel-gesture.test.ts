@@ -138,6 +138,38 @@ describe('createWheelGestureTracker', () => {
     expect(first).toHaveBeenCalledTimes(1);
   });
 
+  it('carries "has moved something" across the instances of one gesture', () => {
+    const { clock } = testClock();
+    const tracker = createWheelGestureTracker(clock);
+
+    tracker.begin({ fader: 'channel/1' }, vi.fn());
+    expect(tracker.isActive()).toBe(false);
+
+    tracker.markActive();
+    expect(tracker.isActive()).toBe(true);
+
+    // A remount re-begins the same gesture: what it has already done still stands.
+    tracker.begin({ fader: 'channel/1' }, vi.fn());
+    expect(tracker.isActive()).toBe(true);
+
+    // Settling early — locked, or a hand on the cap — takes the mark back.
+    tracker.clearActive();
+    expect(tracker.isActive()).toBe(false);
+  });
+
+  it('starts each new gesture having moved nothing', () => {
+    const { clock, advance } = testClock();
+    const tracker = createWheelGestureTracker(clock);
+
+    tracker.begin('page', vi.fn());
+    tracker.markActive();
+    advance(WHEEL_GESTURE_IDLE_MS);
+    expect(tracker.isActive()).toBe(false);
+
+    tracker.begin({ fader: 'channel/1' }, vi.fn());
+    expect(tracker.isActive()).toBe(false);
+  });
+
   it('ignores a touch when nobody owns the wheel, and drops a gesture on reset', () => {
     const { clock, advance } = testClock();
     const tracker = createWheelGestureTracker(clock);

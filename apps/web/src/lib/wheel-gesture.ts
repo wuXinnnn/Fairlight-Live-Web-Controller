@@ -62,6 +62,17 @@ export interface WheelGestureTracker {
   /** Keeps the current gesture alive. */
   touch(): void;
   owner(): WheelOwner | null;
+  /**
+   * Whether the current gesture has already moved something. It lives here rather than in the
+   * owner because a gesture outlives the component that started it: a strip can be torn down
+   * and rebuilt mid-scroll, and its replacement has to know it is continuing a move rather
+   * than beginning one.
+   */
+  isActive(): boolean;
+  /** Records that the gesture has moved something. */
+  markActive(): void;
+  /** Forgets that, when the gesture has been settled early — locked or dragged out of. */
+  clearActive(): void;
   /** Drops the gesture without ending it; for tests, which share the module singleton. */
   reset(): void;
 }
@@ -76,6 +87,7 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
   let state = INITIAL_WHEEL_GESTURE_STATE;
   let onEnd: (() => void) | null = null;
   let handle: unknown = null;
+  let active = false;
 
   const cancelTimer = () => {
     if (handle !== null) {
@@ -89,6 +101,7 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
     const ending = onEnd;
     state = INITIAL_WHEEL_GESTURE_STATE;
     onEnd = null;
+    active = false;
     ending?.();
   };
 
@@ -120,6 +133,7 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
       }
       state = claim(state, owner, now);
       onEnd = end;
+      active = false;
       schedule();
       return owner;
     },
@@ -133,9 +147,19 @@ export function createWheelGestureTracker(clock: GestureClock): WheelGestureTrac
     owner() {
       return currentOwner(state, clock.now());
     },
+    isActive() {
+      return active;
+    },
+    markActive() {
+      active = true;
+    },
+    clearActive() {
+      active = false;
+    },
     reset() {
       cancelTimer();
       onEnd = null;
+      active = false;
       state = INITIAL_WHEEL_GESTURE_STATE;
     },
   };

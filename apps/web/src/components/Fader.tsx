@@ -94,6 +94,7 @@ export function Fader({
     }
     wheelActiveRef.current = false;
     wheelStateRef.current = INITIAL_FADER_WHEEL_STATE;
+    wheelGestureTracker.clearActive();
     latest.current.onCommit(latestValueRef.current);
   }, []);
 
@@ -104,17 +105,6 @@ export function Fader({
       commitWheelGesture();
     }
   }, [disabled, commitWheelGesture]);
-
-  // A strip can be torn down mid-gesture: a patch reorders the channels, or a resize moves it to
-  // another page. Write what the operator had reached rather than leaving the channel pending —
-  // the instance that takes the gesture over cannot know this one's value, and an event too
-  // small to be worth a step would otherwise end the gesture with nobody writing anything.
-  useEffect(
-    () => () => {
-      commitWheelGesture();
-    },
-    [commitWheelGesture],
-  );
 
   useEffect(() => {
     const track = trackRef.current;
@@ -150,6 +140,13 @@ export function Fader({
       if (current.disabled || current.dragging) {
         return;
       }
+      // A previous instance of this strip began this gesture and has since been torn down. Pick
+      // it up where it left off: the store carries the level it reached, and the interaction it
+      // opened is still in flight, so this is a continuation rather than a new move.
+      if (!wheelActiveRef.current && wheelGestureTracker.isActive()) {
+        wheelActiveRef.current = true;
+        latestValueRef.current = current.value;
+      }
       const { state, steps } = reduceFaderWheel(wheelStateRef.current, {
         deltaY: normalizeWheelDelta(event).y,
       });
@@ -160,6 +157,7 @@ export function Fader({
       if (!wheelActiveRef.current) {
         wheelActiveRef.current = true;
         latestValueRef.current = current.value;
+        wheelGestureTracker.markActive();
         current.onInteractionStart();
       }
       const direction = steps > 0 ? 1 : -1;
