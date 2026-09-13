@@ -5,7 +5,6 @@ import { App } from '../src/App.js';
 import {
   PAGE_PADDING_X_PX,
   PAGE_TRANSITION_MS,
-  SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_WIDTH_PX,
 } from '../src/features/mixer/page-layout.js';
@@ -37,8 +36,7 @@ const snapshot: MixerSnapshot = {
 };
 
 /** Two strips to a page, so there are three pages and a neighbour always stays mounted. */
-const PAGE_WIDTH =
-  SECTION_HEADER_WIDTH_PX + 2 * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
+const PAGE_WIDTH = 2 * STRIP_WIDTH_PX + STRIP_GAP_PX + 2 * PAGE_PADDING_X_PX;
 
 function mount() {
   const socket = new FakeSocket();

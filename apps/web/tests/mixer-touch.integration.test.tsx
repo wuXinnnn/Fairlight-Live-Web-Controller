@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App.js';
 import {
   PAGE_PADDING_X_PX,
-  SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_WIDTH_PX,
 } from '../src/features/mixer/page-layout.js';
@@ -35,8 +34,7 @@ const snapshot: MixerSnapshot = {
 };
 
 /** Two strips to a page, so there are three pages to drag between. */
-const PAGE_WIDTH =
-  SECTION_HEADER_WIDTH_PX + 2 * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
+const PAGE_WIDTH = 2 * STRIP_WIDTH_PX + STRIP_GAP_PX + 2 * PAGE_PADDING_X_PX;
 
 function mount() {
   const socket = new FakeSocket();

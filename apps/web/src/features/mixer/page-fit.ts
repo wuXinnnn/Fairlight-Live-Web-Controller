@@ -16,9 +16,6 @@ export interface PageFitMetrics {
   /** The width pages were split at, and the most a strip may be stretched to. */
   stripWidth: number;
   stripWidthMax: number;
-  headerWidth: number;
-  /** Space behind a section header. Fixed, so it takes no part in the spending. */
-  headerGap: number;
   stripGap: number;
   stripGapMax: number;
   segmentGap: number;
@@ -41,32 +38,25 @@ export interface DeckFit {
 
 interface PageCounts {
   strips: number;
-  headers: number;
   segmentGaps: number;
   stripGaps: number;
 }
 
 function countPage<T>(page: StripPage<T>): PageCounts {
   let strips = 0;
-  let headers = 0;
   for (const segment of page.segments) {
     strips += segment.entries.length;
-    if (segment.header) {
-      headers += 1;
-    }
   }
   return {
     strips,
-    headers,
     segmentGaps: Math.max(0, page.segments.length - 1),
-    // Only the gaps between two strips of one segment. The one behind a header is not among them.
+    // Only the gaps between two strips of one segment; what divides two segments is not among them.
     stripGaps: Math.max(0, strips - page.segments.length),
   };
 }
 
 function naturalWidth(counts: PageCounts, metrics: PageFitMetrics, stripWidth: number): number {
   return (
-    counts.headers * (metrics.headerWidth + metrics.headerGap) +
     counts.stripGaps * metrics.stripGap +
     counts.segmentGaps * metrics.segmentGap +
     counts.strips * stripWidth

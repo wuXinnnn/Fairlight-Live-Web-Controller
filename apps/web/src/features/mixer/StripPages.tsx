@@ -12,7 +12,7 @@ export interface StripStub {
   render(position: number): ReactNode;
 }
 
-/** Everything a headered segment needs around its strips: the vertical label and its counter. */
+/** Everything a headered segment needs above its strips: the label band and its counter. */
 export interface SegmentChrome {
   headingId: string;
   label: string;
@@ -70,10 +70,12 @@ export function StripPages({ pages, fits, chrome, pageIndex }: StripPagesProps) 
                 return rendered;
               });
               const chromeForSegment = chrome.get(segment.key);
+              // A section without a label still reserves the band's row, so its strips start at
+              // the same height as those of a labelled section standing beside it.
               if (!segment.header || chromeForSegment === undefined) {
                 return (
                   <section className="mixer-section" key={segment.key}>
-                    {strips}
+                    <div className="mixer-section__strips">{strips}</div>
                   </section>
                 );
               }
@@ -92,8 +94,13 @@ export function StripPages({ pages, fits, chrome, pageIndex }: StripPagesProps) 
                   <header className="mixer-section__header">
                     <h2 id={headingId}>{chromeForSegment.label}</h2>
                     <span>{chromeForSegment.count.toString().padStart(2, '0')}</span>
+                    {/*
+                     * The count is the whole section's, not this page's share of it, so a page
+                     * that carries the middle of a long section has to say that it is one.
+                     */}
+                    {segment.continued ? <small>CONT</small> : null}
                   </header>
-                  {strips}
+                  <div className="mixer-section__strips">{strips}</div>
                 </section>
               );
             })}

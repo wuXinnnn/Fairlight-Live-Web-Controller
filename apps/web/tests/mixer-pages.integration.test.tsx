@@ -10,8 +10,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import {
   PAGE_PADDING_X_PX,
-  SECTION_HEADER_GAP_PX,
-  SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_MAX_PX,
   STRIP_GAP_PX,
   STRIP_WIDTH_MAX_PX,
@@ -31,11 +29,11 @@ function refOf(channel: ChannelState): ViewChannelRef {
 }
 
 /**
- * Viewport width that fits a section header and `strips` channel strips, to the pixel. The page's
- * own side padding comes out of that width, so it has to be included here too.
+ * Viewport width that fits `strips` channel strips, to the pixel. A section's label costs no
+ * width — the band sits over the strips — but the page's own side padding does, so it is here.
  */
 function widthFor(strips: number): number {
-  return SECTION_HEADER_WIDTH_PX + strips * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
+  return strips * STRIP_WIDTH_PX + (strips - 1) * STRIP_GAP_PX + 2 * PAGE_PADDING_X_PX;
 }
 
 const INVENTORY: Array<[ChannelKind, number, string]> = [
@@ -391,9 +389,8 @@ describe('mixer pagination', () => {
     resizePager(content + 2 * PAGE_PADDING_X_PX);
 
     expect(styleOf(container, '.mixer-deck', '--strip-width')).toBe(`${STRIP_WIDTH_MAX_PX}px`);
-    // One header and one strip, and half of what is over on either side of them.
-    const used = SECTION_HEADER_WIDTH_PX + SECTION_HEADER_GAP_PX + STRIP_WIDTH_MAX_PX;
-    expect(leadOf(container, 0)).toBe(`${(content - used) / 2}px`);
+    // One strip, and half of what is over on either side of it.
+    expect(leadOf(container, 0)).toBe(`${(content - STRIP_WIDTH_MAX_PX) / 2}px`);
   });
 
   it('lays a short page out under the page before it', async () => {

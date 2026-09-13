@@ -30,7 +30,7 @@ import {
   PAGE_RAIL_WIDTH_PX,
   PAGE_TRANSITION_MS,
   SECTION_HEADER_GAP_PX,
-  SECTION_HEADER_WIDTH_PX,
+  SECTION_HEADER_HEIGHT_PX,
   SEGMENT_GAP_MAX_PX,
   SEGMENT_GAP_PX,
   STRIP_GAP_MAX_PX,
@@ -68,7 +68,7 @@ const EMPTY_RESOLVED: ResolvedViewChannel[] = [];
 /** The geometry the pager and the stylesheet share, published once on the shell. */
 const LAYOUT_VARIABLES = {
   '--strip-width': `${STRIP_WIDTH_PX}px`,
-  '--section-header-width': `${SECTION_HEADER_WIDTH_PX}px`,
+  '--section-header-height': `${SECTION_HEADER_HEIGHT_PX}px`,
   '--section-header-gap': `${SECTION_HEADER_GAP_PX}px`,
   '--strip-gap': `${STRIP_GAP_PX}px`,
   '--segment-gap': `${SEGMENT_GAP_PX}px`,
@@ -321,7 +321,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     {
       containerWidth,
       stripWidth: STRIP_WIDTH_PX,
-      headerWidth: SECTION_HEADER_WIDTH_PX,
       stripGap: STRIP_GAP_PX,
       segmentGap: SEGMENT_GAP_PX,
     },
@@ -332,8 +331,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     containerWidth,
     stripWidth: STRIP_WIDTH_PX,
     stripWidthMax: STRIP_WIDTH_MAX_PX,
-    headerWidth: SECTION_HEADER_WIDTH_PX,
-    headerGap: SECTION_HEADER_GAP_PX,
     stripGap: STRIP_GAP_PX,
     stripGapMax: STRIP_GAP_MAX_PX,
     segmentGap: SEGMENT_GAP_PX,

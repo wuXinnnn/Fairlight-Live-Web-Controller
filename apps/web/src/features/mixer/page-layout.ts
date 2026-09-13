@@ -14,13 +14,15 @@
  */
 export const STRIP_WIDTH_PX = 125;
 export const STRIP_WIDTH_MAX_PX = 125;
-/** Width of the vertical header that labels a type section or a group. */
-export const SECTION_HEADER_WIDTH_PX = 52;
 /**
- * Space between a section header and the first strip behind it. It is fixed: the header reads as
- * the shoulder of the run it labels, so it must not drift away from it as the other gaps open up.
+ * Height of the band that labels a type section or a group, and the space between it and the run
+ * of strips underneath. The band spans its own strips and nothing else, so a section costs the
+ * page height rather than width — which is the axis a page has to spare, since a strip is as tall
+ * as the viewport either way. Every section reserves the band whether or not it has one, so the
+ * strips of two sections side by side start at the same height.
  */
-export const SECTION_HEADER_GAP_PX = 1;
+export const SECTION_HEADER_HEIGHT_PX = 26;
+export const SECTION_HEADER_GAP_PX = 6;
 /** Space between two strips of the same segment, and the most it may open to. */
 export const STRIP_GAP_PX = 1;
 export const STRIP_GAP_MAX_PX = 6;

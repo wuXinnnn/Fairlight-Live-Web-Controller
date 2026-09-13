@@ -685,26 +685,36 @@ body.is-modal-open {
   display: none;
 }
 
+/*
+ * A section is its label band over its own run of strips. The band spans exactly the strips it
+ * names, which is what makes it readable as their shoulder without standing beside them and
+ * taking a strip's worth of width off every page. Its row is reserved whether or not the section
+ * has a label, so two sections side by side start their strips at the same height.
+ */
 .mixer-section {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: var(--section-header-height) minmax(var(--strip-min-height), 1fr);
+  row-gap: var(--section-header-gap);
+}
+
+.mixer-section__strips {
   display: flex;
   min-width: 0;
-  min-height: var(--strip-min-height);
+  min-height: 0;
+  grid-row: 2;
   gap: var(--strip-gap);
 }
 
 .mixer-section__header {
   display: flex;
-  width: var(--section-header-width);
-  min-width: var(--section-header-width);
-  height: 100%;
-  flex: 0 0 var(--section-header-width);
-  flex-direction: column;
+  min-width: 0;
+  grid-row: 1;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.7rem;
-  margin-inline-end: calc(var(--section-header-gap) - var(--strip-gap));
-  padding: 1rem 0.7rem;
+  gap: 0.55rem;
+  padding: 0 0.6rem;
   border: 1px solid color-mix(in srgb, var(--channel-accent) 48%, #23262d);
+  border-bottom: 2px solid var(--channel-accent);
   background:
     linear-gradient(
       180deg,
@@ -713,31 +723,37 @@ body.is-modal-open {
     ),
     #15171c;
   color: var(--channel-accent);
-  transition:
-    flex-basis var(--motion-medium) ease,
-    width var(--motion-medium) ease;
 }
 
+/* The rule runs out to the end of the band, which is the end of the run the band is naming. */
 .mixer-section__header::after {
-  width: 1px;
-  min-height: 3rem;
+  height: 1px;
+  min-width: 1.5rem;
   flex: 1;
-  background: linear-gradient(180deg, var(--channel-accent), transparent);
+  background: linear-gradient(90deg, var(--channel-accent), transparent);
   content: '';
 }
 
 .mixer-section__header h2 {
+  overflow: hidden;
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   letter-spacing: 0.19em;
-  writing-mode: vertical-rl;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mixer-section__header span {
   color: color-mix(in srgb, var(--channel-accent) 70%, var(--text-dim));
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.64rem;
-  writing-mode: vertical-rl;
+  font-size: 0.62rem;
+}
+
+.mixer-section__header small {
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
 }
 
 .mixer-section + .mixer-section {

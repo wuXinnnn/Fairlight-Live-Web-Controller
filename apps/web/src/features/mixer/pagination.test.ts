@@ -4,7 +4,6 @@ import { paginate, type LayoutSegment, type PageMetrics } from './pagination.js'
 const METRICS: PageMetrics = {
   containerWidth: 595,
   stripWidth: 148,
-  headerWidth: 52,
   stripGap: 1,
   segmentGap: 14,
 };
@@ -32,23 +31,23 @@ describe('paginate', () => {
     ).toHaveLength(3);
   });
 
-  it('fits one strip fewer when the segment carries a header', () => {
+  it('fits as many strips under a header as it does without one', () => {
     const headered = paginate([segment('inputs', true, 8)], METRICS, {
       newPagePerHeaderedSegment: false,
     });
 
-    // The header and its gap cost 53, which is more than the 148 + 1 a fourth strip would need.
-    expect(shape(headered)[0]).toHaveLength(3);
+    // The label band sits over the strips, so it takes nothing off the width they have to share.
+    expect(shape(headered)[0]).toHaveLength(4);
   });
 
   it('repeats the header of a segment that spans pages and marks it continued', () => {
-    const pages = paginate([segment('rhythm', true, 5)], METRICS, {
+    const pages = paginate([segment('rhythm', true, 6)], METRICS, {
       newPagePerHeaderedSegment: false,
     });
 
     expect(shape(pages)).toEqual([
-      ['rhythm-0', 'rhythm-1', 'rhythm-2'],
-      ['rhythm-3', 'rhythm-4'],
+      ['rhythm-0', 'rhythm-1', 'rhythm-2', 'rhythm-3'],
+      ['rhythm-4', 'rhythm-5'],
     ]);
     expect(pages[0]?.segments[0]).toMatchObject({ key: 'rhythm', header: true, continued: false });
     expect(pages[1]?.segments[0]).toMatchObject({ key: 'rhythm', header: true, continued: true });

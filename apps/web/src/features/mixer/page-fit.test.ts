@@ -6,8 +6,6 @@ const METRICS: PageFitMetrics = {
   containerWidth: 0,
   stripWidth: 100,
   stripWidthMax: 120,
-  headerWidth: 50,
-  headerGap: 1,
   stripGap: 1,
   stripGapMax: 6,
   segmentGap: 10,
@@ -85,30 +83,38 @@ describe('fitPages', () => {
   });
 
   it('gives every page the width the tightest one can afford', () => {
-    // The headered page carries 51px of chrome the loose one does not, so it has that much less
-    // to spend, and its allowance is the one the whole deck gets.
-    const width = 4 * 100 + 3 * 1 + 51 + 90;
+    // Five strips on one page and four on the next. The fuller page can only reach 114 while the
+    // emptier one could go past the maximum; the deck takes the smaller of the two, so no page
+    // overflows and a strip does not change width under the hand when a page turns.
+    const width = 5 * 100 + 4 * 1 + 90;
+    const fit = fitPages([loose(5), loose(4)], metrics(width));
+
+    expect(fit.stripWidth).toBeCloseTo(114);
+    expect(fit.pages[0]?.lead).toBe(0);
+    expect(fit.pages[1]).toEqual(fit.pages[0]);
+  });
+
+  it('gives a headered page exactly what it gives a headerless one', () => {
+    // The label band is drawn over the strips rather than beside them, so it costs no width at
+    // all: two pages of the same shape are laid out identically whether or not one is labelled.
+    const width = 4 * 100 + 3 * 1 + 90;
     const fit = fitPages([loose(4), headed(4)], metrics(width));
 
     expect(fit.stripWidth).toBeCloseTo(100 + 75 / 4);
-    // The loose page has the header's width over, and centres it.
-    expect(fit.pages[0]?.lead).toBeCloseTo(51 / 2);
-    expect(fit.pages[1]?.lead).toBe(0);
+    expect(fit.pages[1]).toEqual(fit.pages[0]);
   });
 
-  it('never lets the space behind a header pay for the other gaps', () => {
-    // Two headered segments: four strips, two headers, two strip gaps, one segment gap. The two
-    // header gaps are not among the gaps that may open, so they stay at a pixel each.
+  it('counts the gaps of a page that carries two segments', () => {
+    // Four strips in two segments: two strip gaps inside the segments, one segment gap between.
     const page: StripPage<number> = {
       segments: [
         { key: 'a', header: true, continued: false, entries: [0, 1] },
         { key: 'b', header: true, continued: false, entries: [2, 3] },
       ],
     };
-    const natural = 2 * (50 + 1) + 2 * 1 + 10 + 4 * 100;
+    const natural = 2 * 1 + 10 + 4 * 100;
     const fit = fitPages([page], metrics(natural + 1000));
 
-    // Capacity is the two strip gaps and the one segment gap; the header gaps add nothing to it.
     const capacity = 2 * (6 - 1) + 1 * (20 - 10);
     expect(fit.stripWidth).toBe(120);
     expect(fit.pages[0]?.lead).toBeCloseTo((1000 - capacity - 4 * 20) / 2);

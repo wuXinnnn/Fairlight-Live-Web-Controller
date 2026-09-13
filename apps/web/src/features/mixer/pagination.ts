@@ -8,14 +8,13 @@ export interface PageMetrics {
   /** Content-box width of the pager viewport. */
   containerWidth: number;
   stripWidth: number;
-  headerWidth: number;
   stripGap: number;
   segmentGap: number;
 }
 
 export interface LayoutSegment<T> {
   key: string;
-  /** True for a type section or a group, which is rendered with the vertical header. */
+  /** True for a type section or a group, which is rendered with a label band over its strips. */
   header: boolean;
   entries: T[];
 }
@@ -31,10 +30,10 @@ export interface StripPage<T> {
 
 /**
  * Greedily fills pages one strip at a time. A strip costs the gap that precedes it (a segment gap
- * when it opens a new segment, a strip gap when it continues one), plus the header and its gap
- * when it is the first strip of a headered segment on this page, plus the strip itself; a strip
- * whose cost overflows the remaining width opens the next page. A headered segment that spans
- * pages repeats its header, marked `continued`.
+ * when it opens a new segment, a strip gap when it continues one) plus the strip itself; a strip
+ * whose cost overflows the remaining width opens the next page. A section's label costs no width
+ * at all — the band sits over the strips rather than beside them. A headered segment that spans
+ * pages repeats its band, marked `continued`.
  *
  * Empty segments produce nothing, and no input at all returns no pages — callers size the pager
  * with `Math.max(1, pages.length)`. A container narrower than a single strip still gets exactly
@@ -70,12 +69,12 @@ export function paginate<T>(
     let continued = false;
 
     for (const entry of segment.entries) {
-      let cost = stripCost(metrics, segment.header, open, used > 0);
+      let cost = stripCost(metrics, open, used > 0);
       if (used > 0 && used + cost > metrics.containerWidth) {
         endPage();
         continued = true;
         open = false;
-        cost = stripCost(metrics, segment.header, false, false);
+        cost = stripCost(metrics, false, false);
       }
       if (!open) {
         current.push({ key: segment.key, header: segment.header, entries: [], continued });
@@ -89,18 +88,7 @@ export function paginate<T>(
   return pages;
 }
 
-function stripCost(
-  metrics: PageMetrics,
-  header: boolean,
-  segmentOpen: boolean,
-  pageUsed: boolean,
-): number {
-  let cost = 0;
-  if (pageUsed) {
-    cost += segmentOpen ? metrics.stripGap : metrics.segmentGap;
-  }
-  if (header && !segmentOpen) {
-    cost += metrics.headerWidth + metrics.stripGap;
-  }
-  return cost + metrics.stripWidth;
+function stripCost(metrics: PageMetrics, segmentOpen: boolean, pageUsed: boolean): number {
+  const gap = pageUsed ? (segmentOpen ? metrics.stripGap : metrics.segmentGap) : 0;
+  return gap + metrics.stripWidth;
 }

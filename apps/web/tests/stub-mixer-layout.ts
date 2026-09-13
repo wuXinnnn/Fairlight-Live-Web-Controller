@@ -1,8 +1,8 @@
 /**
  * jsdom lays nothing out, so every element reports a zero `clientWidth` and the mixer would page
  * one strip at a time. This stub gives the pager viewport (`.mixer-bays`) a controllable size and
- * leaves every other element alone. The default is wide enough for one section header and two
- * channel strips, so a page boundary is easy to reason about in a test.
+ * leaves every other element alone. The default is wide enough for exactly two channel strips, so
+ * a page boundary is easy to reason about in a test.
  *
  * The pages inside the viewport are the same height as it and answer for the same `scrollHeight`,
  * because a page taller than the viewport is the one that scrolls.
@@ -14,16 +14,14 @@
 import { act } from '@testing-library/react';
 import {
   PAGE_PADDING_X_PX,
-  SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_MIN_HEIGHT_PX,
   STRIP_WIDTH_PX,
 } from '../src/features/mixer/page-layout.js';
 import { notifyResizeObservers } from './stub-resize-observer.js';
 
-/** One header plus two strips, to the pixel, plus the side padding that is not room for them. */
-export const STUB_PAGER_WIDTH_PX =
-  SECTION_HEADER_WIDTH_PX + 2 * (STRIP_GAP_PX + STRIP_WIDTH_PX) + 2 * PAGE_PADDING_X_PX;
+/** Two strips and the gap between them, to the pixel, plus the side padding that is not room. */
+export const STUB_PAGER_WIDTH_PX = 2 * STRIP_WIDTH_PX + STRIP_GAP_PX + 2 * PAGE_PADDING_X_PX;
 /** Taller than a page's minimum height, so the viewport does not scroll by default. */
 export const STUB_PAGER_HEIGHT_PX = STRIP_MIN_HEIGHT_PX + 100;
 
