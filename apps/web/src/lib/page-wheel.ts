@@ -46,12 +46,22 @@ export const INITIAL_PAGE_WHEEL_STATE: PageWheelState = {
  * is worth several thresholds and would otherwise fly through the whole desk. Counting then starts
  * again from nothing — at the higher threshold while the gesture is still running, at the lower
  * one once the wheel has been quiet long enough to call it a new one.
+ *
+ * `momentum` says the travel is the operating system coasting rather than a finger still on the
+ * pad. Coasting may finish the page it was thrown at but may never ask for another one, however
+ * far it runs: an operator flicks once and means one page. A finger that keeps pushing is not
+ * momentum and keeps its say.
  */
 export function reducePageWheel(
   state: PageWheelState,
-  input: { delta: number; now: number },
+  input: { delta: number; now: number; momentum?: boolean },
 ): { state: PageWheelState; page: -1 | 0 | 1 } {
-  const { delta, now } = input;
+  const { delta, now, momentum = false } = input;
+  if (momentum && (state.triggeredAt !== null || state.sustained)) {
+    // The throw has already been answered. Bank none of the coast, or the moment the cooldown
+    // ends there is a threshold's worth of travel waiting to spend on a page nobody asked for.
+    return { state: { ...state, accumulated: 0, lastEventAt: now }, page: 0 };
+  }
   const quiet = now - state.lastEventAt >= PAGE_WHEEL_QUIET_MS;
   let counting = state;
 

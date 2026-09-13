@@ -46,6 +46,47 @@ describe('reducePageWheel', () => {
     expect(turns).toBeGreaterThan(1);
   });
 
+  it('refuses a second page to travel the operating system is coasting', () => {
+    let state = reducePageWheel(INITIAL_PAGE_WHEEL_STATE, { delta: 100, now: 0 }).state;
+    let turns = 0;
+    // A coast long past the cooldown and worth many thresholds. One flick means one page.
+    for (let event = 1; event <= 60; event += 1) {
+      const result = reducePageWheel(state, { delta: 40, now: event * 12, momentum: true });
+      state = result.state;
+      turns += result.page;
+    }
+
+    expect(turns).toBe(0);
+    expect(state.accumulated).toBe(0);
+  });
+
+  it('lets a flick finish the page it was thrown at', () => {
+    // Momentum before any page has turned is still the operator's throw arriving late.
+    const coasting = reducePageWheel(INITIAL_PAGE_WHEEL_STATE, {
+      delta: PAGE_WHEEL_THRESHOLD_PX,
+      now: 0,
+      momentum: true,
+    });
+
+    expect(coasting.page).toBe(1);
+  });
+
+  it('gives the page back to a finger that comes down mid-coast', () => {
+    let state = reducePageWheel(INITIAL_PAGE_WHEEL_STATE, { delta: 100, now: 0 }).state;
+    state = reducePageWheel(state, { delta: 40, now: 200, momentum: true }).state;
+    // The pad is touched again, which the detector reports by dropping the momentum flag.
+    let now = 300;
+    let turns = 0;
+    for (let event = 0; event < 12; event += 1) {
+      now += 12;
+      const result = reducePageWheel(state, { delta: 20, now, momentum: false });
+      state = result.state;
+      turns += result.page;
+    }
+
+    expect(turns).toBeGreaterThan(0);
+  });
+
   it('goes back a page when the wheel goes up', () => {
     expect(reducePageWheel(INITIAL_PAGE_WHEEL_STATE, { delta: -100, now: 0 }).page).toBe(-1);
   });

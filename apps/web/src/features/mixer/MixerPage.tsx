@@ -6,6 +6,7 @@ import {
   type ViewGroup,
 } from '@flwc/shared';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { WheelGestures, type WheelEventState } from 'wheel-gestures';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { ConnectionStatus } from '../../components/ConnectionStatus.js';
@@ -110,6 +111,15 @@ function pageScrolls(scroller: Element | null, delta: number): boolean {
  */
 function inRail(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('.page-rail') !== null;
+}
+
+/**
+ * The event behind a reading, or null when there is none to act on. A gesture also publishes a
+ * last reading from a timer once the wheel falls silent; that one carries the event before it,
+ * which was handled when it arrived, and no travel of its own.
+ */
+function liveWheelEvent(state: WheelEventState): WheelEvent | null {
+  return !state.isEnding && state.event instanceof WheelEvent ? state.event : null;
 }
 
 interface MixerPageProps {
@@ -363,7 +373,11 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     if (deckNode === null) {
       return;
     }
-    const handleWheel = (event: WheelEvent) => {
+    const handleWheel = (wheel: WheelEventState) => {
+      const event = liveWheelEvent(wheel);
+      if (event === null) {
+        return;
+      }
       const { target } = event;
       const onTrack = target instanceof Element && target.closest('[data-wheel="level"]') !== null;
       const owner = wheelGestureTracker.owner();
@@ -386,7 +400,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       // rest of a strip has to come before turning to the next one. The page is what scrolls, not
       // the viewport, because the track already owns the viewport's vertical axis. The rail is
       // outside all of that, and keeps turning pages whatever the strips beside it are doing.
-      const delta = pagingDelta(event);
+      const delta = pagingDelta({ x: wheel.axisDelta[0], y: wheel.axisDelta[1] }, event.shiftKey);
       if (
         !onTrack &&
         !event.shiftKey &&
@@ -404,6 +418,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       const { state, page } = reducePageWheel(pageWheelRef.current, {
         delta,
         now: performance.now(),
+        momentum: wheel.isMomentum,
       });
       pageWheelRef.current = state;
       if (page === 1) {
@@ -470,13 +485,20 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       touchRef.current = null;
     };
 
-    deckNode.addEventListener('wheel', handleWheel, { passive: false });
+    // The wheel arrives through wheel-gestures rather than straight off the element: it is what
+    // tells a finger still on the pad apart from the operating system coasting afterwards, which
+    // no threshold can do, and it settles the units and the axis on the way past. It is asked not
+    // to prevent anything itself — whether this travel belongs to the page is decided below.
+    const gestures = WheelGestures({ preventWheelAction: false, reverseSign: false });
+    gestures.on('wheel', handleWheel);
+    gestures.observe(deckNode);
     deckNode.addEventListener('touchstart', handleTouchStart, { passive: true });
     deckNode.addEventListener('touchmove', handleTouchMove, { passive: true });
     deckNode.addEventListener('touchend', handleTouchEnd);
     deckNode.addEventListener('touchcancel', handleTouchEnd);
     return () => {
-      deckNode.removeEventListener('wheel', handleWheel);
+      gestures.off('wheel', handleWheel);
+      gestures.disconnect();
       deckNode.removeEventListener('touchstart', handleTouchStart);
       deckNode.removeEventListener('touchmove', handleTouchMove);
       deckNode.removeEventListener('touchend', handleTouchEnd);
