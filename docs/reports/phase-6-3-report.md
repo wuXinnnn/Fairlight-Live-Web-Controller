@@ -536,6 +536,8 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `4e50f30` | `perf(web): move a meter reading onto the compositor`(本地收尾 14.1) |
 | `e914da9` | `fix(web): only read the sideways wheel axis under Shift`(本地收尾 14.2) |
 | `0c06a70` | `fix(web): never let a trackpad's coast turn a second page`(本地收尾 14.2) |
+| `278c319` | `docs: record the meter measurement and the trackpad fixes`(本地收尾 14 节) |
+| `15ddcf9` | `fix(web): keep the wheel detector alive across a change of page count`(本地收尾自查) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
 
@@ -615,6 +617,8 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 没有动任何数值:`PAGE_WHEEL_THRESHOLD_PX` 60、`PAGE_WHEEL_REPEAT_THRESHOLD_PX` 120、`PAGE_WHEEL_QUIET_MS` 150、`PAGE_WHEEL_COOLDOWN_MS` 180 全部照旧。阈值那一层保留作为「手指还在推」时的节奏——**如果真机上觉得持续滑动翻得太慢,把 `PAGE_WHEEL_REPEAT_THRESHOLD_PX` 降到 60 是唯一要动的旋钮**,惯性已经由判定兜住,不再需要它当防线。触摸路径共用同一个 reducer,手指没有 OS 惯性、`momentum` 恒为 false,**行为一字未变**(触屏这轮没测,不引入未经验证的改动)。
 
 接法上的三个决定:`preventWheelAction: false`(拦不拦要由归属、安全区与让位规则决定,不能交给库)、`reverseSign: false`(保持原生符号,`axisDelta[1]` 直接就是 reducer 要的「向下为正」)、跳过 `isEnding` 那次由定时器发出的收尾回调(它没有新的真实事件)。库自己的监听就是 `{ passive: false }`、回调在事件派发中同步执行,所以回调里 `preventDefault` 依然有效。推子的滚轮路径**没有改**,仍走 `wheel-delta.ts`。
+
+接完之后自查出一处必须一并改的地方:分页的滚轮监听原本挂在一个依赖 `nextPage` / `previousPage` 的 effect 里,而这两个回调在**页数变化时会换身份**,于是 effect 重跑、`WheelGestures` 实例被重建。惯性要看一串事件才判得出来,手势中途把检测器换掉就等于忘了「这段行程是甩出去的尾巴」,而忘掉的尾巴又会开始翻页——正是这次要修的那件事。改成监听只按 `deckNode` 挂一次,随渲染变化的东西走一个每次渲染后同步的 ref(与 `Fader` 自己那套滚轮 handler 同一种写法)。这一条没有自动用例把关(jsdom 里造不出「手势中途页数变化」且库在 jsdom 下判不出惯性),靠的是代码推理与真实浏览器复跑那 12 项交互断言。
 
 一处需要点名的差异:库的行高常量是 `16 × 1.125 = 18`,我们的 `WHEEL_LINE_HEIGHT_PX` 是 16。于是 Firefox 的一格(`deltaMode` 1 × 3 行)在分页路径上归一化为 54 px、在推子路径上仍是 48 px,**两者都仍然不足 60 px 的翻页阈值**——第 11 节第 3 条的已知取舍没有改变,只是数字更近了一点。
 
