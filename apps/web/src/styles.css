@@ -998,9 +998,10 @@ input.page-rail__jump {
 }
 
 /*
- * The well, the track and the scale share the top row; each reading takes a row of its own below,
- * across the whole strip. A reading that owns the full width is what lets its digits sit hard
- * against a fixed unit column — they grow leftwards into space nothing else wants, so the gap to
+ * The level field is the top row and the meter reading the bottom one, with the well, the track
+ * and the scale between them — what the operator sets sits above what the desk answers back. Each
+ * reading takes a row of its own across the whole strip, which is what lets its digits sit hard
+ * against a fixed unit column: they grow leftwards into space nothing else wants, so the gap to
  * `dB` never moves and a long value can never be driven into its neighbour. `.meter` and `.fader`
  * are flattened out of the way so their parts can be placed on this one grid.
  */
@@ -1008,7 +1009,7 @@ input.page-rail__jump {
   display: grid;
   min-height: 0;
   grid-template-columns: 1.45rem minmax(0, 1fr) 1.55rem;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   column-gap: 0.35rem;
   padding: 0.8rem 0 0;
 }
@@ -1021,7 +1022,7 @@ input.page-rail__jump {
 .fader__scale {
   position: relative;
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 2;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
   pointer-events: none;
@@ -1050,7 +1051,7 @@ input.page-rail__jump {
 .fader__track {
   position: relative;
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
   user-select: none;
@@ -1148,10 +1149,9 @@ html.fader-cap-dragging * {
 }
 
 /*
- * One instrument panel of two lines, MTR over LVL, sharing a border so the pair reads as a single
- * block instead of two loose boxes. Both lines run on the same three columns — label, value, unit
- * — and only the value column is elastic, so the digits grow leftwards and the two `dB` stand on
- * one vertical line whatever is being read out.
+ * The two readings sit at opposite ends of the strip but run on the same three columns — label,
+ * value, unit — and only the value column is elastic, so the digits grow leftwards and the two
+ * `dB` stand on one vertical line whatever is being read out.
  */
 .meter__readout,
 .fader__readout {
@@ -1169,16 +1169,22 @@ html.fader-cap-dragging * {
   white-space: nowrap;
 }
 
+/*
+ * Printed, not set: the meter value carries no frame of its own. The border stays in place but
+ * transparent — dropping it would widen this line's content box by a pixel on each side and take
+ * its columns out of line with the level field's.
+ */
 .meter__readout {
-  grid-row: 2;
+  grid-row: 3;
   margin-top: 0.5rem;
-  /* The two lines meet on one rule: only the lower one carries the bottom edge. */
-  border-bottom: 0;
+  border-color: transparent;
+  background: none;
   font-size: 0.68rem;
 }
 
 .fader__readout {
-  grid-row: 3;
+  grid-row: 1;
+  margin-bottom: 0.5rem;
   font-size: 0.84rem;
   transition: color var(--motion-fast) ease;
 }
@@ -1211,14 +1217,13 @@ html.fader-cap-dragging * {
 }
 
 /*
- * The level can be typed and the meter reading can only be read, so the level value wears a
- * field's border whether or not anyone is using it — the same idiom as the page counter, and for
- * the same reason: a touch screen has no hover to discover it with. The target is the whole cell.
+ * The level can be typed and the meter reading can only be read, so the level value sits in a
+ * sunken cell whether or not anyone is using it — a touch screen has no hover to discover a
+ * control with, so the affordance has to be there at rest. The target is the whole cell.
  */
 .fader__readout button {
   align-self: stretch;
   justify-self: stretch;
-  border-color: #2f333c;
   background: #12141a;
   cursor: text;
   transition:
@@ -1233,7 +1238,6 @@ html.fader-cap-dragging * {
 
 /* A locked or disconnected fader must not go on advertising a field that will not open. */
 .fader__readout button:disabled {
-  border-color: #23262d;
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1290,7 +1294,7 @@ html.fader-cap-dragging * {
 .meter__well {
   position: relative;
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   width: 1.05rem;
   height: 100%;
   margin: 0 auto;
