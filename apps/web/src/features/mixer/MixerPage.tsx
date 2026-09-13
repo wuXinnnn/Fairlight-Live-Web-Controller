@@ -181,6 +181,10 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const [deckNode, setDeckNode] = useState<HTMLDivElement | null>(null);
   const pageWheelRef = useRef(INITIAL_PAGE_WHEEL_STATE);
   const touchRef = useRef<{ lastY: number; turned: boolean } | null>(null);
+  // What the wheel and touch handlers need but must not be re-subscribed for. Telling a finger
+  // from a coast takes a run of events, so the detector has to outlive a change of page count:
+  // tearing it down mid-flick would forget that this travel is the tail of one.
+  const pagerRef = useRef({ viewportNode, nextPage: () => {}, previousPage: () => {} });
 
   const renderViewStrip = (
     entry: ResolvedViewChannel,
@@ -340,6 +344,10 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const { next: nextPage, previous: previousPage } = pager;
 
   useEffect(() => {
+    pagerRef.current = { viewportNode, nextPage, previousPage };
+  });
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (event.key !== 'PageDown' && event.key !== 'PageUp')) {
         return;
@@ -405,7 +413,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
         !onTrack &&
         !event.shiftKey &&
         !inRail(target) &&
-        pageScrolls(currentScroller(viewportNode), delta)
+        pageScrolls(currentScroller(pagerRef.current.viewportNode), delta)
       ) {
         // The browser is about to scroll this, so none of it is travel towards a page turn: the
         // page at the end of the strips has to be asked for by a movement of its own.
@@ -422,9 +430,9 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       });
       pageWheelRef.current = state;
       if (page === 1) {
-        nextPage();
+        pagerRef.current.nextPage();
       } else if (page === -1) {
-        previousPage();
+        pagerRef.current.previousPage();
       }
     };
 
@@ -455,7 +463,10 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       // A finger moving up asks for the next page, the way a wheel turning down does.
       const delta = drag.lastY - touch.clientY;
       drag.lastY = touch.clientY;
-      if (!inRail(event.target) && pageScrolls(currentScroller(viewportNode), delta)) {
+      if (
+        !inRail(event.target) &&
+        pageScrolls(currentScroller(pagerRef.current.viewportNode), delta)
+      ) {
         // The browser is panning the strips, so none of this is travel towards a page turn.
         pageWheelRef.current = INITIAL_PAGE_WHEEL_STATE;
         return;
@@ -470,9 +481,9 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       }
       drag.turned = true;
       if (page === 1) {
-        nextPage();
+        pagerRef.current.nextPage();
       } else {
-        previousPage();
+        pagerRef.current.previousPage();
       }
     };
 
@@ -504,7 +515,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       deckNode.removeEventListener('touchend', handleTouchEnd);
       deckNode.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [deckNode, viewportNode, nextPage, previousPage]);
+  }, [deckNode]);
 
   return (
     <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
