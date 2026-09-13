@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      54 文件 / 422 用例 全绿
+vitest run --coverage (@flwc/web)      55 文件 / 438 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -29,12 +29,12 @@ git diff pnpm-lock.yaml                无改动
 
 | 指标 | 改动前 | 改动后 |
 | --- | --- | --- |
-| Statements | 96.75% | **97.02%** |
-| Branches | 91.97% | **92.46%** |
-| Functions | 99.20% | **99.41%** |
-| Lines | 96.70% | **96.98%** |
+| Statements | 96.75% | **96.92%** |
+| Branches | 91.97% | **92.31%** |
+| Functions | 99.20% | **99.43%** |
+| Lines | 96.70% | **96.89%** |
 
-用例数 327 → 399(净增 72,含评审后补的 9 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 438(净增 111 = 本体 72 + 评审后 9 例回归锁 + 两轮验收反馈 30 例)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -225,7 +225,7 @@ git diff pnpm-lock.yaml                无改动
 | `apps/web/src/features/mixer/use-pager.ts` | `pageIndex` 状态与 `clampPageIndex` / `nextPageIndex` |
 | `apps/web/src/features/mixer/use-pager.test.ts` | 钳位、重置、页数增减 |
 | `apps/web/src/features/mixer/StripPages.tsx` | 分页轨道与页渲染,只挂载相邻页 |
-| `apps/web/src/features/mixer/PageRail.tsx` | 右侧安全区 |
+| `apps/web/src/features/mixer/PageRail.tsx` | 右侧安全区(含页码跳转控件) |
 | `apps/web/src/lib/wheel-delta.ts` | `deltaMode` 归一化与 Shift 轴取舍 |
 | `apps/web/src/lib/wheel-delta.test.ts` | 同上 |
 | `apps/web/src/lib/fader-wheel.ts` | 推子滚轮 reducer |
@@ -236,8 +236,9 @@ git diff pnpm-lock.yaml                无改动
 | `apps/web/src/lib/wheel-gesture.test.ts` | 同上 |
 | `apps/web/tests/stub-resize-observer.ts` | 可控 `ResizeObserver` 双替 |
 | `apps/web/tests/stub-mixer-layout.ts` | 分页视口与页的 `clientWidth` / `clientHeight` / `scrollHeight` / `scrollTop`,以及 `resizePager()` / `scrollPage()` |
-| `apps/web/tests/mixer-pages.integration.test.tsx` | 分页、翻页与自适应布局十六例 |
-| `apps/web/tests/mixer-wheel.integration.test.tsx` | 滚轮归属、滚动接续与连续翻页十七例 |
+| `apps/web/tests/mixer-pages.integration.test.tsx` | 分页、翻页、自适应布局与页码跳转二十三例 |
+| `apps/web/tests/mixer-wheel.integration.test.tsx` | 滚轮归属、滚动接续与连续翻页十八例 |
+| `apps/web/tests/mixer-touch.integration.test.tsx` | 手指翻页八例(验收反馈补) |
 | `docs/reports/phase-6-3-report.md` | 本报告 |
 
 修改:`apps/web/src/features/mixer/MixerPage.tsx`、`TypeRowToggle.tsx`、`TypeRowToggle.test.tsx`、`ChannelStrip.tsx`、`apps/web/src/components/Fader.tsx`、`Fader.test.tsx`、`apps/web/src/styles.css`、`apps/web/vitest.setup.ts`、`apps/web/tests/mixer.integration.test.tsx`、`apps/web/tests/views.integration.test.tsx`、`docs/architecture.md`。
@@ -375,13 +376,13 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 7. **推子滚轮 × 重挂 × 锁定这一块请重点真机复核。** 评审阶段这一处连报四条(见 10.2–10.5),现在有 13 条集成用例锁着,但它们都跑在 jsdom 里、靠 `resizePager` 人为制造重挂。真机上请特意试:滚一个推子的过程中让通道条重新排布(切 view、改窗口大小、或等设备来一次通道增删),期间再叠加 CONTROL LOCK,确认推子既不会往回跳、也不会卡在 pending(条带边框变虚线即 pending)。
 
-8. **6.4 的接口已经预留但为空**:`div.page-rail__track[data-swipe-surface]` 存在且 `touch-action: none`,里面什么都没有。
+8. ~~**6.4 的接口已经预留但为空**~~:滑动手势已在第二轮验收反馈里接上(见 12.7),`[data-swipe-surface]` 不再是空接口。
 
 9. **`apps/server` 与 `packages/test-utils` 本会话未安装也未运行**(本批次没改它们)。它们由远端 CI 的 `pnpm install --frozen-lockfile` 覆盖。
 
 ## 12. 验收反馈后的布局调整
 
-用户在真机上试用 Phase 6.3 后提了 6 条,全部做在同一分支、同一 PR 上。三个手感决策由用户拍板,记在下面各条里。
+用户在真机上试用 Phase 6.3 后分两轮提了 8 条(第一轮 6 条见 12.1–12.5,第二轮 2 条见 12.6–12.8,其中第一条的滚轮与触摸两半分开记),全部做在同一分支、同一 PR 上。五个手感决策由用户拍板,记在下面各条里。
 
 ### 12.1 翻页动画改为纵向 —— `5ec78f5`
 
@@ -435,14 +436,48 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 没有去换一个更大的 px 值——那只是把同一个 bug 推远。改成**基础规则就是 `display: flex; flex-wrap: wrap`**,断点整个删掉:cell 是标签与读数,需要多宽取决于字体与文本,任何写死的数字都会对某些情况是错的。现在它在内容真正放不下的那一刻换行。`.loudness-panel` 的 `justify-self: end` 换成 `margin-inline-start: auto`。
 
-### 12.6 本次仍然做不到的验证
+### 12.6 安全区在矮视口下是死的 —— `6079de2`
+
+第二轮验收的第一条:「在安全区域滚轮滚动和触屏、触摸板滑动时,始终直接翻页,在通道条容器区域滚动时保持现状,滚到底再翻页。」
+
+**滚轮那半是 12.4 引入的 scroll chaining 的一个洞。**那条分支只看「当前页是否还有可滚余量」,不看指针在哪,于是把安全区也一起让位了——而安全区下面根本没有可滚的东西,浏览器接过去也无事可做:矮视口下滚轮落在安全区上既滚不动、也翻不了页,**唯一一个允许操作员随便碰的表面变成了死的**。先按 12.4 那两条用例的写法补一条(矮视口、不 `scrollPage`、目标取 `complementary[name="Pages"]`,断言 `defaultPrevented` 与页码),确认红,再加 `!inRail(target)`。顺手把这条分支的两个条件提成 `pageScrolls()` 与 `inRail()` 两个模块级纯函数,12.7 的触摸路径直接读同样这两个。
+
+### 12.7 手指翻页 —— `91400aa`
+
+同一条验收的另一半,也把 6.4 预留的 `[data-swipe-surface]` 填上了(第 11 节第 8 条作废)。第二轮的两个决策都在这里:
+
+- **触摸不引入新的翻页节奏**(用户拍板,原话是「可以使用原本无滚动条时统一的翻页节奏吗」)。可以,而且更好:`reducePageWheel` 的输入本来就是「像素行程」,把 `touchmove` 的逐帧位移喂进**同一个** `pageWheelRef` 即可。首翻 60px、同手势续翻 120px、静默 150ms、冷却 180ms 全部照旧,**没有新增任何常量、没有新增模块**,滚轮与手指也因此共用一份冷却,不会互相抢拍。
+- **通道条区的触屏与滚轮对称**(用户拍板):页面可滚时先滚到底,再滑才翻页;页面不溢出就直接翻。安全区照旧永远直接翻。
+
+监听挂在 `.mixer-deck` 上,`touchstart` / `touchmove` 用 passive,`touchend` / `touchcancel` 不用(要 `preventDefault`)。位移取「上一帧 Y − 本帧 Y」,手指上滑 = 滚轮下滚。三条安全性质各有一条用例把关,并逐条摘掉修复确认变红:
+
+1. **落在推子上的手指归推子**(起点命中 `[data-wheel="level"]` 就整段不受理)。推子是 pointer 事件自己拖的,若同时翻页,一次拖动会既改电平又换页。
+2. **翻过页的拖动在 `touchend` 上 `preventDefault`**,不让同一个手势顺手按下它松手时压住的东西——安全区的两个翻页键、通道条上的 ON 都在一指宽之内,而 ON 是会出声的。没翻页的点按仍然是点按。
+3. **只认单指**:两指按下不翻页,其中一指中途抬起后剩下的那段也不算(否则会拿一个陈旧的起点算出一段很长的行程);单指开始后中途多出一根手指同样立即停。这两个守卫各自有对应的断言,是分别摘掉分别变红验证过的。
+
+### 12.8 页码可以点开输入跳转 —— `8bf5ece`
+
+第二轮的第二条:「页码样式需要调整一下,引导允许点击输入页码直接跳转。」40 路是七页,过去只能一页一页按过去。
+
+`usePager` 本来就有 `goTo()`(带 `clampPageIndex`),`MixerPage` 只是没接,所以这条没有新增任何状态逻辑。形态由用户拍板选了**「点一下变输入框」**而不是常驻输入框:安全区里少一个常驻焦点目标,演出中不容易误触。
+
+`output[aria-label="Page"]` **原样保留**——它是页码的 live region,也是既有用例读文本、等渲染的那个契约点;可点的控件放在它里面,读数态是 `button[aria-label="Jump to page"]`(单页时置灰),按下换成同名的数字输入框、挂载即全选。**失焦也提交**,因为触摸屏弹出的数字键盘没有回车键;Esc 取消。输入只留数字,越界交给 `goTo` 的钳位。
+
+`.page-rail__jump` 无论哪个状态都戴着一圈输入框的边框:触摸屏没有 hover,常驻的字段外观是「这里可以点」的唯一提示。
+
+**这一条有意扩了一次 DOM 契约**:安全区里的按钮从 2 个变成 3 个,「keeps every control that could change the sound out of the rail」那条用例的名单相应改成 `['Previous page', 'Jump to page', 'Next page']`,其余体检项(无 slider / switch / radio、无 `aria-pressed`、`[data-swipe-surface]` 仍在)一项没减——新控件同样过了这套体检,它只改「看哪一页」,不碰任何通道。
+
+### 12.9 本次仍然做不到的验证
 
 纯 CSS 的观感与真机手感,本会话一律无法验证,只有代码层面的把握:
 
 - 纵向翻页的动效、居中与条宽放大的实际观感、header 的实际换行点;
 - **触摸板连翻的真实手感**(120px / 180ms 两个数字是推算,不是实测),以及 macOS 惯性尾巴到底会不会多翻;
 - **矮视口 scroll chaining 的边界抖动**——用例锁住了「回到边界要重新攒满」,但真机上快速来回滑动是什么感觉不知道;
-- 隐藏滚动条后,矮视口下操作员是否还能意识到页面可以往下滚。
+- 隐藏滚动条后,矮视口下操作员是否还能意识到页面可以往下滚;
+- **手指翻页的真实手感**:把滚轮那套阈值原样套到手指行程上是推理,不是实测——60px 一页在一根 72px 宽、很高的安全区上是偏灵敏还是正好,只有真机知道;
+- 通道条区「滚到底再滑一次」的触摸边界在真机上会不会抖;
+- 页码输入框在触摸屏上够不够好点(它只有约 54px 宽),以及各家软键盘的实际行为(iOS 数字键盘没有回车键,所以留了失焦提交这条路)。
 
 Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻倍带来的重绘开销至今没有任何测量数据,留给本地小批次。
 
@@ -473,5 +508,9 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `c4b0515` | `feat(web): centre a page and spend the width it cannot fill`(验收反馈 12.3) |
 | `72e8be8` | `fix(web): let a wheel that keeps going keep turning pages`(验收反馈 12.4) |
 | `a47f970` | `fix(web): wrap the console header on its content, not on a width`(验收反馈 12.5) |
+| `90a5e88` | `docs: record the layout and paging changes from acceptance`(验收反馈第一轮文档) |
+| `6079de2` | `fix(web): always turn a page from the safe rail`(验收反馈 12.6) |
+| `91400aa` | `feat(web): turn pages by dragging a finger`(验收反馈 12.7) |
+| `8bf5ece` | `feat(web): jump to a page by typing its number`(验收反馈 12.8) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
