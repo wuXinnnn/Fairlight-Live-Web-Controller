@@ -133,8 +133,8 @@ git diff pnpm-lock.yaml                无改动
 | --- | --- | --- | --- |
 | † `STRIP_WIDTH_PX` | 125 | 通道条宽度,也是切页用的值(用户手调,见 14.7) | `apps/web/src/features/mixer/page-layout.ts` |
 | † `STRIP_WIDTH_MAX_PX` | 125 | 通道条可被拉宽到的上限;与下限同值,等于关掉拉伸 | 同上 |
-| `SECTION_HEADER_WIDTH_PX` | 52 | 分区/分组竖排表头宽度(原 3.2rem) | 同上 |
-| † `SECTION_HEADER_GAP_PX` | 1 | 表头与其后首条之间的间距,**固定,不参与放大** | 同上 |
+| † `SECTION_HEADER_HEIGHT_PX` | 26 | 分区/分组标题栏的高度;栏横跨该段所有条带,**不占宽度**(14.8) | 同上 |
+| † `SECTION_HEADER_GAP_PX` | 6 | 标题栏与其下那排条带之间的间距(原为表头与首条的横向间距 1) | 同上 |
 | `STRIP_GAP_PX` | 1 | 同段两条通道条之间的间距 | 同上 |
 | † `STRIP_GAP_MAX_PX` | 6 | 条间距可开到的上限 | 同上 |
 | `SEGMENT_GAP_PX` | 14 | 相邻两段之间的间距(原 0.85rem) | 同上 |
@@ -551,6 +551,7 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `69ca70c` | `style(web): make the level field look editable and the meter reading not`(用户复看,14.7) |
 | `0816475` | `feat(web): move the level field to the head of the strip`(用户定案,14.7) |
 | `c914f1f` | `feat(web): read the floor of a scale as silence, not as a figure`(用户要求,14.7) |
+| `bbb2d43` | `feat(web): label a section over its strips instead of beside them`(用户要求,14.8) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
 
@@ -721,6 +722,33 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 
 > 扫描脚本在每一档都报一条 `clipped: CONTROL LOCK`。查过了,那是 `.control-lock legend`——一个 `1px × 1px` + `clip` 的**只读给读屏器的**标题,`scrollWidth > clientWidth` 是它的正常状态,不是缺陷。脚本的检测口径问题,与本次改动无关。
 
+### 14.8 分区/分组标题改为横跨条带的标题栏
+
+竖排表头站在它那一段的排头,每段因此从页宽里拿走 `SECTION_HEADER_WIDTH_PX`(52)+ 一个条间距。125px 的条宽下这接近半条通道,一页上摆几段就是几份。用户要求把它挪开,给了两种形态(顶上单独一行 / 把组包起来),选了**标题栏**。
+
+**为什么不选包框**:一段经常跨页(24 条 INPUTS 在 1600 宽要占三页),包框意味着闭合,给半段画个框是在说谎;标题栏不承诺闭合,跨页那半段只要在栏里注明就行。另外框的左右边线会重新吃掉宽度,而这次改动的全部意义就是把宽度还回来。
+
+**为什么这是划算的一边**:混音台缺的是宽度,不缺高度——条带无论如何都是一个视口高。把标题从宽度挪到高度,代价是条带矮 32px(972 → 940 @1080),收益是每页多装条带:
+
+| 视口宽 | 改前 每页/总页 | 改后 每页/总页 |
+| --- | --- | --- |
+| 3840 | 28 / 2 | 29 / 2 |
+| 2560 | 18 / 3 | 19 / 3 |
+| 1920 | 13 / 4 | **14 / 3** |
+| 1280 | 8 / 6 | **9 / 5** |
+| 1024 | 6 / 7 | **7 / 6** |
+| 900 | 5 / 9 | **6 / 7** |
+| 800 | 4 / 10 | **5 / 8** |
+| 640 | 3 / 14 | **4 / 10** |
+
+**实现**。标题不再占宽度,所以 `paginate` 与 `fitPages` 的表头项是**删掉**而不是传 0:`PageMetrics.headerWidth`、`PageFitMetrics.headerWidth` / `headerGap`、`PageCounts.headers` 全部移除,`stripCost()` 退化成「前置间距 + 条宽」。`.mixer-section` 从一排 flex 变成两行 grid(`var(--section-header-height)` / `minmax(var(--strip-min-height), 1fr)`),条带装进新的 `.mixer-section__strips`;**没有标题的段也照样占住标题行**,否则同页并排的两段条带起点会差一个栏高。
+
+栏里多了一样竖排表头没地方放的东西:**`CONT`**。计数 `24` 是整段的数,不是本页这几条的数,所以溢到本页的那半段要说明自己是续页——这正是 `paginate` 早就算出来但一直没显示的 `continued`。
+
+**浏览器实测**(1600×1000,四页逐页量):每页所有段的条带起点是**同一个 y**;每条标题栏与它那排条带**同宽同左缘**(偏差 0.00px);`CONT` 只出现在续页的那一段上(第 2、3 页的 INPUTS、第 4 页的 AUX)。16 档视口扫描:无横向溢出、无页头重叠、末条不被裁、安全区各档可见。矮视口的页内滚动阈值随栏高前移(1440×600 由 36 → 53px),这是对的——栏是段的一部分。交互 13 项全过。
+
+**被改写的用例**:`pagination.test.ts` 的「带表头的段少装一条」翻转为「带不带表头装得一样多」,跨页用例的条数随之从 5 改成 6;`page-fit.test.ts` 的「最紧的页说了算」改用 5 条 / 4 条两页来构造(原来靠表头宽度制造紧张),「表头后的间距不替其它间隙买单」整条失去对象,替换为「带标题的页与不带标题的页拿到完全一样的布局」;`stub-mixer-layout.ts` 与三个集成测试里的视口宽度公式去掉表头项。
+
 ### 14.4 本地收尾批次的质量门
 
 ```
@@ -733,7 +761,7 @@ git diff --stat pnpm-lock.yaml               +9 行(只有 wheel-gestures)
 
 覆盖率:Statements 97.05% / Branches 92.47% / Functions 99.15% / Lines 97.02%(门槛 80%,未调整、未新增排除项)。用例 438 → 447(净增 9)。
 
-14.7 的三轮改动之后这一套原样重跑,同样全绿:56 文件 / **449** 用例(净增 2,是刻度底读数的两条回归锁),覆盖率 Statements 96.94% / Branches 92.38% / Functions 99.15% / Lines 96.90%。
+14.7 的三轮改动之后这一套原样重跑,同样全绿:56 文件 / **449** 用例(净增 2,是刻度底读数的两条回归锁),覆盖率 Statements 96.94% / Branches 92.38% / Functions 99.15% / Lines 96.90%。14.8 之后再跑一次:56 文件 / **450** 用例全绿。
 
 ### 14.5 仍然移交用户的事项
 
