@@ -4,16 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App.js';
 import {
   PAGE_PADDING_X_PX,
+  PAGE_TRANSITION_MS,
   SECTION_HEADER_WIDTH_PX,
   STRIP_GAP_PX,
   STRIP_WIDTH_PX,
 } from '../src/features/mixer/page-layout.js';
+import { PAGE_WHEEL_COOLDOWN_MS } from '../src/lib/page-wheel.js';
 import { WHEEL_GESTURE_IDLE_MS } from '../src/lib/wheel-gesture.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
 import { resetMixerStore } from '../src/store/mixer-store.js';
 import { resetViewStore } from '../src/store/view-store.js';
 import { FakeSocket } from './fake-socket.js';
-import { resizePager } from './stub-mixer-layout.js';
+import { resizePager, scrollPage } from './stub-mixer-layout.js';
 
 /** Faking `performance` too: the gesture tracker and the page reducer both read the clock. */
 const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'];
@@ -384,5 +386,59 @@ describe('wheel ownership between faders and the pager', () => {
     // The faders still take the wheel on their own tracks.
     wheel(track('IN-1'));
     expect(levelOf('IN-1')).toBe('-22');
+  });
+
+  it('14. turns the page once the short page has been scrolled to the end', () => {
+    mount();
+    resizePager(PAGE_WIDTH, 300, 600);
+    scrollPage(300);
+
+    const turned = wheel(blankArea());
+
+    expect(turned.defaultPrevented).toBe(true);
+    expect(page()).toMatch(/^2 \//);
+  });
+
+  it('15. drops the travel it had banked at the end once the page scrolls again', () => {
+    mount();
+    resizePager(PAGE_WIDTH, 300, 600);
+    scrollPage(300);
+
+    // Two thirds of the way to a page turn, asked for at the end of the page.
+    expect(wheel(blankArea(), { deltaY: 40 }).defaultPrevented).toBe(true);
+    expect(page()).toMatch(/^1 \//);
+
+    // Then back up the page, which is scrolling and not paging, and down to the end again.
+    expect(wheel(blankArea(), { deltaY: -40 }).defaultPrevented).toBe(false);
+    scrollPage(300);
+
+    // The page has to be asked for from nothing: forty pixels at the end of a scroll must not
+    // fall through to the next page on the strength of travel spent before it.
+    expect(wheel(blankArea(), { deltaY: 40 }).defaultPrevented).toBe(true);
+    expect(page()).toMatch(/^1 \//);
+    wheel(blankArea(), { deltaY: 40 });
+    expect(page()).toMatch(/^2 \//);
+  });
+
+  it('16. keeps turning pages while the finger keeps going', () => {
+    mount();
+    expect(page()).toBe('1 / 3');
+
+    // A trackpad dragged without a pause: small events, one every frame or so.
+    for (let event = 0; event < 60; event += 1) {
+      wheel(blankArea(), { deltaY: 12 });
+      act(() => {
+        vi.advanceTimersByTime(12);
+      });
+    }
+
+    expect(page()).toBe('3 / 3');
+  });
+
+  it('lets the next page start before the one before it has landed', () => {
+    // The two live in different modules — the reducer knows nothing about the stylesheet — so
+    // the relation between them is only true for as long as something checks it.
+    expect(PAGE_WHEEL_COOLDOWN_MS).toBeLessThan(PAGE_TRANSITION_MS);
+    expect(PAGE_WHEEL_COOLDOWN_MS).toBeGreaterThan(PAGE_TRANSITION_MS * 0.6);
   });
 });

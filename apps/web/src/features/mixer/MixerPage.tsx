@@ -80,6 +80,16 @@ const LAYOUT_VARIABLES = {
 /** The pager has nothing to finish when its gesture ends; the fader is the one that commits. */
 const NO_GESTURE_END = () => {};
 
+/** Whether a page that scrolls has run out of room the way the wheel is going. */
+function atScrollEnd(scroller: Element, delta: number): boolean {
+  if (delta === 0) {
+    return false;
+  }
+  return delta < 0
+    ? scroller.scrollTop <= 0
+    : scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+}
+
 interface MixerPageProps {
   controlClient: ControlClient;
   onOpenSettings(): void;
@@ -352,20 +362,25 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       // Too short a viewport leaves the page taller than the space for it; scrolling to see the
       // rest of a strip has to come before turning to the next one. The page is what scrolls, not
       // the viewport, because the track already owns the viewport's vertical axis.
+      const delta = pagingDelta(event);
       const scroller = viewportNode?.querySelector('.mixer-page[data-current]') ?? null;
       if (
         !onTrack &&
         !event.shiftKey &&
         scroller !== null &&
-        scroller.scrollHeight > scroller.clientHeight
+        scroller.scrollHeight > scroller.clientHeight &&
+        !atScrollEnd(scroller, delta)
       ) {
+        // The browser is about to scroll this, so none of it is travel towards a page turn: the
+        // page at the end of the strips has to be asked for by a movement of its own.
+        pageWheelRef.current = INITIAL_PAGE_WHEEL_STATE;
         wheelGestureTracker.touch();
         return;
       }
       event.preventDefault();
       wheelGestureTracker.touch();
       const { state, page } = reducePageWheel(pageWheelRef.current, {
-        delta: pagingDelta(event),
+        delta,
         now: performance.now(),
       });
       pageWheelRef.current = state;

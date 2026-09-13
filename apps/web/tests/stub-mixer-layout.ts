@@ -31,6 +31,7 @@ interface PagerSize {
   width: number;
   height: number;
   scrollHeight: number;
+  scrollTop: number;
 }
 
 const sizes = new WeakMap<Element, PagerSize>();
@@ -49,6 +50,7 @@ function sizeOf(element: Element): PagerSize {
       width: STUB_PAGER_WIDTH_PX,
       height: STUB_PAGER_HEIGHT_PX,
       scrollHeight: STUB_PAGER_HEIGHT_PX,
+      scrollTop: 0,
     }
   );
 }
@@ -57,6 +59,7 @@ const MEASURES = {
   clientWidth: (size: PagerSize) => size.width,
   clientHeight: (size: PagerSize) => size.height,
   scrollHeight: (size: PagerSize) => size.scrollHeight,
+  scrollTop: (size: PagerSize) => size.scrollTop,
 } as const;
 
 /** Installs the stub and returns a function that restores the real getters. */
@@ -101,8 +104,24 @@ export function resizePager(
   if (pager === null) {
     throw new Error('resizePager: the mixer is not rendered');
   }
-  sizes.set(pager, { width, height, scrollHeight });
+  sizes.set(pager, { width, height, scrollHeight, scrollTop: 0 });
   act(() => {
     notifyResizeObservers(pager, width, height);
   });
+}
+
+/**
+ * Puts the scrolling page at a scroll offset. jsdom lays nothing out, so it holds `scrollTop` at
+ * zero however hard a test scrolls; this is the only way to say the page is part way down.
+ */
+export function scrollPage(scrollTop: number): void {
+  const pager = document.querySelector('.mixer-bays');
+  if (pager === null) {
+    throw new Error('scrollPage: the mixer is not rendered');
+  }
+  const size = sizes.get(pager);
+  if (size === undefined) {
+    throw new Error('scrollPage: call resizePager first');
+  }
+  sizes.set(pager, { ...size, scrollTop });
 }
