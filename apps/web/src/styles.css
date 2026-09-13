@@ -69,12 +69,20 @@ button {
   grid-template-rows: auto 1fr auto;
 }
 
+/*
+ * The header runs on one line for as long as its cells fit and takes a second one when they do
+ * not. Wrapping is what decides that, not a width in a media query: the cells are labels and
+ * numbers, so what they need depends on the font and on the text, and any figure picked here
+ * would be wrong for some of them — too early and the desk loses a row of height it needs, too
+ * late and the cells run into each other.
+ */
 .console-header {
+  position: relative;
   z-index: 10;
-  display: grid;
-  grid-template-columns: auto auto auto auto auto 1fr;
+  display: flex;
   min-height: 3rem;
   align-items: stretch;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--line-strong);
   background: rgb(17 19 24 / 94%);
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 22%);
@@ -350,7 +358,8 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(5.6rem, auto)) auto;
   align-items: stretch;
-  justify-self: end;
+  /* Last on the line, and hard against its end whatever the cells before it come to. */
+  margin-inline-start: auto;
 }
 
 /* CONNECTION panel: the application's only modal, drawn with the console tokens. */
@@ -2878,17 +2887,10 @@ html.fader-cap-dragging * {
 }
 
 @media (max-width: 800px) {
-  /* The header keeps its cells but is allowed to run onto a second line. */
-  .console-header {
-    position: relative;
-    display: flex;
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
+  /* Narrow enough that the loudness readouts are better off filling their line than hugging it. */
   .loudness-panel {
     flex: 1;
-    justify-self: stretch;
+    margin-inline-start: 0;
   }
 
   /* Only the vertical padding gives way; the sides stay at the width the pager was told. */
