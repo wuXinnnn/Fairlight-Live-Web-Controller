@@ -455,6 +455,8 @@ export function Fader({
         className={`fader__readout ${inputInvalid ? 'is-invalid' : ''}`}
         aria-label={`${label} level value`}
       >
+        {/* The readout sits under the meter's, not under the track, so it has to say what it is. */}
+        <span className="readout__label">LVL</span>
         {editing ? (
           <input
             type="number"

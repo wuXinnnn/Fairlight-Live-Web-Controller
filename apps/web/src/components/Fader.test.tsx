@@ -179,7 +179,7 @@ describe('Fader', () => {
     );
     expect(container.querySelector<HTMLElement>('.fader__cap')?.style.bottom).toBe('0%');
     expect(screen.getByLabelText('BASS level value')).toHaveTextContent('-∞');
-    expect(screen.queryByText('LVL')).not.toBeInTheDocument();
+    expect(screen.getByText('LVL')).toBeInTheDocument();
   });
 
   it('steps the fader with the wheel and commits once the wheel stops', () => {

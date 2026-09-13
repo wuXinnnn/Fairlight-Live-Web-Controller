@@ -997,28 +997,30 @@ input.page-rail__jump {
   );
 }
 
+/*
+ * The well, the track and the scale share the top row; each reading takes a row of its own below,
+ * across the whole strip. A reading that owns the full width is what lets its digits sit hard
+ * against a fixed unit column — they grow leftwards into space nothing else wants, so the gap to
+ * `dB` never moves and a long value can never be driven into its neighbour. `.meter` and `.fader`
+ * are flattened out of the way so their parts can be placed on this one grid.
+ */
 .channel-strip__controls {
   display: grid;
   min-height: 0;
-  grid-template-columns: 3.25rem 1fr;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0.45rem;
+  grid-template-columns: 1.45rem minmax(0, 1fr) 1.55rem;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  column-gap: 0.35rem;
   padding: 0.8rem 0 0;
 }
 
+.meter,
 .fader {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 1fr 1.55rem;
-  grid-template-rows: minmax(0, 1fr) 2.6rem;
-  row-gap: 0.35rem;
-  transition: opacity var(--motion-fast) ease;
+  display: contents;
 }
 
 .fader__scale {
   position: relative;
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
@@ -1047,7 +1049,7 @@ input.page-rail__jump {
 
 .fader__track {
   position: relative;
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 1;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
@@ -1145,61 +1147,70 @@ html.fader-cap-dragging * {
   color: var(--amber-pale);
 }
 
+/*
+ * One instrument panel of two lines, MTR over LVL, sharing a border so the pair reads as a single
+ * block instead of two loose boxes. Both lines run on the same three columns — label, value, unit
+ * — and only the value column is elastic, so the digits grow leftwards and the two `dB` stand on
+ * one vertical line whatever is being read out.
+ */
+.meter__readout,
 .fader__readout {
-  grid-column: 1 / 3;
-  grid-row: 2;
-  align-self: stretch;
-  transition: color var(--motion-fast) ease;
-}
-
-.fader__readout,
-.meter__readout {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 0.65rem 1fr;
+  grid-column: 1 / -1;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 0.9rem;
   align-items: center;
-  padding: 0.22rem 0.28rem;
+  padding: 0.16rem 0.3rem;
   border: 1px solid #343945;
   background: #111318;
   color: #d6d3ca;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.64rem;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  white-space: nowrap;
+}
+
+.meter__readout {
+  grid-row: 2;
+  margin-top: 0.5rem;
+  /* The two lines meet on one rule: only the lower one carries the bottom edge. */
+  border-bottom: 0;
+  font-size: 0.68rem;
 }
 
 .fader__readout {
-  border-color: transparent;
-  background: transparent;
+  grid-row: 3;
+  font-size: 0.84rem;
+  transition: color var(--motion-fast) ease;
 }
 
 .readout__label {
-  grid-column: 1 / 3;
-  align-self: start;
+  grid-column: 1;
+  justify-self: start;
   color: color-mix(in srgb, var(--channel-accent) 72%, var(--text-dim));
-  font-size: 0.42rem;
+  font-size: 0.44rem;
   letter-spacing: 0.12em;
   line-height: 1;
-  text-align: left;
 }
 
 .readout__value,
 .fader__readout button,
 .fader__readout input {
   min-width: 0;
-  grid-column: 1;
-  grid-row: 2;
-  overflow: visible;
+  grid-column: 2;
+  overflow: hidden;
   color: inherit;
   font-family: inherit;
-  font-size: 0.64rem;
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: right;
+  text-overflow: ellipsis;
 }
 
+/* The target is the whole value cell, not only the digits standing in it. */
 .fader__readout button {
+  align-self: stretch;
+  justify-self: stretch;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1212,7 +1223,7 @@ html.fader-cap-dragging * {
 
 .fader__readout input {
   width: 100%;
-  padding: 0.08rem 0.12rem;
+  padding: 0.04rem 0.1rem;
   border: 1px solid var(--channel-accent);
   outline: 0;
   background: #090b0e;
@@ -1226,8 +1237,7 @@ html.fader-cap-dragging * {
 }
 
 .fader__readout.is-invalid {
-  border-color: transparent;
-  box-shadow: none;
+  border-color: var(--red);
   color: var(--red);
 }
 
@@ -1235,61 +1245,35 @@ html.fader-cap-dragging * {
   border-color: var(--red);
 }
 
-.fader__readout small,
-.meter__readout small {
-  grid-column: 2;
-  grid-row: 2;
-  margin-left: 0.14rem;
+/*
+ * The unit stands at the left edge of a column of its own, so the space between a value and its
+ * `dB` is this margin and nothing else — losing or gaining a digit cannot move it.
+ */
+.meter__readout small,
+.fader__readout small {
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 0.28rem;
   color: var(--text-dim);
-  font-size: 0.43rem;
+  font-size: 0.44rem;
   line-height: 1;
 }
 
-.fader__readout {
-  display: grid;
-  overflow: visible;
-  grid-column: 1 / 3;
-  grid-template-columns: minmax(0, 1fr) 1.55rem;
-  grid-template-rows: 1fr;
-  align-items: center;
-  padding: 0;
-  font-size: 0.86rem;
-  white-space: nowrap;
-}
-
-.fader__readout button,
-.fader__readout input {
-  width: auto;
-  min-width: 2.7rem;
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: center;
-  font-size: 0.86rem;
-  text-align: center;
-}
-
-.fader__readout small {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: start;
-  margin: 0 0 0 0.38rem;
-  font-size: 0.46rem;
-}
-
-.meter {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 2.6rem;
-  row-gap: 0.35rem;
-  min-width: 0;
+/* No meters, no reading: the well and its number fade together and the frame stays put. */
+.meter__well,
+.meter__readout {
   transition: opacity var(--motion-medium) ease;
 }
 
-.meter.is-frozen {
+.meter.is-frozen .meter__well,
+.meter.is-frozen .meter__readout {
   opacity: 0.35;
 }
 
 .meter__well {
   position: relative;
+  grid-column: 1;
+  grid-row: 1;
   width: 1.05rem;
   height: 100%;
   margin: 0 auto;
@@ -1374,11 +1358,6 @@ html.fader-cap-dragging * {
   height: 2px;
   background: #f5eee0;
   box-shadow: 0 0 0.35rem #fff0c4;
-}
-
-.meter__readout {
-  align-self: stretch;
-  overflow: visible;
 }
 
 .meter--warning .meter__readout {
