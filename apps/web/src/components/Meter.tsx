@@ -25,6 +25,15 @@ function meterRatio(value: number): number {
   return (clampMeterDb(value) - METER_DB_MIN) / (METER_DB_MAX - METER_DB_MIN);
 }
 
+/**
+ * The bottom of the scale is silence, not −60 dB of it: everything quieter reads the same there,
+ * so printing the figure would claim a measurement the meter cannot make. The fader says the same
+ * thing at the bottom of its own scale.
+ */
+export function formatMeterDb(value: number): string {
+  return value <= METER_DB_MIN ? '-∞' : clampMeterDb(value).toFixed(1);
+}
+
 interface MeterProps {
   id: string;
   label: string;
@@ -94,7 +103,7 @@ export function Meter({ id, label, active }: MeterProps) {
       </div>
       <output className="meter__readout" aria-label={`${label} meter value`}>
         <span className="readout__label">MTR</span>
-        <span className="readout__value">{value.toFixed(1)}</span>
+        <span className="readout__value">{formatMeterDb(value)}</span>
         <small>dB</small>
       </output>
     </div>

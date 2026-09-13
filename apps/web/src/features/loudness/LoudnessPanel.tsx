@@ -6,8 +6,13 @@ import { controlsAvailable, mixerStore, setNotice } from '../../store/mixer-stor
 
 export const RESET_CONFIRM_MS = 3000;
 
+/**
+ * A reading sitting on the floor of its scale is not a measurement — it is what the desk reports
+ * before it has integrated anything, or after a reset — so it shows as a blank rather than as a
+ * figure that would be read as a real level.
+ */
 function formatReading(value: number, minimum: number, maximum: number): string {
-  return Math.min(maximum, Math.max(minimum, value)).toFixed(1);
+  return value <= minimum ? '--' : Math.min(maximum, value).toFixed(1);
 }
 
 interface LoudnessPanelProps {

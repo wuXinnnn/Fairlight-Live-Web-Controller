@@ -38,6 +38,18 @@ describe('LoudnessPanel', () => {
     expect(screen.getByText('dBTP')).toBeInTheDocument();
   });
 
+  it('blanks a reading that is sitting on the floor of its scale', () => {
+    applyMetersFrame({
+      meters: [],
+      loudness: { integratedLufs: -100, truePeakDbtp: -60 },
+    });
+    render(<LoudnessPanel controlClient={createControlClient()} />);
+    // Both readings are at their floor, so neither may show a figure that reads as a real level.
+    expect(screen.getAllByText('--')).toHaveLength(2);
+    expect(screen.queryByText('-100.0')).not.toBeInTheDocument();
+    expect(screen.queryByText('-60.0')).not.toBeInTheDocument();
+  });
+
   it('requires a second click before resetting loudness', async () => {
     const controlClient = createControlClient();
     render(<LoudnessPanel controlClient={controlClient} />);

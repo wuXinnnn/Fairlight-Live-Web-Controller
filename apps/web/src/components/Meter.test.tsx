@@ -7,6 +7,7 @@ import {
   Meter,
   PEAK_HOLD_MS,
   clampMeterDb,
+  formatMeterDb,
   meterLevelClass,
 } from './Meter.js';
 
@@ -31,6 +32,17 @@ describe('Meter', () => {
     render(<Meter id="channel/1" label="BASS" active />);
     expect(screen.getByLabelText('BASS meter value')).toHaveTextContent('0.0dB');
     expect(screen.getByLabelText('BASS meter')).toHaveClass('meter--clip');
+  });
+
+  it('reads the bottom of the scale as silence rather than as a figure', () => {
+    expect(formatMeterDb(METER_DB_MIN)).toBe('-∞');
+    // Everything below the floor reads the same there, so none of it may print a number.
+    expect(formatMeterDb(-99)).toBe('-∞');
+    expect(formatMeterDb(METER_DB_MIN + 0.1)).toBe('-59.9');
+
+    applyMetersFrame({ meters: [['channel/1', -80]] });
+    render(<Meter id="channel/1" label="BASS" active />);
+    expect(screen.getByLabelText('BASS meter value')).toHaveTextContent('-∞dB');
   });
 
   it('reveals a fixed meter gradient by sliding it and warns after repeated 0 dB frames', () => {
