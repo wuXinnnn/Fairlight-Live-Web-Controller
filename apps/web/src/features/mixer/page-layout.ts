@@ -34,8 +34,13 @@ export const SEGMENT_GAP_MAX_PX = 28;
  * pagination function has to be given the width without it.
  */
 export const PAGE_PADDING_X_PX = 24;
-/** Below this height a page stops shrinking and the pager viewport scrolls instead. */
-export const STRIP_MIN_HEIGHT_PX = 528;
+/**
+ * Below this height a strip stops shrinking and the page scrolls instead. It decides the shortest
+ * window the mixer fits in without scrolling, pixel for pixel: this figure plus the label band,
+ * the page's own vertical padding and the shell's header and footer. Lower it to cover a shorter
+ * window; every pixel off here is a pixel off the window the mixer needs.
+ */
+export const STRIP_MIN_HEIGHT_PX = 511;
 /** Width of the page rail down the right-hand side of the deck. */
 export const PAGE_RAIL_WIDTH_PX = 72;
 /** Duration of the slide between two pages. */
