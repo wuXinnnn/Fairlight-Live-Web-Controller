@@ -350,6 +350,27 @@ describe('wheel ownership between faders and the pager', () => {
     expect(levelWrites(socket).at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -24 });
   });
 
+  it('13. writes the level a locked replacement inherited from the strip it replaced', () => {
+    const { socket } = mount();
+    wheel(track('IN-3'));
+    expect(levelOf('IN-3')).toBe('-22');
+    flushThrottle();
+    const beforeRemount = levelWrites(socket).length;
+
+    resizePager(20000);
+    act(() => {
+      fireEvent.click(screen.getByRole('radio', { name: 'FADERS' }));
+    });
+    // The replacement takes the gesture over on an event it cannot act on, because the desk is
+    // locked. It still has to answer for the level the strip before it had reached.
+    wheel(track('IN-3'));
+    settle();
+
+    const writes = levelWrites(socket);
+    expect(writes.length).toBe(beforeRemount + 1);
+    expect(writes.at(-1)?.args[0]).toEqual({ id: 'channel/3', levelDb: -22 });
+  });
+
   it('9. scrolls a viewport too short for a page instead of turning it', () => {
     mount();
     // The page no longer fits: scrolling has to reach the rest of the strip first.

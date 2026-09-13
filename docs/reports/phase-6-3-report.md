@@ -11,7 +11,7 @@
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
 | 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
 | 7. 文档 | 完成 |
-| 评审后修订(Bugbot 四条 findings,后两条是对修复本身的) | 完成,见第 10 节 |
+| 评审后修订(Bugbot 五条 findings,后三条是对修复本身的) | 完成,见第 10 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 397 用例 全绿
+vitest run --coverage (@flwc/web)      53 文件 / 398 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -34,7 +34,7 @@ git diff pnpm-lock.yaml                无改动
 | Functions | 99.20% | **99.41%** |
 | Lines | 96.70% | **96.98%** |
 
-用例数 327 → 397(净增 70,含评审后补的 7 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 398(净增 71,含评审后补的 8 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -286,9 +286,9 @@ git diff pnpm-lock.yaml                无改动
 
 ## 10. 评审后的修订
 
-PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了四条(后两条都是针对上一次修复本身的),核对下来全部成立,全是本批次引入的真 bug**。每条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
+PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了五条(后三条都是针对上一次修复本身的),核对下来全部成立,全是本批次引入的真 bug**。每条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
 
-其中 10.2 / 10.3 / 10.4 是**同一处的三连报**,到第三次才承认前两次都在打补丁;10.4 一节记了根因与治根的改法。这三条(以及 10.1)全部落在 jsdom 看不见的地方——页面几何与组件生命周期——我原来的用例都建立在「组件树稳定」的前提上,从没在手势进行中拆过组件。这是测试方式的缺口,不是四次运气不好。
+其中 10.2–10.5 是**同一处的四连报**:前三次我都在挪「状态归属」,第四次才看出还有一层是「取得回调」与「有能力兑现回调」之间被提前返回拆开。这四条(以及 10.1)全部落在 jsdom 看不见的地方——页面几何与组件生命周期——我原来的用例都建立在「组件树稳定」的前提上,从没在手势进行中拆过组件、也没在拆过之后再叠加锁定。这是测试方式的缺口,不是五次运气不好。**这一块(推子滚轮 × 重挂 × 锁定)是本批次最需要真机复核的地方**,已写进第 11 节移交事项。
 
 ### 10.1(High)页内边距把最后一条通道条切掉
 
@@ -330,7 +330,17 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 回归锁:`mixer-wheel.integration.test.tsx` 第 12 例——手势中重挂,断言通道仍是 pending、随后设备推来旧值的 patch 也不会把推子拽回去,继续滚仍从 −22 走到 −24,静默后只写一次终值;外加 `wheel-gesture.test.ts` 两例覆盖 active 位的生命周期。第 10、11、12 例都验证过「摘掉对应那半边修复就变红」。
 
-改完的质量门:53 文件 / **397** 用例全绿,覆盖率 Statements **97.02%** / Branches **92.46%** / Functions **99.41%** / Lines **96.98%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+### 10.5(Medium)接管发生在「锁定即返回」之后,被锁的接班人夺走回调却交不了差
+
+10.4 治根之后 Bugbot 又报一条,**仍然成立**,而且仍是同一处——但这次是**次序**问题,不是状态归属问题。handler 里 `begin()`(它会把 tracker 的回调换成本实例的)在前,而接管那段代码在 `disabled / dragging` 的提前返回**之后**。于是:A 推到 −22 → 重挂成 B → CONTROL LOCK 切到 `FADERS`(B 的 disabled effect 触发,但 B 还没接管、`wheelActiveRef` 为 false,空转)→ 随后来一个滚轮事件:B 在 `begin` 里把回调抢了过来,却在接管之前就因为 `disabled` 返回了。静默时 tracker 调的是 B 的回调,B 认为自己没在动 → **什么都不写**,A 的 −22 丢失、通道卡在 pending。
+
+改法只有一句:**把接管挪到 `disabled / dragging` 提前返回之前**。`begin` 既然已经让本实例成为 tracker 要回调的那一个,那么「本实例有能力为这次手势交差」就必须在同一步里成立,不能被后面的任何提前返回跳过。被锁的接班人接管后,静默时照样写出 −22——这本来就是既有规则「手势中被锁定则写出操作员已经到达的值」。全新手势不受影响:`isActive()` 只有在某个实例真的出过步之后才为真,被锁的推子永远出不了步。
+
+回归锁:`mixer-wheel.integration.test.tsx` 第 13 例(重挂 → 上锁 → 一个动不了的滚轮事件 → 静默后仍恰好写一次 −22)。
+
+**这一处一共报了四次(10.2–10.5)**,前三次都是我在补状态归属,第四次才发现即使状态归属对了,「取得回调」与「有能力兑现回调」这两件事仍然可以被一个提前返回拆开。教训记在这里:凡是「抢过某个跨组件的回调」的代码,抢的那一步和「让自己有能力兑现」的那一步之间不允许有任何提前返回。
+
+改完的质量门:53 文件 / **398** 用例全绿,覆盖率 Statements **97.02%** / Branches **92.46%** / Functions **99.41%** / Lines **96.98%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
 
 ## 11. 遗留问题与移交事项
 
@@ -346,9 +356,11 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 
 6. **`stub-mixer-layout` 与 `stub-resize-observer` 装在全局 setup 里。** 所有渲染混音页的测试都会拿到 350px 的默认视口(正好一个表头 + 两条)。这让分页在既有测试里也是活的,是有意为之;代价是往后写混音页测试时要记得需要别的宽度就调 `resizePager()`。
 
-7. **6.4 的接口已经预留但为空**:`div.page-rail__track[data-swipe-surface]` 存在且 `touch-action: none`,里面什么都没有。
+7. **推子滚轮 × 重挂 × 锁定这一块请重点真机复核。** 评审阶段这一处连报四条(见 10.2–10.5),现在有 13 条集成用例锁着,但它们都跑在 jsdom 里、靠 `resizePager` 人为制造重挂。真机上请特意试:滚一个推子的过程中让通道条重新排布(切 view、改窗口大小、或等设备来一次通道增删),期间再叠加 CONTROL LOCK,确认推子既不会往回跳、也不会卡在 pending(条带边框变虚线即 pending)。
 
-8. **`apps/server` 与 `packages/test-utils` 本会话未安装也未运行**(本批次没改它们)。它们由远端 CI 的 `pnpm install --frozen-lockfile` 覆盖。
+8. **6.4 的接口已经预留但为空**:`div.page-rail__track[data-swipe-surface]` 存在且 `touch-action: none`,里面什么都没有。
+
+9. **`apps/server` 与 `packages/test-utils` 本会话未安装也未运行**(本批次没改它们)。它们由远端 CI 的 `pnpm install --frozen-lockfile` 覆盖。
 
 ## 12. 提交记录
 
@@ -367,6 +379,7 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 | `c6bb0e0` | `fix(web): let a remounted fader finish its own wheel gesture`(评审后) |
 | `bc73bcf` | `docs: record the two post-review fixes in the Phase 6.3 report` |
 | `18546b8` | `fix(web): commit a wheel gesture when its strip is torn down`(评审后第三条) |
-| (下一条) | `fix(web): keep gesture state with the gesture, not the strip`(评审后第四条,治根) |
+| `04289f6` | `fix(web): keep gesture state with the gesture, not the strip`(评审后第四条,治根) |
+| (下一条) | `fix(web): adopt the gesture before declining the event`(评审后第五条) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。

@@ -135,17 +135,21 @@ export function Fader({
       wheelGestureTracker.touch();
 
       const current = latest.current;
+      // A previous instance of this strip began this gesture and has since been torn down. Pick
+      // it up where it left off: the store carries the level it reached, and the interaction it
+      // opened is still in flight, so this is a continuation rather than a new move.
+      //
+      // This has to happen before the bail-out below: `begin` above has already made this
+      // instance the one the tracker will call, so an instance that takes the callback and then
+      // declines the event would otherwise be left unable to answer for the gesture it now owns.
+      if (!wheelActiveRef.current && wheelGestureTracker.isActive()) {
+        wheelActiveRef.current = true;
+        latestValueRef.current = current.value;
+      }
       // A locked, disconnected or dragging fader ignores the wheel outright; it never turns
       // into a page turn, so the rule does not change with the mode.
       if (current.disabled || current.dragging) {
         return;
-      }
-      // A previous instance of this strip began this gesture and has since been torn down. Pick
-      // it up where it left off: the store carries the level it reached, and the interaction it
-      // opened is still in flight, so this is a continuation rather than a new move.
-      if (!wheelActiveRef.current && wheelGestureTracker.isActive()) {
-        wheelActiveRef.current = true;
-        latestValueRef.current = current.value;
       }
       const { state, steps } = reduceFaderWheel(wheelStateRef.current, {
         deltaY: normalizeWheelDelta(event).y,
