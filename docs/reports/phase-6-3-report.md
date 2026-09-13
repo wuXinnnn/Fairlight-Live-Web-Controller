@@ -11,6 +11,7 @@
 | 5. 滚轮接入:推子轨道与分页视口 | 完成 |
 | 6. 电平表实测与 transform 改绘 | **整节未做**(用户决定跳过,见第 8 节) |
 | 7. 文档 | 完成 |
+| 评审后修订(Bugbot 两条 findings) | 完成,见第 10 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -19,7 +20,7 @@ pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared   成功
 eslint .                                                                  0 error
 prettier --check .                                                        全部通过
 tsc --noEmit (@flwc/web)                                                  0 error
-vitest run --coverage (@flwc/web)      53 文件 / 390 用例 全绿
+vitest run --coverage (@flwc/web)      53 文件 / 393 用例 全绿
 vite build (@flwc/web)                 成功
 git diff pnpm-lock.yaml                无改动
 ```
@@ -29,11 +30,11 @@ git diff pnpm-lock.yaml                无改动
 | 指标 | 改动前 | 改动后 |
 | --- | --- | --- |
 | Statements | 96.75% | **96.97%** |
-| Branches | 91.97% | **92.38%** |
+| Branches | 91.97% | **92.39%** |
 | Functions | 99.20% | **99.41%** |
 | Lines | 96.70% | **96.93%** |
 
-用例数 327 → 390(净增 63)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
+用例数 327 → 393(净增 66,含评审后补的 3 例回归锁)。本批次新增的 `page-layout.ts`、`pagination.ts`、`use-pager.ts`、`StripPages.tsx`、`PageRail.tsx`、`wheel-delta.ts`、`fader-wheel.ts`、`page-wheel.ts`、`wheel-gesture.ts` 九个文件四项指标全为 100%(v8 报告只列不足 100% 的文件,故它们不在表内);`use-pager-viewport.ts` 分支 87.5%。
 
 **云端安装的实际情况**:与 6.2.2 报告第 1 节不同,本会话 `pnpm install --frozen-lockfile --filter @flwc/web --filter @flwc/shared` **一次成功**(2 of 5 workspace projects,7.8s),`packages/shared` 的 `prepare` 自动构建了 `dist`。因此前端的四道质量门全部在本地真实跑过,不是只靠远端 CI。`apps/server` 与 `packages/test-utils` 本批次未改也未安装。
 
@@ -133,6 +134,7 @@ git diff pnpm-lock.yaml                无改动
 | `SECTION_HEADER_WIDTH_PX` | 52 | 分区/分组竖排表头宽度(原 3.2rem) | 同上 |
 | `STRIP_GAP_PX` | 1 | 同段两条通道条之间的间距 | 同上 |
 | `SEGMENT_GAP_PX` | 14 | 相邻两段之间的间距(原 0.85rem) | 同上 |
+| `PAGE_PADDING_X_PX` | 24 | 每页左右各留的内边距(原 1.5rem),**不是**放条带的地方,切页宽度要先减掉它 | 同上 |
 | `STRIP_MIN_HEIGHT_PX` | 528 | 页的最小高度(原 33rem),低于它降级为页内滚动 | 同上 |
 | `PAGE_RAIL_WIDTH_PX` | 56 | 右侧安全区宽度 | 同上 |
 | `PAGE_TRANSITION_MS` | 220 | 翻页 transform 过渡时长 | 同上 |
@@ -143,6 +145,8 @@ git diff pnpm-lock.yaml                无改动
 | `PAGE_WHEEL_QUIET_MS` | 150 | 冷却结束所需的滚轮静默时长 | 同上 |
 | `PAGE_WHEEL_COOLDOWN_MS` | 300 | 两次翻页之间的最短间隔 | 同上 |
 | `WHEEL_GESTURE_IDLE_MS` | 150 | 判定一次滚轮手势结束的静默时长 | `apps/web/src/lib/wheel-gesture.ts` |
+
+(`PAGE_PADDING_X_PX` 是评审后补的,见第 11 节;它不是提示词给的初值,而是把原本硬编码在 CSS 里的 `1.5rem` 提出来,让 TS 与 CSS 继续只有一个真相来源。)
 
 另有两个非「初值」性质的内部常量:`MOUNTED_PAGE_RADIUS = 1`(`StripPages.tsx`,当前页前后各挂载几页)与测试夹具 `STUB_PAGER_WIDTH_PX` / `STUB_PAGER_HEIGHT_PX`(`apps/web/tests/stub-mixer-layout.ts`,由 `page-layout.ts` 的常量算出,不是独立数值)。
 
@@ -280,7 +284,29 @@ git diff pnpm-lock.yaml                无改动
 
 `tests/settings-groups.integration.test.tsx` 用的是 `article.channel-strip`(后代选择器),未受影响,未改。
 
-## 10. 遗留问题与移交事项
+## 10. 评审后的修订
+
+PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 报了两条,核对下来都成立,都是本批次引入的真 bug**,已各修一个提交。两条都先写出会红的用例复现,再改,改完确认用例转绿。
+
+### 10.1(High)页内边距把最后一条通道条切掉
+
+`styles.css` 有全局 `* { box-sizing: border-box }`,而 `.mixer-page` 是 `flex: 0 0 100%` 且 `padding: 0.9rem 1.5rem`,所以它的**内容盒**比分页视口窄 48px。`MixerPage` 却把整个 `clientWidth` 当 `containerWidth` 交给 `paginate`,于是每页最多多塞 48px 的条带,超出部分被 `.mixer-bays` 的 `overflow: hidden` 横向裁掉——**一条通道条会半截露在屏幕外**,恰恰是分页最不该出的问题。这个缺陷从「3.2 页面骨架」落地起就在,本会话的所有测试都没抓到:既有断言比的是页数的相对变化,不是每页装得下几条。
+
+改法:把 `1.5rem` 提为 `PAGE_PADDING_X_PX = 24` 并发布为 `--page-padding-x`,切页宽度改成 `Math.max(0, viewportWidth - 2 * PAGE_PADDING_X_PX)`;`.mixer-page` 的横向内边距改读该变量;≤800px 的 media query 原本把横向内边距压到 0.75rem,会让 TS 与 CSS 再次对不上,改成只覆盖纵向(`padding-block`)。测试夹具 `STUB_PAGER_WIDTH_PX` 与 `mixer-wheel` 的 `PAGE_WIDTH` 同步加上这段内边距。
+
+回归锁:`mixer-pages.integration.test.tsx` 的 `packs a page to its content box, not over it`——视口正好够 6 条时第一页 6 条,少 1px 就只有 5 条。改之前这一例是红的。
+
+### 10.2(Medium)重新挂载的推子会写入过期电平
+
+`wheel-gesture.ts` 的 `begin()` 在已有持有者时直接 `return existing`、**丢弃传入的回调**,而 `Fader` 只在 `owner === null` 时才调 `begin`。于是一次滚轮手势进行中,若该通道条被 React 重新挂载(`mixer:patch` 改动通道顺序,或窗口尺寸变化让它换到另一个 `.mixer-page`——页是按序号做 key 的),新实例发现持有者已经是自己这个 channel id,就走「已持有」分支、永远不再登记。tracker 于是攥着**已卸载实例**的 `commitWheelGesture`:静默时写入旧实例的 `latestValueRef`(操作员已经滚过去、放弃了的值),而屏幕上那个真实的最终值一次都不写。演出中最坏的形态就是它。
+
+改法:同一个 owner 再次 `begin` 时**采纳它传入的回调**(结束手势的必须是还在屏幕上的那个实例);**不同 owner 依然一律不换人**,这条保证「一次手势只属于一个表面」的语义完全没动。`Fader` 相应改为持有者为空**或**已是本推子时都调 `begin`。不需要在卸载时补 commit——每一步 `onValueChange` 都过 `setLocalLevel`,新实例首次出步以 store 当前值起步,数值是连续的。
+
+回归锁:`wheel-gesture.test.ts` 的 `adopts the callback of the same owner beginning again`,以及 `mixer-wheel.integration.test.tsx` 的第 10 例(手势中把视口从三页拉成一页、迫使条带重挂,静默后只有一次 commit 且是新实例的最终值)。两例都验证过:把修复摘掉就变红。
+
+改完的质量门:53 文件 / **393** 用例全绿,覆盖率 Statements **96.97%** / Branches **92.39%** / Functions **99.41%** / Lines **96.93%**,lint / prettier / typecheck / build 全过,lockfile 仍无 diff。
+
+## 11. 遗留问题与移交事项
 
 1. **电平表实测与可能的 transform 改绘 —— 留给本地新建的小批次。** 40 通道 20 Hz 下两种视口(1920×1080、3840×1080)的帧间隔 p50/p95/最大值、>34 ms 帧占比、长任务次数一个都没测。预算是静止页 p95 ≤ 20 ms、>34 ms 帧占比 ≤ 1%、长任务 0,翻页期间每次允许 ≤ 2 帧超 34 ms。超预算时的改法提示词第 6 节写得很具体(`.meter__fill` 改 `transform: scaleY(var(--meter-ratio))` + `transform-origin: bottom` + `will-change: transform`,`.meter__peak` 改 `translateY`,`Meter.tsx` 只改写入的自定义属性,`Meter.test.tsx` 断言改读新属性)。**条带高度翻倍已经落地,电平表重绘面积随之翻倍,风险敞口是实打实的。**
 
@@ -298,7 +324,7 @@ git diff pnpm-lock.yaml                无改动
 
 8. **`apps/server` 与 `packages/test-utils` 本会话未安装也未运行**(本批次没改它们)。它们由远端 CI 的 `pnpm install --frozen-lockfile` 覆盖。
 
-## 11. 提交记录
+## 12. 提交记录
 
 | 提交 | 说明 |
 | --- | --- |
@@ -310,5 +336,8 @@ git diff pnpm-lock.yaml                无改动
 | `7936cd5` | `feat(web): adjust fader levels with the wheel` |
 | `6e5bf4d` | `feat(web): turn mixer pages with the wheel` |
 | `b00288c` | `docs: describe mixer pagination and wheel ownership` |
+| `66459ef` | `docs: add the Phase 6.3 execution report` |
+| `5317bf9` | `fix(web): pack a mixer page to its content box, not over it`(评审后) |
+| `c6bb0e0` | `fix(web): let a remounted fader finish its own wheel gesture`(评审后) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
