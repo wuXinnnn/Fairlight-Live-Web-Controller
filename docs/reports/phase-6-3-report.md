@@ -12,7 +12,7 @@
 | 6. 电平表实测与 transform 改绘 | 完成(云端跳过,由本地会话补做,见第 14 节) |
 | 7. 文档 | 完成 |
 | 评审后修订(Bugbot 五条 findings + 自查补 1 条) | 完成,见第 10 节 |
-| 本地收尾批次(电平表实测与改绘、触控板翻页、浏览器样式实测) | 完成,见第 14 节 |
+| 本地收尾批次(电平表实测与改绘、触控板翻页、浏览器样式实测、通道条定宽与读数区重做) | 完成,见第 14 节 |
 
 云端质量门(串行,全部在本会话实际执行):
 
@@ -131,8 +131,8 @@ git diff pnpm-lock.yaml                无改动
 
 | 名称 | 值 | 含义 | 文件 |
 | --- | --- | --- | --- |
-| `STRIP_WIDTH_PX` | 148 | 通道条宽度(原 9.25rem),也是切页用的最窄值 | `apps/web/src/features/mixer/page-layout.ts` |
-| † `STRIP_WIDTH_MAX_PX` | 176 | 通道条可被拉宽到的上限 | 同上 |
+| † `STRIP_WIDTH_PX` | 125 | 通道条宽度,也是切页用的值(用户手调,见 14.7) | `apps/web/src/features/mixer/page-layout.ts` |
+| † `STRIP_WIDTH_MAX_PX` | 125 | 通道条可被拉宽到的上限;与下限同值,等于关掉拉伸 | 同上 |
 | `SECTION_HEADER_WIDTH_PX` | 52 | 分区/分组竖排表头宽度(原 3.2rem) | 同上 |
 | † `SECTION_HEADER_GAP_PX` | 1 | 表头与其后首条之间的间距,**固定,不参与放大** | 同上 |
 | `STRIP_GAP_PX` | 1 | 同段两条通道条之间的间距 | 同上 |
@@ -312,6 +312,13 @@ git diff pnpm-lock.yaml                无改动
 | 同上 | `holds a peak before returning to the current reading` | `.meter__peak` 的内联 `bottom` 为 `95%` / `50%`(3 处) | 同一元素的 `--meter-peak` 为 `0.95` / `0.5` |
 | `src/lib/wheel-delta.test.ts` | `pagingDelta` 四例 | 传整个 `WheelEvent` 形状,横轴在 `deltaY === 0` 时一律生效 | 改传 `{ x, y }` 与 `shiftKey`;「Shift 下读横轴」保留,新增「无 Shift 时不读横轴」 |
 
+14.7 又改两处,同样只改读法。两条原本都断言 level 读数**没有**标签,而读数移出推子列之后它必须写出自己的名字:
+
+| 文件 | 用例 | 原断言 | 改为 |
+| --- | --- | --- | --- |
+| `tests/mixer.integration.test.tsx` | `aligns meter and level readouts and applies channel type colors` | `queryByText('LVL')` 不在文档中;读数文本 `/-12.0\s*dB/` | 读数文本 `/LVL\s*-12.0\s*dB/`,一条断言覆盖原来两条 |
+| `src/components/Fader.test.tsx` | `uses the full shortened track without clamping the fader value` | `queryByText('LVL')` 不在文档中 | `getByText('LVL')` 在文档中;同用例的 `-∞` 与滑块位置断言不变 |
+
 ## 10. 评审后的修订
 
 PR #18 的远端 CI 一次全绿,但 **Cursor Bugbot 前后报了五条(后三条都是针对上一次修复本身的),核对下来全部成立,全是本批次引入的真 bug**。每条都先写出会红的用例复现,再改,改完确认用例转绿,并逐条验证过「把修复摘掉用例就变红」。
@@ -423,7 +430,7 @@ Bugbot 在 10.3 的修复上又报一条,**成立**。卸载时 commit 会走完
 花法(依次):
 
 1. 余量先开间隙,条间距 1→6、段间距 14→28 封顶;
-2. 间隙吃不下的才拉宽通道条,148→176 封顶;
+2. 间隙吃不下的才拉宽通道条,上限封顶(**14.7 之后上限与下限同值,这一步恒为 0**);
 3. 还有剩就居中。
 
 条宽取**各页允许量的最小值**作为全局唯一值。用户的口径是「条宽全局统一、间隙允许各页不同」:统一条宽保证翻页时推子不在手下改变宽度,也保证没有一页会溢出(最紧的那页说了算);间隙逐页算,因为各页的表头数与段数本就不同。
@@ -539,6 +546,8 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 | `278c319` | `docs: record the meter measurement and the trackpad fixes`(本地收尾 14 节) |
 | `15ddcf9` | `fix(web): keep the wheel detector alive across a change of page count`(本地收尾自查) |
 | `c40bc9a` | `fix(web): stop the loudness readings being squeezed into each other`(用户实测 729×596,14.6) |
+| `9a62767` | `fix(web): give each channel reading a line of its own`(用户实测,14.7) |
+| `da62ddf` | `adjust(web): pin the channel strip to a fixed 125px width`(用户手调,14.7) |
 
 分支 `claude/elegant-meitner-rgmloj`。每个提交后 lint / typecheck / test 都跑过且为绿。
 
@@ -661,6 +670,39 @@ Phase 6.3 遗留的电平表帧率实测仍未做(第 3.6 节),条带高度翻�
 
 这一条**没有自动回归锁**:jsdom 不求值 CSS,现有测试栈断言不了「谁被画到谁上面」。它靠的是浏览器里的实测数字(单位相对自己盒子的溢出量、单位与下一个标签的间距),复核时只能再跑一次浏览器。
 
+### 14.7 通道条定宽 125px,底部读数区重做
+
+用户实测后定了两件事:通道条改用**统一固定宽度**(自适应拉伸下某些视口显得过宽),以及底部那块「电平值 + level 值」重新设计——排布杂乱、level 值与 `dB` 之间的距离会随位数变化、125px 下 level 值还会撞上电平读数的边框。
+
+**定宽**。改的是 `STRIP_WIDTH_MAX_PX`:把上限设成与下限同值(都是 125),`fitPages` 算出的 `growth` 于是恒为 0,`fit.stripWidth` 在任何视口都等于 `STRIP_WIDTH_PX`,余量全部进间隙与居中。`paginate` 与 `page-fit.ts` 一行没改——拉伸这条路还在,只是当前没有量可涨;把上限调高就重新打开。CSS 侧本来就只有一个入口(`.channel-strip` 的 `width` / `min-width` / `flex-basis` 都读 `--strip-width`),没有任何媒体查询覆盖它。
+
+**读数区的三个毛病是同一个结构问题**:两块读数分别待在电平表列(3.25rem)和推子列里,一块读数**最宽只能和它上面那个控件一样宽**。于是——
+
+1. level 值在自己那列里居中,`dB` 贴着固定列的左沿。值一变位数,居中文本的右缘就移动,**两者之间的距离随之变化**;
+2. 125px 时推子列只有 43px,而 level 值那个按钮有 `min-width: 2.7rem`(43px)、外面还套着 `overflow: visible`,于是**向左溢出到电平读数的边框上**;
+3. 一块有框、一块没框,字号 0.64/0.86rem,一个右对齐一个居中,一个有 `MTR` 标签一个没有——所以看着乱。
+
+改法是把读数从控件列里拿出来:`.channel-strip__controls` 改成三列(电平表井 / 推子轨道 / 刻度)两段式的网格,**两块读数各占一整行、横跨整条通道条**,`.meter` 与 `.fader` 用 `display: contents` 摊平,好让它们的部件落在同一张网格上。两行用同一套三列规则——标签 / 值 / 单位,**只有值那一列是弹性的**:数字向左长进没人要的空白,到 `dB` 的距离就是一个固定的 `margin`,两个 `dB` 也因此站在同一条竖线上。两行共用一条边框,合起来读作一块仪表面板。level 读数不再待在推子下面,所以它像 `MTR` 那样写出自己的名字 `LVL`。
+
+`display: contents` 会让元素本身没有盒子,原来挂在 `.meter` 上的 `opacity`(无电平时变暗)随之失效,已下移到真正要变暗的电平表井与读数上;`.fader` 上的 `position: relative` 与 `transition: opacity` 是没人用的残留(绝对定位的滑块、槽、刻度都以 `.fader__track` / `.fader__scale` 为基准),一并去掉。
+
+**浏览器实测**(1920×1080 / 1280×520 / 729×596,合成 40 通道,2× DPR):
+
+| 量 | 结果 |
+| --- | --- |
+| 通道条宽度 | 每档视口都是 125.00px |
+| 值 → 单位的距离 | MTR 与 LVL 都恒为 4.47px,26 条通道、三档视口**一个数** |
+| 两个 `dB` 的横向偏差 | 0.00px |
+| 两行之间的缝 | 0.00px(共边框) |
+| 读数溢出自己面板 | 最坏 −7.27px(即最紧的一条仍余 7.27px) |
+| 读数溢出通道条 | 最坏 −11.39px |
+| 推子滑块溢出轨道 | 最坏 −5.12px |
+| 文档横向溢出 | 0 |
+
+编辑态(点开 level 值输入框)一并量过,数字与静态态一致。16 档视口的完整扫描重跑:无横向溢出、无页头重叠、末条不被裁、安全区各档可见,`.readout__value` 在任何宽度都不截字;每页条数随定宽上升(1920 由 11 → 13 条,总页数 4)。真实浏览器的 13 项交互断言全部通过。
+
+> 扫描脚本在每一档都报一条 `clipped: CONTROL LOCK`。查过了,那是 `.control-lock legend`——一个 `1px × 1px` + `clip` 的**只读给读屏器的**标题,`scrollWidth > clientWidth` 是它的正常状态,不是缺陷。脚本的检测口径问题,与本次改动无关。
+
 ### 14.4 本地收尾批次的质量门
 
 ```
@@ -671,7 +713,7 @@ pnpm --filter @flwc/web build                成功
 git diff --stat pnpm-lock.yaml               +9 行(只有 wheel-gestures)
 ```
 
-覆盖率:Statements 97.04% / Branches 92.47% / Functions 99.43% / Lines 97.01%(门槛 80%,未调整、未新增排除项)。用例 438 → 447(净增 9)。
+覆盖率:Statements 97.05% / Branches 92.47% / Functions 99.15% / Lines 97.02%(门槛 80%,未调整、未新增排除项)。用例 438 → 447(净增 9)。14.7 改完后这一套原样重跑,结果与上表一致。
 
 ### 14.5 仍然移交用户的事项
 
@@ -680,4 +722,5 @@ git diff --stat pnpm-lock.yaml               +9 行(只有 wheel-gestures)
 3. **电平表改绘的认可**——预算本来就过了,改绘是基于「每帧一次布局」的成因做的,并且在 CPU 降频 3 倍这一档有一处未解释的反例(14.1)。要不要保留这次改绘,请拍板。
 4. **矮视口的滚动提示**——见 14.3 末尾。
 5. **页头在 700–730 宽会多出一行**(14.6 的代价)。那一档原本就是挤到重叠,换行是正确的取舍,但如果你觉得这个宽度下宁可让响度区更紧凑也不要多一行,那是一次设计决定(例如窄行下省掉 `LUFS` / `dBTP` 单位),请拍板。
-5. 第 5 节的**安全约束原样继续生效**:滚轮与翻页验收请在台面空白处、安全区与页码上做;确需动推子时只允许 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道,测后复原,不得切 ON/mute、不得动其它通道、不得删改任何通道。
+6. **125px 与新读数区的观感**(14.7)。几何上的三个毛病都有实测数字兜底,但字号(MTR 0.68rem / LVL 0.84rem)、`LVL` 值的点击区(整格约 52 × 21px)和两行合成一块面板的样子是设计判断,请在真机上看一眼;`LVL` 值仍可点开输入精确电平,请顺手试一次。
+7. 第 5 节的**安全约束原样继续生效**:滚轮与翻页验收请在台面空白处、安全区与页码上做;确需动推子时只允许 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道,测后复原,不得切 ON/mute、不得动其它通道、不得删改任何通道。
