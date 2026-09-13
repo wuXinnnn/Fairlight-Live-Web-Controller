@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode } from 'react';
+import type { PageFit } from './page-fit.js';
 import type { StripPage } from './pagination.js';
 
 /** How many pages either side of the current one stay mounted, so their meters stay subscribed. */
@@ -24,8 +25,22 @@ export interface SegmentChrome {
 
 interface StripPagesProps {
   pages: StripPage<StripStub>[];
+  /** How each page spends the width it could not fill, in the same order as `pages`. */
+  fits: PageFit[];
   chrome: Map<string, SegmentChrome>;
   pageIndex: number;
+}
+
+/** The gaps and the leading space of one page, or nothing when it is to use the deck's own. */
+function pageStyle(fit: PageFit | undefined): CSSProperties | undefined {
+  if (fit === undefined) {
+    return undefined;
+  }
+  return {
+    '--strip-gap': `${fit.stripGap}px`,
+    '--segment-gap': `${fit.segmentGap}px`,
+    '--page-lead': `${fit.lead}px`,
+  } as CSSProperties;
 }
 
 /**
@@ -36,17 +51,18 @@ interface StripPagesProps {
  * bounded. The page in view is marked `data-current`: it is the one that scrolls when the
  * viewport is too short for a strip, and the wheel has to ask it how far it has left to go.
  */
-export function StripPages({ pages, chrome, pageIndex }: StripPagesProps) {
+export function StripPages({ pages, fits, chrome, pageIndex }: StripPagesProps) {
   return (
     <div className="mixer-pages" style={{ '--page-index': pageIndex } as CSSProperties}>
       {pages.map((page, index) => {
         const current = index === pageIndex ? '' : undefined;
+        const style = pageStyle(fits[index]);
         if (Math.abs(index - pageIndex) > MOUNTED_PAGE_RADIUS) {
-          return <div className="mixer-page" key={index} data-current={current} />;
+          return <div className="mixer-page" key={index} data-current={current} style={style} />;
         }
         let position = 0;
         return (
-          <div className="mixer-page" key={index} data-current={current}>
+          <div className="mixer-page" key={index} data-current={current} style={style}>
             {page.segments.map((segment) => {
               const strips = segment.entries.map((entry) => {
                 const rendered = entry.render(position);

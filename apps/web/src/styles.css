@@ -657,7 +657,8 @@ body.is-modal-open {
   flex: 0 0 100%;
   align-items: stretch;
   overflow: hidden auto;
-  padding: 0.9rem var(--page-padding-x);
+  padding-block: 0.9rem;
+  padding-inline: calc(var(--page-padding-x) + var(--page-lead, 0px)) var(--page-padding-x);
   overscroll-behavior: contain;
   scrollbar-width: none;
 }
@@ -683,6 +684,7 @@ body.is-modal-open {
   align-items: center;
   justify-content: flex-start;
   gap: 0.7rem;
+  margin-inline-end: calc(var(--section-header-gap) - var(--strip-gap));
   padding: 1rem 0.7rem;
   border: 1px solid color-mix(in srgb, var(--channel-accent) 48%, #23262d);
   background:

@@ -6,14 +6,25 @@
  * repeating the figures.
  */
 
-/** Width of a channel strip. */
+/**
+ * Width of a channel strip, and the most it may be stretched to. Pages are split at the narrow
+ * figure; the wider one is only ever reached by spending space a page could not fill anyway.
+ */
 export const STRIP_WIDTH_PX = 148;
+export const STRIP_WIDTH_MAX_PX = 176;
 /** Width of the vertical header that labels a type section or a group. */
 export const SECTION_HEADER_WIDTH_PX = 52;
-/** Space between two strips of the same segment. */
+/**
+ * Space between a section header and the first strip behind it. It is fixed: the header reads as
+ * the shoulder of the run it labels, so it must not drift away from it as the other gaps open up.
+ */
+export const SECTION_HEADER_GAP_PX = 1;
+/** Space between two strips of the same segment, and the most it may open to. */
 export const STRIP_GAP_PX = 1;
-/** Space between two adjacent segments. */
+export const STRIP_GAP_MAX_PX = 6;
+/** Space between two adjacent segments, and the most it may open to. */
 export const SEGMENT_GAP_PX = 14;
+export const SEGMENT_GAP_MAX_PX = 28;
 /**
  * Space a page keeps on each side of its strips. It comes out of the page's width, so the
  * pagination function has to be given the width without it.

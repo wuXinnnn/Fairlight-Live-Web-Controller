@@ -23,14 +23,19 @@ import { EmptyConsole } from './EmptyConsole.js';
 import { resolveMixerEmptyState } from './empty-state.js';
 import { MissingChannelStrip } from './MissingChannelStrip.js';
 import { PageRail } from './PageRail.js';
+import { fitPages } from './page-fit.js';
 import {
   PAGE_PADDING_X_PX,
   PAGE_RAIL_WIDTH_PX,
   PAGE_TRANSITION_MS,
+  SECTION_HEADER_GAP_PX,
   SECTION_HEADER_WIDTH_PX,
+  SEGMENT_GAP_MAX_PX,
   SEGMENT_GAP_PX,
+  STRIP_GAP_MAX_PX,
   STRIP_GAP_PX,
   STRIP_MIN_HEIGHT_PX,
+  STRIP_WIDTH_MAX_PX,
   STRIP_WIDTH_PX,
 } from './page-layout.js';
 import { paginate, type LayoutSegment } from './pagination.js';
@@ -63,6 +68,7 @@ const EMPTY_RESOLVED: ResolvedViewChannel[] = [];
 const LAYOUT_VARIABLES = {
   '--strip-width': `${STRIP_WIDTH_PX}px`,
   '--section-header-width': `${SECTION_HEADER_WIDTH_PX}px`,
+  '--section-header-gap': `${SECTION_HEADER_GAP_PX}px`,
   '--strip-gap': `${STRIP_GAP_PX}px`,
   '--segment-gap': `${SEGMENT_GAP_PX}px`,
   '--strip-min-height': `${STRIP_MIN_HEIGHT_PX}px`,
@@ -260,12 +266,13 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   }
 
   const showTypePages = activeView === null || viewHasGroups;
+  // A page's side padding comes out of its width, so it is not room for strips: hand the pager
+  // the content box or the last strip on a full page is laid out past the clip.
+  const containerWidth = Math.max(0, viewportWidth - 2 * PAGE_PADDING_X_PX);
   const pages = paginate(
     segments,
     {
-      // A page's side padding comes out of its width, so it is not room for strips: hand the
-      // pager the content box or the last strip on a full page is laid out past the clip.
-      containerWidth: Math.max(0, viewportWidth - 2 * PAGE_PADDING_X_PX),
+      containerWidth,
       stripWidth: STRIP_WIDTH_PX,
       headerWidth: SECTION_HEADER_WIDTH_PX,
       stripGap: STRIP_GAP_PX,
@@ -273,6 +280,18 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
     },
     { newPagePerHeaderedSegment: typePages && showTypePages },
   );
+  // Pages are split at the narrowest geometry there is; this spends what that leaves over.
+  const fit = fitPages(pages, {
+    containerWidth,
+    stripWidth: STRIP_WIDTH_PX,
+    stripWidthMax: STRIP_WIDTH_MAX_PX,
+    headerWidth: SECTION_HEADER_WIDTH_PX,
+    headerGap: SECTION_HEADER_GAP_PX,
+    stripGap: STRIP_GAP_PX,
+    stripGapMax: STRIP_GAP_MAX_PX,
+    segmentGap: SEGMENT_GAP_PX,
+    segmentGapMax: SEGMENT_GAP_MAX_PX,
+  });
   const pageCount = Math.max(1, pages.length);
   const pager = usePager(pageCount, activeViewId);
   const { next: nextPage, previous: previousPage } = pager;
@@ -394,9 +413,18 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       {emptyState !== null ? (
         <EmptyConsole state={emptyState} onOpenConnection={onOpenConnection} />
       ) : (
-        <div className="mixer-deck" ref={setDeckNode}>
+        <div
+          className="mixer-deck"
+          ref={setDeckNode}
+          style={{ '--strip-width': `${fit.stripWidth}px` } as CSSProperties}
+        >
           <div className="mixer-bays" ref={attachViewport} data-view-id={activeView?.id}>
-            <StripPages pages={pages} chrome={chrome} pageIndex={pager.pageIndex} />
+            <StripPages
+              pages={pages}
+              fits={fit.pages}
+              chrome={chrome}
+              pageIndex={pager.pageIndex}
+            />
           </div>
           <PageRail
             pageIndex={pager.pageIndex}

@@ -10,8 +10,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import {
   PAGE_PADDING_X_PX,
+  SECTION_HEADER_GAP_PX,
   SECTION_HEADER_WIDTH_PX,
+  STRIP_GAP_MAX_PX,
   STRIP_GAP_PX,
+  STRIP_WIDTH_MAX_PX,
   STRIP_WIDTH_PX,
 } from '../src/features/mixer/page-layout.js';
 import { resetMeterStore } from '../src/store/meter-store.js';
@@ -64,6 +67,23 @@ const soloSnapshot: MixerSnapshot = { ...snapshot, channels: snapshot.channels.s
 
 function pageCount(container: HTMLElement): number {
   return container.querySelectorAll('.mixer-page').length;
+}
+
+/** A custom property published by the deck or by one of its pages. */
+function styleOf(container: HTMLElement, selector: string, property: string): string {
+  const element = container.querySelector(selector);
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`styleOf: no ${selector}`);
+  }
+  return element.style.getPropertyValue(property);
+}
+
+function leadOf(container: HTMLElement, index: number): string {
+  const page = container.querySelectorAll('.mixer-page')[index];
+  if (!(page instanceof HTMLElement)) {
+    throw new Error(`leadOf: no page ${index}`);
+  }
+  return page.style.getPropertyValue('--page-lead');
 }
 
 function currentPage(): string {
@@ -251,6 +271,66 @@ describe('mixer pagination', () => {
     ]);
     expect(buttons.filter((button) => button.hasAttribute('aria-pressed'))).toHaveLength(0);
     expect(rail.querySelector('[data-swipe-surface]')).not.toBeNull();
+  });
+
+  it('leaves the geometry alone on a page that fills its width exactly', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+
+    expect(styleOf(container, '.mixer-deck', '--strip-width')).toBe(`${STRIP_WIDTH_PX}px`);
+    expect(styleOf(container, '.mixer-page', '--strip-gap')).toBe(`${STRIP_GAP_PX}px`);
+    expect(leadOf(container, 0)).toBe('0px');
+  });
+
+  it('opens the gaps before it stretches a strip', async () => {
+    const { container } = await renderDesk();
+    // Twenty pixels over a page of six: less than the five gaps between them could take, so the
+    // strips keep their width and the gaps swallow all of it.
+    resizePager(widthFor(6) + 20);
+
+    expect(styleOf(container, '.mixer-deck', '--strip-width')).toBe(`${STRIP_WIDTH_PX}px`);
+    expect(styleOf(container, '.mixer-page', '--strip-gap')).toBe(
+      `${STRIP_GAP_PX + (20 / (5 * (STRIP_GAP_MAX_PX - STRIP_GAP_PX))) * (STRIP_GAP_MAX_PX - STRIP_GAP_PX)}px`,
+    );
+    expect(leadOf(container, 0)).toBe('0px');
+  });
+
+  it('stretches the strips to their limit and centres the rest', async () => {
+    const { container } = await renderDesk(soloSnapshot);
+    const content = 1200;
+    resizePager(content + 2 * PAGE_PADDING_X_PX);
+
+    expect(styleOf(container, '.mixer-deck', '--strip-width')).toBe(`${STRIP_WIDTH_MAX_PX}px`);
+    // One header and one strip, and half of what is over on either side of them.
+    const used = SECTION_HEADER_WIDTH_PX + SECTION_HEADER_GAP_PX + STRIP_WIDTH_MAX_PX;
+    expect(leadOf(container, 0)).toBe(`${(content - used) / 2}px`);
+  });
+
+  it('lays a short page out under the page before it', async () => {
+    const socket = new FakeSocket();
+    const viewsClient = new FakeViewsClient([
+      viewOf('grouped', 'Grouped', [
+        channelGroup({ id: 'g1', name: 'Drums' }, snapshot.channels.slice(0, 3).map(refOf)),
+        channelGroup({ id: 'g2', name: 'Keys' }, snapshot.channels.slice(3, 5).map(refOf)),
+      ]),
+    ]);
+    const { container } = render(<App socket={socket} viewsClient={viewsClient} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('option', { name: 'Grouped' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mixer view' }), {
+      target: { value: 'grouped' },
+    });
+    resizePager(2000 + 2 * PAGE_PADDING_X_PX);
+    fireEvent.click(screen.getByRole('switch', { name: 'Start each group on a new page' }));
+    expect(pageCount(container)).toBe(2);
+
+    // Three strips on the first page, two on the second. The second is left-aligned where the
+    // first one's strips start, so a strip does not move as the count changes.
+    expect(leadOf(container, 0)).not.toBe('0px');
+    expect(leadOf(container, 1)).toBe(leadOf(container, 0));
+    expect(styleOf(container, '.mixer-page[data-current]', '--strip-gap')).toBe(
+      `${STRIP_GAP_MAX_PX}px`,
+    );
   });
 
   it('adds pages as the viewport narrows and keeps the pager inside them', async () => {
