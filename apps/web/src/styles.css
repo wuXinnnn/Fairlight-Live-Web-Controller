@@ -358,6 +358,13 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(5.6rem, auto)) auto;
   align-items: stretch;
+  /*
+   * Never narrower than the numbers it is showing. Squeezed below that, the readings keep their
+   * own width and spill out of the tracks they were given — the unit of the first one lands on
+   * the label of the second. The header wraps on content everywhere else; this is what lets it
+   * wrap here too, by taking a line of its own rather than being pressed into the end of one.
+   */
+  min-width: max-content;
   /* Last on the line, and hard against its end whatever the cells before it come to. */
   margin-inline-start: auto;
 }
@@ -597,6 +604,8 @@ body.is-modal-open {
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.12em;
+  /* CONFIRM RESET is two words and must not become two lines: the header would grow under it. */
+  white-space: nowrap;
   cursor: pointer;
   transition:
     border-color var(--motion-fast) ease,
