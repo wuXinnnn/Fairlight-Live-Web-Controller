@@ -1,17 +1,44 @@
+import { useCallback, useState } from 'react';
+
 interface PageRailProps {
   pageIndex: number;
   pageCount: number;
   onPrevious(): void;
   onNext(): void;
+  onGoTo(index: number): void;
 }
 
 /**
  * The safe strip down the right-hand side of the deck: the one place an operator can put a thumb
- * or a cursor without touching the sound. It carries the page counter, the two page keys and an
- * inert track, and nothing else — no control here may reach a channel. It stays put whatever the
- * page count is, so muscle memory holds between views.
+ * or a cursor without touching the sound. It carries the page counter, the two page keys and the
+ * surface a finger turns pages on, and nothing else — no control here may reach a channel. It
+ * stays put whatever the page count is, so muscle memory holds between views.
  */
-export function PageRail({ pageIndex, pageCount, onPrevious, onNext }: PageRailProps) {
+export function PageRail({ pageIndex, pageCount, onPrevious, onNext, onGoTo }: PageRailProps) {
+  /** The page being typed into the counter, or null while it is only a readout. */
+  const [draft, setDraft] = useState<string | null>(null);
+
+  // A stable callback ref, not an inline one: an inline ref runs on every render and would take
+  // the selection back from under the operator between one keystroke and the next.
+  const openField = useCallback((field: HTMLInputElement | null) => {
+    if (field !== null) {
+      field.focus();
+      field.select();
+    }
+  }, []);
+
+  const commit = () => {
+    if (draft === null) {
+      // Confirming closes the field, and the blur that follows it must not jump a second time.
+      return;
+    }
+    const wanted = Number.parseInt(draft, 10);
+    if (Number.isFinite(wanted)) {
+      onGoTo(wanted - 1);
+    }
+    setDraft(null);
+  };
+
   return (
     <aside className="page-rail" aria-label="Pages">
       <button
@@ -26,7 +53,40 @@ export function PageRail({ pageIndex, pageCount, onPrevious, onNext }: PageRailP
         </svg>
       </button>
       <output className="page-rail__count" aria-label="Page">
-        {pageIndex + 1} / {pageCount}
+        {draft === null ? (
+          <button
+            type="button"
+            className="page-rail__jump"
+            aria-label="Jump to page"
+            title="Jump to page"
+            disabled={pageCount <= 1}
+            onClick={() => {
+              setDraft(String(pageIndex + 1));
+            }}
+          >
+            {pageIndex + 1} / {pageCount}
+          </button>
+        ) : (
+          <input
+            ref={openField}
+            className="page-rail__jump"
+            aria-label="Jump to page"
+            inputMode="numeric"
+            maxLength={3}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value.replace(/\D/gu, ''));
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commit();
+              } else if (event.key === 'Escape') {
+                setDraft(null);
+              }
+            }}
+            onBlur={commit}
+          />
+        )}
       </output>
       <button
         type="button"

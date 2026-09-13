@@ -534,6 +534,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
             pageCount={pageCount}
             onPrevious={previousPage}
             onNext={nextPage}
+            onGoTo={pager.goTo}
           />
         </div>
       )}

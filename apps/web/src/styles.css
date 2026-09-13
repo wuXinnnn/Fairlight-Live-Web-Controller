@@ -793,11 +793,49 @@ body.is-modal-open {
 }
 
 .page-rail__count {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+/*
+ * The counter is also the way to a page by its number. It wears a field's border whether or not
+ * it is being used — a touch screen has no hover to discover it with — and turns into a real
+ * field when it is pressed.
+ */
+.page-rail__jump {
+  width: 100%;
+  padding: 0.25rem 0.1rem;
+  border: 1px solid #2f333c;
+  background: #12141a;
   color: var(--text-dim);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.6rem;
   letter-spacing: 0.08em;
+  text-align: center;
   white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.page-rail__jump:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
+}
+
+.page-rail__jump:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+input.page-rail__jump {
+  appearance: none;
+  border-color: var(--amber);
+  color: var(--amber-pale);
+  caret-color: var(--amber);
+  cursor: text;
 }
 
 /* Reserved for the swipe gesture: it takes the leftover height and swallows touches. */

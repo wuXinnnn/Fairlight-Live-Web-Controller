@@ -90,6 +90,14 @@ function currentPage(): string {
   return screen.getByLabelText('Page').textContent ?? '';
 }
 
+/** Opens the counter, types a page into it and confirms, the way a finger and a keypad do. */
+function jumpTo(value: string): void {
+  fireEvent.click(screen.getByRole('button', { name: 'Jump to page' }));
+  const field = screen.getByRole('textbox', { name: 'Jump to page' });
+  fireEvent.change(field, { target: { value } });
+  fireEvent.keyDown(field, { key: 'Enter' });
+}
+
 async function renderDesk(state: MixerSnapshot = snapshot) {
   const socket = new FakeSocket();
   const rendered = render(<App socket={socket} />);
@@ -263,14 +271,96 @@ describe('mixer pagination', () => {
     expect(within(rail).queryAllByRole('switch')).toHaveLength(0);
     expect(within(rail).queryAllByRole('radio')).toHaveLength(0);
     expect(within(rail).queryByText('RESET')).toBeNull();
-    // Only the two page keys, and neither carries a pressed state a channel control would.
+    // Only the two page keys and the counter that opens for a page number, and none of them
+    // carries a pressed state a channel control would.
     const buttons = within(rail).getAllByRole('button');
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
       'Previous page',
+      'Jump to page',
       'Next page',
     ]);
     expect(buttons.filter((button) => button.hasAttribute('aria-pressed'))).toHaveLength(0);
     expect(rail.querySelector('[data-swipe-surface]')).not.toBeNull();
+  });
+
+  it('opens the counter on the page it is showing, ready to be typed over', async () => {
+    await renderDesk();
+    resizePager(widthFor(6));
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to page' }));
+
+    const field = screen.getByRole('textbox', { name: 'Jump to page' });
+    expect(field).toHaveValue('2');
+    expect(field).toHaveFocus();
+    // Selected, so the page wanted is typed rather than edited into place.
+    expect((field as HTMLInputElement).selectionStart).toBe(0);
+    expect((field as HTMLInputElement).selectionEnd).toBe(1);
+  });
+
+  it('jumps to the page typed into the counter', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+    const pages = pageCount(container);
+    expect(pages).toBeGreaterThan(3);
+
+    jumpTo('4');
+
+    expect(currentPage()).toBe(`4 / ${pages}`);
+  });
+
+  it('keeps a typed page inside the deck', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+    const pages = pageCount(container);
+
+    jumpTo('99');
+
+    expect(currentPage()).toBe(`${pages} / ${pages}`);
+  });
+
+  it('jumps when the field is left rather than confirmed', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+
+    // A numeric keypad on a touch screen has no return key, so leaving the field has to commit.
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to page' }));
+    const field = screen.getByRole('textbox', { name: 'Jump to page' });
+    fireEvent.change(field, { target: { value: '2' } });
+    fireEvent.blur(field);
+
+    expect(currentPage()).toBe(`2 / ${pageCount(container)}`);
+  });
+
+  it('stays where it is when the jump is called off', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to page' }));
+    const field = screen.getByRole('textbox', { name: 'Jump to page' });
+    fireEvent.change(field, { target: { value: '3' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+
+    expect(screen.queryByRole('textbox', { name: 'Jump to page' })).toBeNull();
+    expect(currentPage()).toBe(`1 / ${pageCount(container)}`);
+  });
+
+  it('takes nothing but a page number', async () => {
+    const { container } = await renderDesk();
+    resizePager(widthFor(6));
+
+    jumpTo('2nd');
+    expect(currentPage()).toBe(`2 / ${pageCount(container)}`);
+
+    // Nothing left of it once the digits are gone, so there is no page to go to.
+    jumpTo('e');
+    expect(currentPage()).toBe(`2 / ${pageCount(container)}`);
+  });
+
+  it('has nothing to jump to on a desk of one page', async () => {
+    await renderDesk(soloSnapshot);
+
+    expect(screen.getByRole('button', { name: 'Jump to page' })).toBeDisabled();
   });
 
   it('leaves the geometry alone on a page that fills its width exactly', async () => {
