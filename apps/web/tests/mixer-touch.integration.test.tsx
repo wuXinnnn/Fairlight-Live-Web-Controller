@@ -180,6 +180,20 @@ describe('turning pages with a finger', () => {
     expect(track('IN-1').getAttribute('aria-valuenow')).toBe('-20');
   });
 
+  it('leaves a finger that lands on ON where it is', () => {
+    mount();
+    const on = screen.getByRole('button', { name: 'IN-1 on' });
+
+    // Dragging off ON must not turn the page. The strips move under the finger otherwise, and
+    // the button the finger is still on is a channel going silent in front of an audience.
+    const allowed = drag(on, SWIPE_PX);
+
+    expect(page()).toBe('1 / 3');
+    // Nothing was turned, so nothing is swallowed either: this is still a press, and a press on
+    // ON that the operator meant has to reach the button.
+    expect(allowed).toBe(true);
+  });
+
   it('does not press what a page-turning drag ends on', () => {
     mount();
 

@@ -440,9 +440,11 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       const touch = event.touches.length === 1 ? event.touches[0] : undefined;
       if (
         touch === undefined ||
-        (target instanceof Element && target.closest('[data-wheel="level"]') !== null)
+        (target instanceof Element &&
+          target.closest('[data-wheel="level"], [data-swipe="none"]') !== null)
       ) {
-        // A fader owns the finger that lands on it, and a second finger is not a page turn.
+        // A fader owns the finger that lands on it, a surface marked `data-swipe="none"` is one
+        // a gesture may not begin on, and a second finger is not a page turn.
         touchRef.current = null;
         return;
       }
