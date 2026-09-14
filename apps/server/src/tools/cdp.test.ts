@@ -390,6 +390,42 @@ describe('launchChrome', () => {
     expect(child.kill).toHaveBeenCalled();
   });
 
+  it('stops the browser when the target list cannot be fetched', async () => {
+    const child = fakeChild();
+    const pending = launchChrome({
+      executable: 'chrome',
+      url: 'http://127.0.0.1:1234/',
+      userDataDir: '/tmp/profile',
+      spawn: vi.fn(() => child) as never,
+      fetch: vi.fn(async () => {
+        throw new Error('ECONNREFUSED');
+      }) as never,
+    });
+    child.stderr.emit('data', 'DevTools listening on ws://127.0.0.1:9/devtools/browser/abc\n');
+    await expect(pending).rejects.toThrow('ECONNREFUSED');
+    // The caller has no handle to kill yet, so a browser left running here is left running for
+    // good — on Windows it also keeps its profile directory locked.
+    expect(child.kill).toHaveBeenCalled();
+  });
+
+  it('stops the browser when the target list is not readable JSON', async () => {
+    const child = fakeChild();
+    const pending = launchChrome({
+      executable: 'chrome',
+      url: 'http://127.0.0.1:1234/',
+      userDataDir: '/tmp/profile',
+      spawn: vi.fn(() => child) as never,
+      fetch: vi.fn(async () => ({
+        json: async () => {
+          throw new Error('Unexpected token');
+        },
+      })) as never,
+    });
+    child.stderr.emit('data', 'DevTools listening on ws://127.0.0.1:9/devtools/browser/abc\n');
+    await expect(pending).rejects.toThrow('Unexpected token');
+    expect(child.kill).toHaveBeenCalled();
+  });
+
   it('kills the process it started', async () => {
     const child = fakeChild();
     const pending = launchChrome({

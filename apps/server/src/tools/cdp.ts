@@ -260,18 +260,30 @@ export async function launchChrome(options: LaunchChromeOptions): Promise<Launch
     });
   });
 
-  const response = await fetchImpl(`${devToolsHttpBase(browserSocketUrl)}/json/list`);
-  const targets = (await response.json()) as DevToolsTarget[];
-  const page = targets.find(
-    (target) => target.type === 'page' && typeof target.webSocketDebuggerUrl === 'string',
-  );
+  /*
+   * Everything past the spawn is guarded, because the caller has no handle to kill until this
+   * function returns. A browser abandoned here would be abandoned for good: nothing else knows
+   * about it, and on Windows it would go on holding its profile directory open as well.
+   */
+  let page: DevToolsTarget | undefined;
+  try {
+    const response = await fetchImpl(`${devToolsHttpBase(browserSocketUrl)}/json/list`);
+    const targets = (await response.json()) as DevToolsTarget[];
+    page = targets.find(
+      (target) => target.type === 'page' && typeof target.webSocketDebuggerUrl === 'string',
+    );
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
   if (page?.webSocketDebuggerUrl === undefined) {
     child.kill();
     throw new Error('Chrome started but opened no page to attach to');
   }
 
+  const pageSocketUrl = page.webSocketDebuggerUrl;
   return {
-    pageSocketUrl: page.webSocketDebuggerUrl,
+    pageSocketUrl,
     kill() {
       child.kill();
       /*
