@@ -12,8 +12,11 @@
 | 6. 文档(`architecture.md` / `conventions.md` / `index.html`) | 完成 |
 | 3 分钟冒烟 | 完成,两种 churn 都恢复,判定 `inconclusive` |
 | 60 分钟实跑 | 见第 5 节 |
-| 计划外的修复:总线目录探针泄漏定时器 | 完成,soak 发现,见第 4.6 节 |
-| 计划外的修复:CI 上的浏览器参数解析 | 完成,CI 短跑发现,见第 4.7 节 |
+| 计划外的修复 ①:总线目录探针泄漏定时器 | 完成,**soak 发现**,见第 3.6 节 |
+| 计划外的修复 ②:CI 上的浏览器参数解析 | 完成,**CI 短跑发现**,见第 3.7 节 |
+| 计划外的修复 ③:target list 失败时遗留 Chrome 进程 | 完成,**Bugbot 发现**,见第 10 节 |
+| 计划外的修正 ④:一条过强的 meter 断言 | 完成,**CI 发现**,见第 3.2 节末 |
+| 远端 CI 与 Bugbot | 全绿;Bugbot 1 条 finding 已修并回复,复查 `pass` |
 | 真机长时间运行验收 | **移交用户**,清单见第 8 节 |
 
 本批次全程在用户开发机上执行,没有连过真实 Fairlight,没有占用 3000 与 5173。
@@ -23,7 +26,7 @@
 ```
 pnpm lint (eslint . && prettier --check .)                        成功
 pnpm typecheck (shared + test-utils + server + web)               0 error
-pnpm test (shared 44 / test-utils 22 / server 235 / web 496)      全绿
+pnpm test (shared 44 / test-utils 22 / server 244 / web 496)      全绿
 pnpm build                                                        成功
 git status --short pnpm-lock.yaml                                 无改动
 ```
@@ -34,7 +37,7 @@ git status --short pnpm-lock.yaml                                 无改动
 | --- | ---: | ---: | ---: |
 | `packages/shared` | 44 | 44 | 0 |
 | `packages/test-utils` | 22 | 22 | 0 |
-| `apps/server` | 143 | 235 | +92 |
+| `apps/server` | 143 | 244 | +101 |
 | `apps/web` | 487 | 496 | +9 |
 
 覆盖率:
@@ -61,7 +64,7 @@ git status --short pnpm-lock.yaml                                 无改动
 | 3 | `socket.test.ts` 新增 3 条全绿;`createBrowserSocket` 对带回调的 `emit` 确实调用了 `timeout()` | **通过** |
 | 4 | 三个 soak 模块单测全绿且各 ≥ 90% 行覆盖;3 分钟冒烟两种 churn 都恢复;60 分钟实跑完成;`soak-reports/` 已忽略 | **通过**,见第 1、5 节。仓库里没有样本文件 |
 | 5 | `soak.yml` 手动触发 3 分钟短跑成功,artifact 可下载;`ci.yml` 无 diff | **通过**,但触发方式与提示词不同,见第 6 节 |
-| 6 | 全量质量门全绿,远端 CI 全绿,lockfile 无 diff,覆盖率排除只多一项 | **通过** |
+| 6 | 全量质量门全绿,远端 CI 全绿,lockfile 无 diff,覆盖率排除只多一项 | **通过**。远端 CI 两个 job 均 `pass`,Bugbot 复查 `pass` |
 | 7 | 全程没有碰真实 Fairlight,没有动 3000 / 5173 | **通过**。所有 Provider 与 server 都用 `findFreePort()`;开始前确认过 3000/5173 空闲,全程未占用 |
 
 ## 3. 实现摘要
