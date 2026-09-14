@@ -542,21 +542,6 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           <button type="button" className="console-brand__action" onClick={onOpenSettings}>
             CONFIGURE VIEWS
           </button>
-          {/*
-           * Not in the rail: that surface is the one place a hand can land without consequence,
-           * and it holds page controls only. Full screen is a document-level state, so it
-           * survives a trip to the settings page and back.
-           */}
-          {fullscreen.supported && (
-            <button
-              type="button"
-              className="console-brand__action"
-              aria-pressed={fullscreen.active}
-              onClick={fullscreen.toggle}
-            >
-              {fullscreen.active ? 'EXIT FULLSCREEN' : 'FULLSCREEN'}
-            </button>
-          )}
         </div>
         <ConnectionStatus onOpen={onOpenConnection} />
         <div className="console-preferences">
@@ -593,12 +578,18 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
               pageIndex={pager.pageIndex}
             />
           </div>
+          {/*
+           * Full screen lives at the foot of the rail, the size of a page key: the header row is
+           * a line of small type meant for a mouse, and this is reached with a thumb. It changes
+           * nothing but the browser's own chrome, so it does not breach what the rail is for.
+           */}
           <PageRail
             pageIndex={pager.pageIndex}
             pageCount={pageCount}
             onPrevious={previousPage}
             onNext={nextPage}
             onGoTo={pager.goTo}
+            fullscreen={fullscreen}
           />
         </div>
       )}

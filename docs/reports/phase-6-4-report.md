@@ -14,14 +14,14 @@
 | 8. 文档 | 完成 |
 | 浏览器冒烟(Playwright + 合成电平服务) | 完成,28/28 通过,见第 5 节 |
 | 评审后修订(Bugbot 1 条 finding) | 完成,见第 10 节 |
-| 真机验收(平板与手机) | **移交用户**,清单见第 6 节;常亮一项已验收并两次修订,见第 14、15 节 |
+| 真机验收(平板与手机) | **移交用户**,清单见第 6 节;常亮已验收并两次修订(第 14、15 节),全屏键按反馈移位(第 16 节) |
 
 本批次全程在用户开发机上执行。质量门(串行,全部实际跑过):
 
 ```
 pnpm lint (eslint . && prettier --check .)          成功
 pnpm typecheck (server + web)                        0 error
-pnpm test (shared 44 / test-utils 22 / server 143 / web 484)   全绿
+pnpm test (shared 44 / test-utils 22 / server 143 / web 487)   全绿
 pnpm --filter @flwc/web build                        成功
 git diff origin/main -- pnpm-lock.yaml               无改动
 ```
@@ -35,7 +35,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | Functions | 99.15% | **98.92%** |
 | Lines | 96.90% | **96.88%** |
 
-用例数 450 → 484(净增 34:本体 29、评审后 1、真机验收后 4),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 94.64% / 分支 88.23%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。Statements、Functions 与 Lines 各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
+用例数 450 → 487(净增 37:本体 29、评审后 1、真机验收后 7),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 94.64% / 分支 88.23%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。Statements、Functions 与 Lines 各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
 
 `apps/server`、`packages/shared`、`packages/test-utils` 本批次一行未改。
 
@@ -62,8 +62,8 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 
    **这一段记的是交付时的行为**:当时视频要等一次手势才播。真机验收之后,元素几何与触发时机都改了(第 14、15 节),冒烟也按新行为重跑过——最新结果见第 15.3 节。
 
-**6. Fullscreen:支持/不支持/拒绝三种;按钮只在支持时渲染;不在安全区 —— 通过。**
-`use-fullscreen.test.tsx` 四例(不支持时不渲染也不报错、进出全屏、被别的路径退出时跟随、被拒时只警告一次且状态不变),集成用例覆盖 jsdom 无 `fullscreenEnabled` 时页头没有按钮、装上假实现后按钮出现并可来回切换。安全区体检用例(`mixer-pages.integration.test.tsx` 里 `within(rail).getAllByRole('button')`)未动且仍绿——按钮在页头,不在安全区。浏览器实测:按钮存在,点击后 `document.fullscreenElement` 非空,再点回到非全屏。**真机移交用户,iPhone Safari 预期没有这个按钮。**
+**6. Fullscreen:支持/不支持/拒绝三种;按钮只在支持时渲染 —— 通过。**(交付时按钮在页头、不在安全区;用户验收后按要求移到了安全区底部,见第 16 节)
+`use-fullscreen.test.tsx` 四例(不支持时不渲染也不报错、进出全屏、被别的路径退出时跟随、被拒时只警告一次且状态不变),集成用例覆盖 jsdom 无 `fullscreenEnabled` 时页头没有按钮、装上假实现后按钮出现并可来回切换。安全区体检用例(`mixer-pages.integration.test.tsx` 里 `within(rail).getAllByRole('button')`)未动且仍绿——交付时按钮在页头;移进安全区之后它仍未改,另有一条新用例覆盖带全屏键的名单(第 16.3 节)。浏览器实测:按钮存在,点击后 `document.fullscreenElement` 非空,再点回到非全屏。**真机移交用户,iPhone Safari 预期没有这个按钮。**
 
 **7. manifest:构建产物里有 manifest 与图标,可取到 —— 通过。**
 `pnpm --filter @flwc/web build` 后 `dist/` 里有 `manifest.webmanifest`(455 B)、`icon-192.png`(964 B)、`icon-512.png`(3175 B)。浏览器里 `fetch('/manifest.webmanifest')` 返回 200、`content-type: application/manifest+json`、`display: "fullscreen"`。viewport meta 一字未改。**安装行为移交用户,并注明 `http` 下不会真正安装。**
@@ -95,7 +95,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 
 视频落在 `body` 而不是混音页外壳内(用户确认),元素必须在布局里且有几何——`display: none` 的视频不会被当作可见。素材摘自 nosleep.js 0.12.0 的 `src/media.js`,两个 data-URI(webm 7459 B、mp4 5026 B),文件头注明来源、版本与 MIT 许可链接。**两个素材都带一条数字静音的音频轨**,不出声靠的是 `muted`——本报告先前写的「无音频轨」是错的,见第 14.5 节。
 
-**3.6 Fullscreen。** `supported` 要求 `fullscreenEnabled === true` 且 `requestFullscreen` 是函数,不做 `webkit` 前缀回退,因此 iPhone Safari 上按钮根本不渲染。`active` 由 `fullscreenchange` 维护,读 `fullscreenElement` 时按 `!== null && !== undefined` 判断(jsdom 与部分引擎给的是 `undefined`)。两个 promise 被拒都只 `console.warn` 一次并保持原状态。按钮在页头 `CONFIGURE VIEWS` 之后,不放安全区。
+**3.6 Fullscreen。** `supported` 要求 `fullscreenEnabled === true` 且 `requestFullscreen` 是函数,不做 `webkit` 前缀回退,因此 iPhone Safari 上按钮根本不渲染。`active` 由 `fullscreenchange` 维护,读 `fullscreenElement` 时按 `!== null && !== undefined` 判断(jsdom 与部分引擎给的是 `undefined`)。两个 promise 被拒都只 `console.warn` 一次并保持原状态。交付时按钮在页头 `CONFIGURE VIEWS` 之后;**用户验收后移到了安全区底部、与翻页键同等大小**,见第 16 节。
 
 **3.7 manifest 与图标。** `display: fullscreen`、`background_color` 与 `theme_color` 都是 `#111318`、不锁定朝向。两个 PNG 由一个放在临时目录的纯 Node 脚本生成(`zlib` 手写 PNG 编码,不装任何依赖),脚本不进仓库;要点见第 7 节。`index.html` 加 manifest link、`mobile-web-app-capable`、三个 apple meta 与 apple-touch-icon,viewport 不变。
 
@@ -164,7 +164,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 12 | 在推子轨道上滑动 | 只动推子,不翻页;**只在那四个推子上试,测完复原** |
 | 13 | 翻页翻到一半松手,手指落在下一页某个 ON 上 | ON **不被按下** |
 | 14 | 通道条区滚到底之后继续同方向滑动 | 先滚到底、再翻页。**注意**:本批次关掉了 `overscroll-behavior`,滚到底之后不再有橡皮筋回弹,手感与 6.3 不同;请确认「滚到底再翻页」这一步是否还顺手 |
-| 15 | 点页头的 `FULLSCREEN` | 进入全屏(浏览器地址栏消失),按钮变 `EXIT FULLSCREEN`;再点或按返回键退出 |
+| 15 | 点**右下角**安全区底部的全屏键 | 进入全屏(浏览器地址栏消失),图标变为退出;再点或按返回键退出 |
 | 16 | 全屏状态下切到 `CONFIGURE VIEWS` 再回来 | 仍是全屏(全屏是文档级状态) |
 | 17 | **常亮**:把平板的息屏时间设成最短(如 15 秒或 30 秒),打开混音页,**不要碰屏幕**,放着不动 | 屏幕**不熄**。视频自己会播,不需要任何手势 |
 | 18 | **台子离线时应当放手**:常亮着的时候把跑服务的电脑关掉(或停掉 `pnpm dev`) | 页面进入断线态,常亮**随即停止**,平板按自己的熄屏计时睡过去 |
@@ -181,8 +181,8 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 2 | 单手拇指推 BASS 推子,另一只手的手指同时落在同一个帽子上 | 第二根手指无效;**测完复原** |
 | 3 | 从 ON 上滑动 | 不翻页、不误按 |
 | 4 | 从安全区滑动翻页 | 正常;窄屏下安全区仍应可达 |
-| 5 | **iPhone Safari**:看页头 | **没有 `FULLSCREEN` 按钮**——iOS 没有元素全屏,按钮有意不渲染。若看到了按钮,那是缺陷 |
-| 6 | **Android Chrome**:`FULLSCREEN` 按钮 | 与平板一致 |
+| 5 | **iPhone Safari**:看安全区底部 | **没有全屏键**——iOS 没有元素全屏,它有意不渲染。若看到了,那是缺陷 |
+| 6 | **Android Chrome**:安全区底部的全屏键 | 与平板一致 |
 | 7 | 常亮 | 与平板 17 相同(手机同样走降级路径) |
 | 8 | 竖屏下把页面滚到底再继续滑 | 与平板 14 相同 |
 
@@ -429,3 +429,42 @@ const wakeLockStatus = useWakeLock(deskOnline);
 - **`chrome://flags` 的做法用户自己知道**,不落进文档、也不进计划。
 
 所以架构文档、本报告第 6 节的验收清单、第 12 节遗留事项与第 14.6 节里所有「开 Chrome 标志」「把 HTTPS 提前做掉」的建议全部删除。保留的只是一条**事实**:Wake Lock API 只在安全上下文暴露,平板走 `http` 因此永远走视频那条路——它解释了降级路径为什么存在,不是建议。第 6 节的常亮验收条目相应改写为「不碰屏幕即应常亮」「关掉电脑应当放手」「开机后应当自己接管」三条。
+
+## 16. 全屏键移进安全区
+
+用户在平板上用下来的第二条反馈:页头那个 `FULLSCREEN` 文字按钮**太小了**,要求把它放到**右下角、与翻页按钮同等大小**。
+
+### 16.1 这动了一条本批次立的约定
+
+提示词第 6 节与「硬性约束」都写着:安全区「**也不放 Fullscreen 按钮**(它只放翻页控件,6.3 的约定)」。本节把它放进去了,是**用户明确要求**的变更。
+
+之所以认为这不是在拆安全区的台:那条约定背后真正的底线是「**安全区里不得有任何影响声音的控件**」——它是「可以随便碰的表面」这个性质的前提。全屏切换只动浏览器自己的边框,碰不到任何通道,而且完全可逆。底线没有被动,被动的是「只放翻页控件」这句更紧的措辞。`docs/development-plan.md` 的 6.4 交付物里那句「安全区不放它」因此与现状不符,按约定该文件只由用户改,这里标出。
+
+### 16.2 做法
+
+- 键放在滑动轨道 `[data-swipe-surface]` **之后**,而轨道是 `flex: 1`——于是它自然落在安全区的最底部,也就是屏幕右下角。
+- 直接复用 `page-rail__step` 类,**没有新增任何 CSS**:尺寸、边框、内陷高光、按下质感与两个翻页键完全一致。浏览器实测两者都是 **53 × 42 px**。
+- 图标是四角括号(进入)与向内四角(退出),`strokeWidth` 与翻页箭头同为 2.4。
+- **状态由 `aria-label` 表达,不用 `aria-pressed`**(`Enter full screen` / `Exit full screen`)。安全区的体检用例原本断言「区内没有任何带 `aria-pressed` 的按钮」,理由是带按下态的按钮只可能是通道控件;沿用这条比破例更好,而且对读屏器来说,标签直接说出下一步动作反而更清楚。
+- 页头那个文字按钮同时**撤掉**,不留两个入口。
+
+### 16.3 新的安全性质与回归锁
+
+这个键坐在拇指滑动翻页的落点上,所以多了一条必须成立的性质:**从它上面滑动翻页,不得把桌子切进全屏**。
+
+6.3 已有的机制正好覆盖:手指从安全区任何地方(包括这个键)都能起手翻页——它没有标 `data-swipe="none"`,那会白白挖掉一块可滑动面积——而翻过页的手势在 `touchend` 上 `preventDefault`,松手处的控件因此不会被按。
+
+新增两条集成用例:
+
+| 用例 | 锁住什么 |
+| --- | --- |
+| `does not open full screen with a swipe that came to rest on its key`(`mixer-touch`) | 从该键上拖过阈值:页码变了、`requestFullscreen` **一次都没被调用**、`touchend` 被拦下;而一次没翻页的轻点仍然是轻点 |
+| `keeps the full screen key to the browser chrome and out of the sound`(`mixer-pages`) | 装上全屏 API 之后,安全区的按钮名单恰好是四个、**没有一个带 `aria-pressed`**、区内仍然没有 slider 或 switch |
+
+既有的 `keeps every control that could change the sound out of the rail` 一字未改:jsdom 没有 `fullscreenEnabled`,那条用例里这个键本就不渲染,它锁的仍是原来的三个控件。
+
+### 16.4 浏览器实测
+
+生产构建 + 触摸上下文,9 项全通过:键在安全区内、是区内最后一个控件、与翻页键**同宽同高**、位于安全区底部、安全区贴着视口右缘;用**手指轻点**能进全屏、键随即改为提供退出、再点退出。截图见会话临时目录 `rail-fullscreen.png`。
+
+用例数 485 → **487**。

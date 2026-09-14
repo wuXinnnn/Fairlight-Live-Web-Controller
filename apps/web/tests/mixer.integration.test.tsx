@@ -1,5 +1,5 @@
 import { SOCKET_EVENTS, type MixerSnapshot } from '@flwc/shared';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
@@ -387,9 +387,9 @@ describe('mixer socket integration', () => {
     socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
     await screen.findByRole('heading', { name: 'BASS' });
 
-    // jsdom has no element full screen, and neither does iPhone Safari: no button at all rather
-    // than a button that does nothing.
-    expect(screen.queryByRole('button', { name: 'FULLSCREEN' })).not.toBeInTheDocument();
+    // jsdom has no element full screen, and neither does iPhone Safari: no key at all rather
+    // than one that does nothing.
+    expect(screen.queryByRole('button', { name: 'Enter full screen' })).not.toBeInTheDocument();
     unmount();
 
     let element: Element | null = null;
@@ -421,12 +421,18 @@ describe('mixer socket integration', () => {
       second.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
       await screen.findByRole('heading', { name: 'BASS' });
 
-      fireEvent.click(screen.getByRole('button', { name: 'FULLSCREEN' }));
-      const exit = screen.getByRole('button', { name: 'EXIT FULLSCREEN' });
-      expect(exit).toHaveAttribute('aria-pressed', 'true');
+      // It sits at the foot of the rail, the size of a page key, where a thumb can reach it.
+      const rail = screen.getByRole('complementary', { name: 'Pages' });
+      const enter = within(rail).getByRole('button', { name: 'Enter full screen' });
+
+      fireEvent.click(enter);
+      const exit = within(rail).getByRole('button', { name: 'Exit full screen' });
+      // The state is in the label, not in aria-pressed: a pressed state in this rail would be a
+      // channel control, and the rail holds none.
+      expect(exit).not.toHaveAttribute('aria-pressed');
 
       fireEvent.click(exit);
-      expect(screen.getByRole('button', { name: 'FULLSCREEN' })).toBeInTheDocument();
+      expect(within(rail).getByRole('button', { name: 'Enter full screen' })).toBeInTheDocument();
     } finally {
       for (const key of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
         Reflect.deleteProperty(document, key);

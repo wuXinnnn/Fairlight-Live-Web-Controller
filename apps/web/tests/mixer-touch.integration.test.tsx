@@ -207,6 +207,39 @@ describe('turning pages with a finger', () => {
     expect(touchEnd(rail(), 400)).toBe(true);
   });
 
+  it('does not open full screen with a swipe that came to rest on its key', () => {
+    let requested = 0;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: () => {
+        requested += 1;
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      mount();
+      const key = screen.getByRole('button', { name: 'Enter full screen' });
+
+      // The key is at the foot of the rail, which is exactly where a thumb turning pages comes
+      // to rest. Turning a page there must not also put the desk into full screen.
+      expect(drag(key, SWIPE_PX)).toBe(false);
+      expect(page()).toBe('2 / 3');
+      expect(requested).toBe(0);
+
+      // A tap that turned nothing is still a tap, and still opens full screen.
+      touchStart(key, 400);
+      expect(touchEnd(key, 400)).toBe(true);
+    } finally {
+      for (const name of ['fullscreenEnabled', 'fullscreenElement']) {
+        Reflect.deleteProperty(document, name);
+      }
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    }
+  });
+
   it('ignores anything that is not one finger', () => {
     mount();
 
