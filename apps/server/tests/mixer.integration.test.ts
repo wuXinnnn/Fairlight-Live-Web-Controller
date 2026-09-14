@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -9,23 +9,15 @@ import {
 } from '@flwc/test-utils';
 import {
   SOCKET_EVENTS,
-  type ControlAck,
   type MixerPatch,
   type MixerSnapshot,
   type SystemStatus,
 } from '@flwc/shared';
 import { afterEach, describe, expect, it } from 'vitest';
-import { io, type Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import type { DumpTree } from '@flwc/test-utils';
-import { start, type StartedServer } from '../src/server.js';
-
-async function writeConfig(dir: string, host: string, port: number): Promise<void> {
-  await writeFile(
-    path.join(dir, 'config.json'),
-    `${JSON.stringify({ version: 1, ember: { host, port }, views: [] }, null, 2)}\n`,
-    'utf8',
-  );
-}
+import { start } from '../src/server.js';
+import { createStackHarness, emitAck, waitFor, writeConfig } from './mixer-stack.js';
 
 function extraChannelDump(): DumpTree {
   const dump = createRequiredDump();
@@ -65,79 +57,10 @@ function extraStripNode() {
 }
 
 describe('mixer backend integration', { timeout: 15_000 }, () => {
-  const providers: MockEmberProvider[] = [];
-  const servers: StartedServer[] = [];
-  const sockets: Socket[] = [];
+  const harness = createStackHarness();
+  const { providers, servers, sockets, connectClient, startStack } = harness;
 
-  afterEach(async () => {
-    for (const socket of sockets.splice(0)) {
-      socket.disconnect();
-    }
-    await Promise.all(servers.splice(0).map((server) => server.app.close()));
-    for (const provider of providers.splice(0)) {
-      provider.close();
-    }
-  });
-
-  async function startStack(
-    dump: DumpTree = createRequiredDump(),
-    extra: { incompleteStripRetryMs?: number } = {},
-  ): Promise<{
-    server: StartedServer;
-    provider: MockEmberProvider;
-    socket: Socket;
-    url: string;
-    snapshot: MixerSnapshot;
-  }> {
-    const provider = MockEmberProvider.fromDump(dump);
-    providers.push(provider);
-    const { host, port } = await provider.listen();
-    const dir = await mkdtemp(path.join(tmpdir(), 'flwc-int-'));
-    await writeConfig(dir, host, port);
-    const httpPort = await findFreePort('127.0.0.1');
-    const server = await start({
-      host: '127.0.0.1',
-      port: httpPort,
-      configDir: dir,
-      silent: true,
-      timeoutMs: 3000,
-      disconnectTimeoutMs: 500,
-      reconnectInitialMs: 50,
-      reconnectMaxMs: 100,
-      treeRefreshDebounceMs: 20,
-      incompleteStripRetryMs: extra.incompleteStripRetryMs,
-      busDirectoryPollMs: 0,
-    });
-    servers.push(server);
-    const url = `http://127.0.0.1:${httpPort}`;
-    const { socket, snapshot } = await connectClient(url);
-    return { server, provider, socket, url, snapshot };
-  }
-
-  async function connectClient(url: string): Promise<{ socket: Socket; snapshot: MixerSnapshot }> {
-    const socket = io(url, { transports: ['websocket'], autoConnect: false });
-    sockets.push(socket);
-    const connected = new Promise<void>((resolve, reject) => {
-      socket.once('connect', () => resolve());
-      socket.once('connect_error', reject);
-    });
-    const snapshot = waitFor<MixerSnapshot>(socket, SOCKET_EVENTS.MIXER_SNAPSHOT);
-    socket.connect();
-    await connected;
-    return { socket, snapshot: await snapshot };
-  }
-
-  function waitFor<T>(socket: Socket, event: string): Promise<T> {
-    return new Promise((resolve) => {
-      socket.once(event, (payload: T) => resolve(payload));
-    });
-  }
-
-  function emitAck(socket: Socket, event: string, payload: unknown): Promise<ControlAck> {
-    return new Promise((resolve) => {
-      socket.emit(event, payload, (ack: ControlAck) => resolve(ack));
-    });
-  }
+  afterEach(harness.cleanup);
 
   it('covers connect, control round-trips, illegal commands, meters, and reconnect', async () => {
     const { server, provider, socket, snapshot, url } = await startStack();
