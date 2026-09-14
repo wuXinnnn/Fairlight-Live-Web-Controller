@@ -277,6 +277,8 @@ JS 堆斜率(热身后全部样本的最小二乘):**+4.9 KiB/分**。
 
 `samples.json` 与 `report.md` 在 `soak-reports/full/`,该目录已被 `.gitignore` 忽略,仓库里没有样本文件。
 
+**收尾的副作用检查**:实跑结束后确认没有任何 headless Chrome 残留(系统里的 chrome 进程全部属于用户自己的浏览器,无一带 soak 的 profile),`%TEMP%` 下也没有留下 `flwc-soak-*` 目录。早期几次冒烟(EBUSY 容错加上重试**之前**)确实留下过 3 个 profile 目录,共约 18 MB,已手动清掉;加了 `maxRetries: 10, retryDelay: 500` 之后的每一次运行都删干净了。
+
 ## 6. CI 短跑
 
 提示词要求用 `gh workflow run soak.yml -f minutes=3` 触发。**这条路在合并前走不通**:GitHub 要求 `workflow_dispatch` 的 workflow 文件先存在于**默认分支**才能被 API 看到,在 PR 分支上触发一律 404。
