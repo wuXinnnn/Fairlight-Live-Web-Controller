@@ -169,8 +169,15 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const liveIds = new Set(channels.map((channel) => channel.id));
   const [typePages, toggleTypePages] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
-  // The mixer holds the screen awake; the settings page has no reason to.
-  const wakeLockStatus = useWakeLock(true);
+  /*
+   * The screen is held awake only while there is a desk on the other end. The tablet is charged
+   * from the machine running the server, so when that machine is shut down the mixer goes away
+   * and the tablet should be allowed to sleep rather than sit there lit all night. When the
+   * machine comes back the tablet wakes on its own (charging), the socket reconnects, and this
+   * turns back on by itself. The settings page never holds the screen at all.
+   */
+  const deskOnline = socketConnected && emberStatus === 'connected';
+  const wakeLockStatus = useWakeLock(deskOnline);
   const fullscreen = useFullscreen();
   const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({

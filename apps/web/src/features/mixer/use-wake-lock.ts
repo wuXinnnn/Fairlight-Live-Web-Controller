@@ -156,30 +156,47 @@ export function useWakeLock(enabled: boolean, env?: WakeLockEnvironment): WakeLo
       };
     }
 
-    // The fallback. The element goes in straight away so that the first gesture has something to
-    // play; autoplay policy is why it cannot simply start here.
+    // The fallback. A muted clip is exempt from the autoplay policy, so it does not wait to be
+    // touched: when the desk comes back after the computer it is plugged into was switched on,
+    // the tablet has lit up by itself and there is nobody standing over it.
     media.attach();
 
-    const startPlayback = () => {
+    const startPlayback = (fromGesture: boolean) => {
       if (cancelled || media.playing || doc.visibilityState !== 'visible') {
         return;
       }
-      // Said synchronously on purpose. This runs inside a real user gesture, so playing is the
-      // expected outcome, and announcing it here keeps the update inside React's event batch
-      // rather than landing in a microtask after every test's act() has closed.
-      setHeld('active');
-      void media.start().catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        warnOnce('play', 'Unable to play the wake-lock video.', error);
-        setHeld('denied');
-      });
+      if (fromGesture) {
+        // Said ahead of the promise on purpose: inside a real gesture playing is the expected
+        // outcome, and announcing it here keeps the update in React's event batch rather than
+        // in a microtask after the surrounding act() has closed.
+        setHeld('active');
+      }
+      void media.start().then(
+        () => {
+          // `playing` is false if a pause or a teardown overtook this start while it was in
+          // flight — announcing `active` here anyway would describe a clip that has stopped.
+          if (!cancelled && !fromGesture && media.playing) {
+            setHeld('active');
+          }
+        },
+        (error: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          warnOnce('play', 'Unable to play the wake-lock video.', error);
+          setHeld('denied');
+        },
+      );
+    };
+
+    const startFromGesture = () => {
+      startPlayback(true);
     };
 
     const handleVisibility = () => {
       if (doc.visibilityState === 'visible') {
-        // Coming back to the foreground is not a gesture. Wait for a finger.
+        // Back in view, so try again unprompted — the tablet may have woken on its own.
+        startPlayback(false);
         return;
       }
       media.stop();
@@ -188,13 +205,15 @@ export function useWakeLock(enabled: boolean, env?: WakeLockEnvironment): WakeLo
       }
     };
 
-    doc.addEventListener('pointerdown', startPlayback, { passive: true });
-    doc.addEventListener('keydown', startPlayback, { passive: true });
+    // Kept as the fallback for an engine that refuses to start a clip nobody asked for.
+    doc.addEventListener('pointerdown', startFromGesture, { passive: true });
+    doc.addEventListener('keydown', startFromGesture, { passive: true });
     doc.addEventListener('visibilitychange', handleVisibility);
+    startPlayback(false);
     return () => {
       cancelled = true;
-      doc.removeEventListener('pointerdown', startPlayback);
-      doc.removeEventListener('keydown', startPlayback);
+      doc.removeEventListener('pointerdown', startFromGesture);
+      doc.removeEventListener('keydown', startFromGesture);
       doc.removeEventListener('visibilitychange', handleVisibility);
       media.stop();
       media.destroy();

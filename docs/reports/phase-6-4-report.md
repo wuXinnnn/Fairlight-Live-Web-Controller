@@ -14,14 +14,14 @@
 | 8. 文档 | 完成 |
 | 浏览器冒烟(Playwright + 合成电平服务) | 完成,28/28 通过,见第 5 节 |
 | 评审后修订(Bugbot 1 条 finding) | 完成,见第 10 节 |
-| 真机验收(平板与手机) | **移交用户**,清单见第 6 节;常亮一项已验收并修订,见第 14 节 |
+| 真机验收(平板与手机) | **移交用户**,清单见第 6 节;常亮一项已验收并两次修订,见第 14、15 节 |
 
 本批次全程在用户开发机上执行。质量门(串行,全部实际跑过):
 
 ```
 pnpm lint (eslint . && prettier --check .)          成功
 pnpm typecheck (server + web)                        0 error
-pnpm test (shared 44 / test-utils 22 / server 143 / web 480)   全绿
+pnpm test (shared 44 / test-utils 22 / server 143 / web 484)   全绿
 pnpm --filter @flwc/web build                        成功
 git diff origin/main -- pnpm-lock.yaml               无改动
 ```
@@ -35,7 +35,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | Functions | 99.15% | **98.92%** |
 | Lines | 96.90% | **96.88%** |
 
-用例数 450 → 480(净增 30,含评审后新增的 1 条回归锁),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 94.64% / 分支 88.23%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。Statements、Functions 与 Lines 各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
+用例数 450 → 484(净增 34:本体 29、评审后 1、真机验收后 4),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 94.64% / 分支 88.23%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。Statements、Functions 与 Lines 各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
 
 `apps/server`、`packages/shared`、`packages/test-utils` 本批次一行未改。
 
@@ -56,9 +56,11 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 `mixer-touch.integration.test.tsx` 由 8 例增到 9 例,新增用例断言从 ON 上拖过阈值后页码不变、`touchend` 返回 `true`(没被 `preventDefault`,因为这不是翻页手势)。既有三条安全性质用例(单指判定、滚到底再翻、翻页后不误按)未动且仍绿。同样做过破坏验证:移除 `[data-swipe="none"]` 排除后该用例变红。
 
 **5. Wake Lock:两条路径的申请、释放、重申请与拒绝分支 —— 通过,且媒体路径在真实浏览器里实测到了。**
-`use-wake-lock.test.tsx` 九例覆盖原生路径(拿到→系统收回→回到可见重申请、被拒后仍在下次可见时再试且只警告一次、`enabled` 变假时 `release()`)与媒体路径(挂载后不播、首次 `pointerdown` 才播、隐藏时暂停、回到可见不自动播而等下一次 `keydown`、`play()` 被拒→`denied`、`timeupdate` 回绕、卸载移除元素),外加 `unsupported` 分支。集成用例断言 jsdom 下 `.mixer-shell[data-wake-lock]` 为 `idle`、`video.wake-media` 在场且 `muted`,点击后变 `active`,切到配置页后视频被移除。
+`use-wake-lock.test.tsx` 十一例覆盖原生路径(拿到→系统收回→回到可见重申请、被拒后仍在下次可见时再试且只警告一次、`enabled` 变假时 `release()`)与媒体路径(挂载即自己播、隐藏时暂停、回到可见自己恢复、引擎拒绝自动播时手势兜底、在途播放被暂停追上时不宣告 `active`、`play()` 被拒→`denied` 且只警告一次、`timeupdate` 回绕、卸载移除元素、**台子离线时不持有、回来时无人触碰自动恢复**),外加 `unsupported` 分支。集成用例断言 jsdom 下 `video.wake-media` 在场且 `muted`、`.mixer-shell[data-wake-lock]` 自行变 `active`,切到配置页后视频被移除;另一例走完「Ember 掉线→放手→Ember 回来→自动恢复」。这一节的用例在第 15 节按新需求改写过。
 
-浏览器实测把两条路径都走到了:`http://127.0.0.1:3100`(安全上下文)下 `navigator.wakeLock` 是 object、`data-wake-lock` 为 `active`、页面上没有任何 video;`http://192.168.50.115:3100`(同一个服务的局域网地址,**不是**安全上下文,与平板的处境相同)下 `navigator.wakeLock` 为 `undefined`,静音视频在文档内、两个 source、状态 `idle` 且暂停,点一下页头之后状态变 `active`、`paused` 变 `false`。**这证明了降级路径在真实 Chrome 的非安全源下确实接管并开始播放;但「屏幕是否真的不熄」只有平板知道,移交用户**(操作步骤见第 6 节,含 Chrome 标志的开法)。
+浏览器实测把两条路径都走到了:`http://127.0.0.1:3100`(安全上下文)下 `navigator.wakeLock` 是 object、`data-wake-lock` 为 `active`、页面上没有任何 video;`http://192.168.50.115:3100`(同一个服务的局域网地址,**不是**安全上下文,与平板的处境相同)下 `navigator.wakeLock` 为 `undefined`,静音视频在文档内、两个 source、状态 `idle` 且暂停,点一下页头之后状态变 `active`、`paused` 变 `false`。**这证明了降级路径在真实 Chrome 的非安全源下确实接管并开始播放;但「屏幕是否真的不熄」只有平板知道,移交用户**(操作步骤见第 6 节)。
+
+   **这一段记的是交付时的行为**:当时视频要等一次手势才播。真机验收之后,元素几何与触发时机都改了(第 14、15 节),冒烟也按新行为重跑过——最新结果见第 15.3 节。
 
 **6. Fullscreen:支持/不支持/拒绝三种;按钮只在支持时渲染;不在安全区 —— 通过。**
 `use-fullscreen.test.tsx` 四例(不支持时不渲染也不报错、进出全屏、被别的路径退出时跟随、被拒时只警告一次且状态不变),集成用例覆盖 jsdom 无 `fullscreenEnabled` 时页头没有按钮、装上假实现后按钮出现并可来回切换。安全区体检用例(`mixer-pages.integration.test.tsx` 里 `within(rail).getAllByRole('button')`)未动且仍绿——按钮在页头,不在安全区。浏览器实测:按钮存在,点击后 `document.fullscreenElement` 非空,再点回到非全屏。**真机移交用户,iPhone Safari 预期没有这个按钮。**
@@ -87,8 +89,8 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 **3.5 Wake Lock 的两条路径,各在什么条件下生效。**
 
 - **原生路径**:`env.wakeLock` 存在时走,即**安全上下文**(`https://`,或 `http://localhost` / `http://127.0.0.1`)。`enabled` 且文档可见时 `request('screen')`,拿到 sentinel 即 `active`;sentinel 的 `release` 事件(系统收回、切后台、省电模式)回 `idle`;`visibilitychange` 回到 `visible` 时重新申请——**被拒过也会再试**,平板从锁屏回来常常就给了。`request` 被拒 → `denied` 且 `console.warn` 一次,不重试、不提示。
-- **媒体降级路径**:`navigator.wakeLock` 为 `undefined` 时走,即平板走 `http://<局域网 IP>` 的实际情况。混音页挂载即把铺满视口的透明静音循环视频放进 `body`,但**不播**;`document` 上第一次 `pointerdown` 或 `keydown` 之后才 `start()`(自动播放策略要求手势);页面隐藏 `pause()` 回 `idle`,回到可见不自动播、等下一次触摸。`play()` 被拒 → `denied` 且 `console.warn` 一次,下一次交互再试。
-- 两条路径都**静默**:屏幕上没有任何提示,失败只在 console 留一行,与偏好 hook 的先例一致。状态写在 `.mixer-shell` 的 `data-wake-lock` 上只供测试与冒烟读。
+- **媒体降级路径**:`navigator.wakeLock` 为 `undefined` 时走,即平板走 `http://<局域网 IP>` 的实际情况。混音页挂载即把铺满视口的透明静音循环视频放进 `body` 并**立即开始播**——静音媒体不受自动播放策略约束,而平板是自己亮屏的,不能等人来碰(见第 15 节);`document` 上的 `pointerdown` / `keydown` 仍挂着作为引擎拒绝时的兜底。页面隐藏 `pause()` 回 `idle`,回到可见自己再试一次。`play()` 被拒 → `denied` 且 `console.warn` 一次,下一次交互再试。
+- 两条路径都只在**台子在线时**才持有:`socketConnected && emberStatus === 'connected'`(见第 15 节)。两条都**静默**:屏幕上没有任何提示,失败只在 console 留一行,与偏好 hook 的先例一致。状态写在 `.mixer-shell` 的 `data-wake-lock` 上只供测试与冒烟读。
 - `unsupported` 只在两条路都不通时出现(没有原生 API,且文档没有浏览上下文)。提示词给的两条路径都到不了这个值,定义是本批次补的,见第 8 节。
 
 视频落在 `body` 而不是混音页外壳内(用户确认),元素必须在布局里且有几何——`display: none` 的视频不会被当作可见。素材摘自 nosleep.js 0.12.0 的 `src/media.js`,两个 data-URI(webm 7459 B、mp4 5026 B),文件头注明来源、版本与 MIT 许可链接。**两个素材都带一条数字静音的音频轨**,不出声靠的是 `muted`——本报告先前写的「无音频轨」是错的,见第 14.5 节。
@@ -124,8 +126,8 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 8 | `.mixer-shell` 高度 == `window.innerHeight` | 是 |
 | 9 | 安全源:`data-wake-lock` 且页面上无 video | `active` / 无 |
 | 10 | 局域网源:`typeof navigator.wakeLock` | `undefined` |
-| 11 | 局域网源:视频在场、`muted`、两个 source、状态 `idle` 且暂停 | 全部符合 |
-| 12 | 局域网源:触摸一下之后 | `active`,`paused === false` |
+| 11 | 局域网源:视频在场、`muted`、两个 source、状态 `idle` 且暂停 | 全部符合(交付时行为,见第 15.3 节的重跑) |
+| 12 | 局域网源:触摸一下之后 | `active`,`paused === false`(交付时行为,现已改为自行播放) |
 | 13 | 触摸上下文里 hover ON 按钮 | 边框不变(`rgb(166, 125, 45)` → 同值) |
 | 14–15 | 桌面上下文报 hover,且 hover 改变边框 | 是;`rgb(166, 125, 45)` → `rgb(104, 110, 123)` |
 | 16–17 | 安全源上原生锁与 `navigator.wakeLock` 类型 | `active` / `object` |
@@ -164,11 +166,12 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 14 | 通道条区滚到底之后继续同方向滑动 | 先滚到底、再翻页。**注意**:本批次关掉了 `overscroll-behavior`,滚到底之后不再有橡皮筋回弹,手感与 6.3 不同;请确认「滚到底再翻页」这一步是否还顺手 |
 | 15 | 点页头的 `FULLSCREEN` | 进入全屏(浏览器地址栏消失),按钮变 `EXIT FULLSCREEN`;再点或按返回键退出 |
 | 16 | 全屏状态下切到 `CONFIGURE VIEWS` 再回来 | 仍是全屏(全屏是文档级状态) |
-| 17 | **常亮(直接访问)**:把平板的息屏时间设成最短(如 15 秒或 30 秒),打开混音页,触摸一次屏幕,然后放着不动 | 屏幕**不熄**。这条走的是静音视频降级。若仍然熄屏,请记下平板型号与 Android/Chrome 版本 |
-| 18 | **常亮(开启 Chrome 标志后)**:在平板 Chrome 地址栏输入 `chrome://flags/#unsafely-treat-insecure-origin-as-secure`,在输入框里填 `http://<开发机 IP>:5173`,把开关改成 Enabled,按提示 Relaunch;重新打开混音页 | 这时走的是原生 Screen Wake Lock。同样放着不动,屏幕**不熄**。(这条是给对照用的:如果 17 熄了而 18 不熄,说明降级路径在这台设备上不管用) |
-| 19 | 常亮验收完成后 | **把 Chrome 标志改回 Disabled、把息屏时间改回原值** |
-| 20 | 长按混音页地址栏图标「添加到主屏幕」 | 会得到一个书签。**`http` 不是安全上下文,所以不会真正安装成应用**(打开后仍带浏览器边框),这是预期的,不是缺陷;要真正安装得等 Phase 7 的 HTTPS |
-| 21 | 横屏与竖屏各走一遍 1–14 | 行为一致 |
+| 17 | **常亮**:把平板的息屏时间设成最短(如 15 秒或 30 秒),打开混音页,**不要碰屏幕**,放着不动 | 屏幕**不熄**。视频自己会播,不需要任何手势 |
+| 18 | **台子离线时应当放手**:常亮着的时候把跑服务的电脑关掉(或停掉 `pnpm dev`) | 页面进入断线态,常亮**随即停止**,平板按自己的熄屏计时睡过去 |
+| 19 | **台子回来时应当自己接管**:重新开机、起 `pnpm dev`,平板在充电所以会自己亮屏 | **不要碰平板**。socket 重连、Ember 接上之后,常亮应当自己恢复,屏幕从此不再熄 |
+| 20 | 常亮验收完成后 | 把息屏时间改回原值 |
+| 21 | 长按混音页地址栏图标「添加到主屏幕」 | 会得到一个书签。**`http` 不是安全上下文,所以不会真正安装成应用**(打开后仍带浏览器边框),这是预期的,不是缺陷 |
+| 22 | 横屏与竖屏各走一遍 1–14 | 行为一致 |
 
 ### 手机
 
@@ -218,8 +221,8 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 **8.6 `WakeLockStatus` 的 `unsupported` 是补定义的。**
 提示词给了四个状态值,但它描述的两条路径都产生不了 `unsupported`(没有原生 API 就走媒体降级,而媒体降级总是可用的),那会是一个永远走不到的死分支。定义补成「没有原生 API **且** 媒体控制器自报不支持」,判据是 `doc.defaultView !== null`——没有浏览上下文的文档播不了媒体,这是真命题,也给了测试一个不需要任何 mock 的入口(`document.implementation.createHTMLDocument()`)。
 
-**8.7 媒体路径的 `active` 是同步乐观置位的。**
-如果在 `play()` 的 `.then()` 里置位,这个 setState 会落在微任务里,而混音页的现存集成用例只要派发过 `pointerdown` 就会触发它,`act()` 早已关闭 → 满屏 act 告警。手势里 `play()` 几乎必然成功,所以同步说 `active`,只在被拒时改成 `denied`。
+**8.7 媒体路径由手势触发时,`active` 是同步乐观置位的。**
+如果在 `play()` 的 `.then()` 里置位,这个 setState 会落在微任务里,而混音页的现存集成用例只要派发过 `pointerdown` 就会触发它,`act()` 早已关闭 → 满屏 act 告警。手势里 `play()` 几乎必然成功,所以同步说 `active`,只在被拒时改成 `denied`。第 15 节加入的自动播放走的是另一条:它不乐观置位,状态跟着 promise 走,并且要 `media.playing` 仍为真才宣告 `active`。
 
 **8.8 `use-wake-lock` 的两处状态改成渲染期派生,不在 effect 里同步 setState。**
 初版在 effect body 里对 `unsupported` 与 `!enabled` 直接 `setStatus`,被 `react-hooks/set-state-in-effect` 挡下——它说得对,那是白白多一次渲染。这两个值本来就是参数的函数,改成返回前算;effect 内部只保留一个表示「此刻持有什么」的 state。
@@ -232,7 +235,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 
 ## 9. 被改写的既有用例清单
 
-**没有既有用例被改写断言意图。** 两处非断言的调整:
+**本批次交付时没有既有用例被改写断言意图**(真机验收后因需求变更改写了 3 条本批次自己写的用例,见第 15.4 节)。两处非断言的调整:
 
 1. `Fader.test.tsx` 的 `renderFader` 拆成 `faderProps()` + `renderFader()`,以便一次渲染两个推子。既有 19 例一字未改,全部仍绿。
 2. `mixer-touch.integration.test.tsx` 既有 8 例未动,只在中间插入一条新用例。
@@ -266,10 +269,10 @@ Cursor Bugbot 在首次推送后给出 **1 条 finding**,成立,已修。
 ## 12. 遗留问题与移交事项
 
 1. **真机验收全部移交用户**,清单见第 6 节。本会话没有任何触屏设备,所有触屏手感只能由用户确认;冒烟里的「触摸上下文」是 Chromium 模拟的,不能代替真机。
-2. **平板上的常亮能不能真的生效,只有真机知道。** 冒烟证明了非安全源下降级路径确实接管并开始播放,但「屏幕不熄」是操作系统的行为,浏览器里测不出来。第 6 节给了 Chrome 标志的开法,用来对照原生路径。
+2. **常亮已在平板上验收通过**(见第 14、15 节)。修好的是这台平板上这个 Chrome 版本的行为——面积门槛是 Chrome 的实现细节,没有文档,版本更新可能再次改变。真正的兜底仍然只有回到本节第 6 条的诊断办法重测一轮。
 3. **`-webkit-touch-callout` 在 Chrome 里测不到**,长按菜单的实际行为要在真机(尤其 iOS Safari)上看。
 4. **`overscroll-behavior: none` 之后「滚到底再翻页」的手感变化**需要用户确认,见 8.10。
-5. **PWA 安装在 `http` 下不会真正发生**,manifest 与 meta 已就位,等 Phase 7 的 HTTPS 或 Chrome 标志。平板顶部状态栏的进一步隐藏方案(APK 封装、adb 之类)按提示词不在本批次。
+5. **PWA 安装在 `http` 下不会真正发生**,manifest 与 meta 已就位,但本项目是本地部署、不打算引入 HTTPS,所以这一条实际上不会生效——留着无害,也不必为它做什么。平板顶部状态栏的进一步隐藏方案(APK 封装、adb 之类)按提示词不在本批次。
 6. **6.3 的触控板翻页复测仍未完成**,与本批次无关,继续挂在 6.3 名下。
 7. **安全约束原样继续生效**:真机验收只允许动 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道的推子并测后复原,不得切 ON/mute、不得动其它通道、不得删改任何通道。
 
@@ -347,6 +350,72 @@ PR 开出后用户在安卓平板上验收,**视频降级路径没有生效**:�
 
 ### 14.6 仍然移交用户
 
-- 这次修好的是**这台平板上这个 Chrome 版本**的行为。面积门槛是 Chrome 的实现细节,没有文档,任何一次版本更新都可能再次改变。视频这条路始终是权宜之计。
-- **可靠的解法仍然是让平板走安全上下文**,用原生 Wake Lock API:`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 加上该源,或者把 Phase 7 的 HTTPS 提前做掉。建议把后者排进计划,而不是长期依赖这张透明布。
-- 修好之后请在平板上复测:混音页放置到超过熄屏时间应当保持常亮,且**满屏的透明视频不得影响任何触摸操作**——推子、ON、翻页、安全区滑动都要照常。这一条是本次改动唯一可能引入的副作用(已由 `pointer-events: none` 与回归锁把关,但真机要看一眼)。
+- 这次修好的是**这台平板上这个 Chrome 版本**的行为。面积门槛是 Chrome 的实现细节,没有文档,任何一次版本更新都可能再次改变。视频这条路是这个项目唯一的路:本地部署不引入 HTTPS,所以安全上下文与原生 Wake Lock API 不在考虑之内。哪天它再次失效,重新跑一遍 14.2 的诊断办法即可。
+- **用户已复测通过**:常亮生效,且满屏透明视频没有影响任何触摸操作(推子、ON、翻页、安全区滑动照常)。
+
+## 15. 常亮跟随台子的在线状态
+
+第 14 节把常亮修到生效之后,用户提出了使用场景带来的第二个要求:平板是**接在跑服务的那台电脑上充电**的,所以
+
+> 电脑关机 → Fairlight 离线 → 平板可以休眠;电脑开机 → 平板充电自动亮屏 → Fairlight 重连 → 常亮再次接管。
+
+原先 `useWakeLock(true)` 是写死的:只要混音页开着就一直点着屏幕,电脑关了平板也整夜亮着。
+
+### 15.1 判据
+
+```ts
+const deskOnline = socketConnected && emberStatus === 'connected';
+const wakeLockStatus = useWakeLock(deskOnline);
+```
+
+两个条件都取自 `mixerStore` 里**已有**的字段,没有新增状态。用两个而不是一个是有意的:电脑关机时后端进程先没,**socket 会先断**,不必等 Ember 的超时——常亮当场放手,平板立刻开始走自己的熄屏计时。反过来开机时,socket 重连与 Ember 接上都到位才重新点亮。`reconnecting` 这类中间态一律不算在线,宁可让屏幕暗一会儿,也不要在台子其实没回来的时候空点着。
+
+### 15.2 一个必须同时解决的问题:没有人会来碰平板
+
+原实现按提示词第 5 节写成「只在用户第一次交互之后开始播放」。在新场景里这条直接把需求堵死:电脑开机后**平板是自己亮的,身边没有人**,永远等不到那次 `pointerdown`,常亮也就永远恢复不了。
+
+改法的依据是一条平台事实:**静音媒体不受自动播放策略约束**,`muted` 的视频不需要任何手势就能 `play()`。所以视频现在在 `enabled` 成立时自己开始播;`pointerdown` / `keydown` 两个监听**保留**,作为某些引擎仍然拒绝自动播放时的兜底,`visibilitychange` 回到可见时也自己再试一次。这一条是对提示词原定「触发时机由用户决定」的**有意偏离**,理由就是上面这个场景——旧的时机会让新需求无法实现。
+
+顺带修掉了同一处的一个时序缺陷(与第 10.1 节 Bugbot 那条同源,只是换到了 hook 这一层):自动播放的 promise 落地时原本无条件宣告 `active`,哪怕这期间页面已经隐藏、视频已被 `stop()`。现在要 `media.playing` 仍为真才宣告——那个标志由控制器的 `playGeneration` 守着。回归锁是 `plays again after being hidden while play() was still in flight`,改动前它确实变红。
+
+### 15.3 浏览器实测
+
+用 Playwright 驱动本机 Chrome,对着生产构建、走**局域网地址**(非安全上下文,与平板一致),合成服务加了几个开关用来扮演关机与开机。**全程没有向页面发过任何手势**——这正是要验证的事。7 项全通过:
+
+| # | 步骤 | 结果 |
+| --- | --- | --- |
+| 1 | 该源上的 `navigator.wakeLock` | `undefined`(与平板一致,走视频路) |
+| 2 | 页面加载后,未触碰任何地方 | `data-wake-lock` 为 `active`,视频在场且 `paused === false` |
+| 3 | Ember 掉线 | 变 `idle`,视频元素被移除 |
+| 4 | Ember 回来(仍未触碰) | 自己变回 `active`,视频重新在场并播放 |
+| 5 | 整个后端断开(传输层断,等同关机) | 变 `idle`,视频被移除 |
+| 6 | 后端回来、socket 自动重连(仍未触碰) | 自己变回 `active` |
+| 7 | 用 CDP 双指拖推子 | −20 → −11.1,**满屏透明视频没有挡住触摸** |
+
+第 5 步有个坑值得记:最初用服务端的 `socket.disconnect()` 模拟关机,客户端收到的是 `io server disconnect`,socket.io **按设计不会自动重连**,于是第 6 步失败了。真实的关机是传输层在客户端脚下断掉,那种情况客户端会自己重连。改用 `io.engine.close()` 之后 6 与 7 都通过。**这是模拟方式的错,不是产品缺陷**——但如果当时不查清楚就去改产品代码,就会修错东西。
+
+第 7 步之前也失败过一次,原因是第 6 步没恢复、断线态下推子本来就被禁用,是连带结果而非透明布挡住了触摸。
+
+### 15.4 被改写的既有用例
+
+本节改写了 **3 条**本批次自己写的用例,因为它们断言的正是「等手势」这条已被需求推翻的语义:
+
+| 用例 | 改法 |
+| --- | --- |
+| `waits for a gesture, gives up the screen when hidden and waits again` | 改名为 `starts on its own, gives up the screen when hidden and comes back unprompted`,断言挂载即播、隐藏即停、回到可见自己恢复 |
+| `plays again after being hidden while play() was still in flight` | 去掉手动触发的 `pointerDown`,改由自动播放发起;断言不变 |
+| `takes a refused play quietly` | 补一条:兜底手势再被拒时,`console.warn` 仍然只有一次 |
+| 集成 `keeps the screen awake through the video fallback…` | 去掉「点击后才 active」,改为挂载后自行变 `active` |
+
+新增 4 条:引擎拒绝自动播放时手势兜底、台子离线不持有且回来自动恢复(单测)、Ember 掉线与回归的完整往返(集成)、以及上面那条时序回归锁。
+
+用例数 481 → **484**,`apps/web` 覆盖率 Statements 96.9% 一带,门槛 80% 未动。
+
+### 15.5 文档口径的调整
+
+用户明确了两件事,文档按此改口径:
+
+- **不做 HTTPS**,这是本地部署的项目;
+- **`chrome://flags` 的做法用户自己知道**,不落进文档、也不进计划。
+
+所以架构文档、本报告第 6 节的验收清单、第 12 节遗留事项与第 14.6 节里所有「开 Chrome 标志」「把 HTTPS 提前做掉」的建议全部删除。保留的只是一条**事实**:Wake Lock API 只在安全上下文暴露,平板走 `http` 因此永远走视频那条路——它解释了降级路径为什么存在,不是建议。第 6 节的常亮验收条目相应改写为「不碰屏幕即应常亮」「关掉电脑应当放手」「开机后应当自己接管」三条。

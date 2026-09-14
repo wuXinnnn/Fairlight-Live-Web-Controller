@@ -133,21 +133,19 @@ describe('useWakeLock', () => {
   });
 
   describe('with the video fallback', () => {
-    it('waits for a gesture, gives up the screen when hidden and waits again', async () => {
+    it('starts on its own, gives up the screen when hidden and comes back unprompted', async () => {
       const play = vi.spyOn(HTMLMediaElement.prototype, 'play');
       const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause');
       const env = mediaEnvironment();
       render(<Probe enabled env={env} />);
 
-      // The element is in the document from the start, but autoplay policy means it cannot
-      // play until something is touched.
+      // A muted clip is exempt from the autoplay policy, so nobody has to touch anything. That
+      // matters because the tablet lights itself up when the machine it charges from boots, and
+      // there is no one standing over it to provide a gesture.
       expect(video()).not.toBeNull();
       expect(video()?.muted).toBe(true);
-      expect(play).not.toHaveBeenCalled();
-      expect(status()).toBe('idle');
-
-      fireEvent.pointerDown(document.body);
       expect(play).toHaveBeenCalledTimes(1);
+      await settle();
       expect(status()).toBe('active');
 
       act(() => {
@@ -156,13 +154,47 @@ describe('useWakeLock', () => {
       expect(pause).toHaveBeenCalled();
       expect(status()).toBe('idle');
 
-      // Coming back into view is not a gesture; the next key press is.
       act(() => {
         setVisibility('visible');
       });
-      expect(play).toHaveBeenCalledTimes(1);
-      fireEvent.keyDown(document.body, { key: 'a' });
+      await settle();
       expect(play).toHaveBeenCalledTimes(2);
+      expect(status()).toBe('active');
+    });
+
+    it('still takes a gesture as a second chance when the engine refuses on its own', async () => {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, 'play')
+        .mockRejectedValueOnce(new DOMException('gesture required', 'NotAllowedError'));
+      render(<Probe enabled env={mediaEnvironment()} />);
+
+      await settle();
+      expect(status()).toBe('denied');
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // An engine that will not start a clip nobody asked for still starts one that was asked
+      // for, so the listeners stay on as the fallback.
+      play.mockResolvedValue(undefined);
+      fireEvent.pointerDown(document.body);
+      await settle();
+      expect(status()).toBe('active');
+    });
+
+    it('holds nothing while the desk is offline, and takes the screen back when it returns', async () => {
+      const play = vi.spyOn(HTMLMediaElement.prototype, 'play');
+      const env = mediaEnvironment();
+      const { rerender } = render(<Probe enabled={false} env={env} />);
+
+      // The machine the tablet charges from is off: no desk, no reason to burn the screen.
+      expect(video()).toBeNull();
+      expect(play).not.toHaveBeenCalled();
+      expect(status()).toBe('idle');
+
+      // It boots, the socket reconnects, and this has to come back without being touched.
+      rerender(<Probe enabled env={env} />);
+      expect(video()).not.toBeNull();
+      expect(play).toHaveBeenCalledTimes(1);
+      await settle();
       expect(status()).toBe('active');
     });
 
@@ -193,7 +225,6 @@ describe('useWakeLock', () => {
       );
       render(<Probe enabled env={mediaEnvironment()} />);
 
-      fireEvent.pointerDown(document.body);
       expect(play).toHaveBeenCalledTimes(1);
 
       // The tablet goes to its lock screen before the clip has started. The play that lands
@@ -209,7 +240,6 @@ describe('useWakeLock', () => {
       act(() => {
         setVisibility('visible');
       });
-      fireEvent.pointerDown(document.body);
       expect(play).toHaveBeenCalledTimes(2);
       resolvePlay();
       await settle();
@@ -222,9 +252,13 @@ describe('useWakeLock', () => {
       );
       render(<Probe enabled env={mediaEnvironment()} />);
 
-      fireEvent.pointerDown(document.body);
       await settle();
       expect(status()).toBe('denied');
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // A second refusal, from the gesture fallback, is the same refusal.
+      fireEvent.pointerDown(document.body);
+      await settle();
       expect(warn).toHaveBeenCalledTimes(1);
     });
 

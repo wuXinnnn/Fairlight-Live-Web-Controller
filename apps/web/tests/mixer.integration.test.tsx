@@ -342,20 +342,43 @@ describe('mixer socket integration', () => {
     await screen.findByRole('heading', { name: 'BASS' });
 
     // jsdom has no `navigator.wakeLock`, which is exactly the tablet's situation over plain http
-    // on the local network: the muted video is the only road to a lit screen.
-    const shell = document.querySelector('.mixer-shell');
-    expect(shell).toHaveAttribute('data-wake-lock', 'idle');
+    // on the local network: the muted video is the only road to a lit screen. It needs no
+    // gesture, so the desk is holding the screen from the moment the mixer is on screen.
     const video = document.querySelector<HTMLVideoElement>('video.wake-media');
     expect(video).not.toBeNull();
     expect(video?.muted).toBe(true);
-
-    // Autoplay policy: the clip cannot start until a finger has touched something.
-    fireEvent.pointerDown(document.body);
-    expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
     await screen.findByRole('heading', { name: 'VIEW CONFIGURATION' });
     expect(document.querySelector('video.wake-media')).toBeNull();
+  });
+
+  it('lets the tablet sleep once the mixer is gone, and takes the screen back with it', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
+
+    // The machine the tablet is charging from is shut down: Ember goes first.
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'disconnected' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'idle');
+    });
+    // Nothing is left playing, so the tablet is free to go to sleep on its own timeout.
+    expect(document.querySelector('video.wake-media')).toBeNull();
+
+    // It boots again. Nobody touches the tablet — it woke up on the charger by itself.
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
+    expect(document.querySelector('video.wake-media')).not.toBeNull();
   });
 
   it('offers full screen only where the browser has it', async () => {
