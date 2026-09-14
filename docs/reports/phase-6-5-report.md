@@ -301,7 +301,21 @@ pnpm --filter @flwc/server run soak --minutes 60 --url http://localhost:5173/ --
 
 ## 10. 评审后的修订
 
-<!-- Bugbot 结果待填 -->
+Cursor Bugbot 在 `8016d4a` 上给出 **1 条 finding**,成立,已修。
+
+### 10.1 Chrome leaks if target list fails(Medium)
+
+**finding**:`launchChrome` 在 `/json/list` 没有 page 时会 kill 掉 Chrome,但 `fetch` 或 `json()` 抛异常时不会——而此时进程已经 spawn;`soak.ts` 又只在 `launchChrome` 返回之后才拿到 `kill` 句柄,所以收尾也够不着那个子进程。
+
+**判断**:成立,两半都对。被遗弃在这里的浏览器是**永久**遗弃——没有任何其它东西知道它的存在;在 Windows 上它还会一直占着自己的 profile 目录不放,而 soak 的收尾正要删那个目录。
+
+**复现用例(先写,确认变红)**:`cdp.test.ts` 新增两条——「target list 取不到」(假 `fetch` 抛 `ECONNREFUSED`)与「target list 不是可解析的 JSON」(`json()` 抛)。两条在修复前的代码上都以 `expected "vi.fn()" to be called at least once` 变红。
+
+**改法**:spawn 之后的所有步骤包进 `try/catch`,异常时先 `child.kill()` 再原样抛出。注释写明了为什么这里必须自己收尾:调用方在函数返回前没有句柄。
+
+**回归锁**:上面那两条用例。`cdp.ts` 行覆盖仍为 100%,用例数 30 → 32。
+
+处理完之后又等了一轮,没有新的 finding。
 
 ## 11. 依赖清单
 
