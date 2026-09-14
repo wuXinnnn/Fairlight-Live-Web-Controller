@@ -396,7 +396,17 @@ const wakeLockStatus = useWakeLock(deskOnline);
 
 第 7 步之前也失败过一次,原因是第 6 步没恢复、断线态下推子本来就被禁用,是连带结果而非透明布挡住了触摸。
 
-### 15.4 被改写的既有用例
+### 15.4 第二轮 Bugbot:把暂停读成了拒绝
+
+自动播放这一版推上去之后,Bugbot 又给出一条 finding,**成立,已修**。
+
+- **finding** `Aborted play marks wake lock denied`(Medium):新的自动播放路径把每一次 `play()` 被拒都当成真正的拒绝。而**暂停一个正在启动的视频,按规范就会让那个 pending 的 `play()` 以 `AbortError` 被拒**。于是页面每隐藏一次,状态就错报一次 `denied`,还把 `warnOnce` 仅有的一次额度花掉;这个拒绝甚至可能在后来的一次 start 已经开始之后才落地,覆盖掉正确的状态。
+- **判断**:成立。平板每被瞥开一眼、每次锁屏都会撞上,而且它吃掉的那一次警告额度,本该留给真正的拒绝。第 14 节加的 `playGeneration` 只护住了 resolve 那一侧,reject 这一侧漏了。
+- **复现用例**(先写,确认变红):`does not read a pause as a refusal`——让 `play()` 返回一个手动控制的 promise,在隐藏页面之后才以 `AbortError` 拒绝它,断言状态仍是 `idle`、`console.warn` 一次都没有;随后让一次**真正的**拒绝发生,断言这时才变 `denied` 并且警告额度还在。修复前它红在第一个断言(`denied` ≠ `idle`)。
+- **改法**:修在控制器里,因为只有它知道自己那次播放是否已被作废。`start()` 用 `try/catch` 包住 `await video.play()`:代号已经变了就**静默返回**(那个拒绝是暂停本身),代号没变才把错误原样抛给 hook。
+- **回归锁**:上面那条用例;`wake-media.ts` 语句覆盖率随之升到 95% 一带。
+
+### 15.5 被改写的既有用例
 
 本节改写了 **3 条**本批次自己写的用例,因为它们断言的正是「等手势」这条已被需求推翻的语义:
 
@@ -407,11 +417,11 @@ const wakeLockStatus = useWakeLock(deskOnline);
 | `takes a refused play quietly` | 补一条:兜底手势再被拒时,`console.warn` 仍然只有一次 |
 | 集成 `keeps the screen awake through the video fallback…` | 去掉「点击后才 active」,改为挂载后自行变 `active` |
 
-新增 4 条:引擎拒绝自动播放时手势兜底、台子离线不持有且回来自动恢复(单测)、Ember 掉线与回归的完整往返(集成)、以及上面那条时序回归锁。
+新增 5 条:引擎拒绝自动播放时手势兜底、台子离线不持有且回来自动恢复(单测)、Ember 掉线与回归的完整往返(集成)、在途播放被暂停追上时不宣告 `active`、以及 15.4 的「暂停不是拒绝」。
 
-用例数 481 → **484**,`apps/web` 覆盖率 Statements 96.9% 一带,门槛 80% 未动。
+用例数 481 → **485**,`apps/web` 覆盖率 Statements 96.9% 一带,门槛 80% 未动。
 
-### 15.5 文档口径的调整
+### 15.6 文档口径的调整
 
 用户明确了两件事,文档按此改口径:
 

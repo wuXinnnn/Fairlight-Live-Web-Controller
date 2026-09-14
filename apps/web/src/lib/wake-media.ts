@@ -138,8 +138,18 @@ export function createWakeMediaController(doc: Document): WakeMediaController {
       const generation = playGeneration;
       // Awaiting normalises the engines that return nothing from play() alongside those that
       // return a promise. A rejection — no gesture yet, no decodable source, a policy saying no
-      // — is the caller's to interpret.
-      await video.play();
+      // — is the caller's to interpret, but only if it is really about this start.
+      try {
+        await video.play();
+      } catch (error) {
+        if (generation !== playGeneration) {
+          // Pausing rejects whatever play() was in flight, by specification. That rejection is
+          // the pause itself, not the engine turning anything down, and passing it on would
+          // have the caller report a failed wake lock every time the page is glanced away from.
+          return;
+        }
+        throw error;
+      }
       if (generation !== playGeneration) {
         // Stopped or torn down while this was in flight; it is not playing and never will be.
         return;

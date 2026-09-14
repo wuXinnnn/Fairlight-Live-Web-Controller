@@ -246,6 +246,40 @@ describe('useWakeLock', () => {
       expect(status()).toBe('active');
     });
 
+    it('does not read a pause as a refusal', async () => {
+      let rejectPlay = () => undefined;
+      const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectPlay = () => {
+              reject(new DOMException('interrupted by pause', 'AbortError'));
+            };
+          }),
+      );
+      render(<Probe enabled env={mediaEnvironment()} />);
+      expect(play).toHaveBeenCalledTimes(1);
+
+      // The page is hidden while the clip is still starting. The browser answers a pause by
+      // rejecting the play that was in flight — that is the pause, not a refusal, and reading it
+      // as one would report a failed wake lock every time the tablet is glanced away from.
+      act(() => {
+        setVisibility('hidden');
+      });
+      rejectPlay();
+      await settle();
+      expect(status()).toBe('idle');
+      expect(warn).not.toHaveBeenCalled();
+
+      // And the one warning this hook is allowed is still unspent, for a refusal that is real.
+      play.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
+      act(() => {
+        setVisibility('visible');
+      });
+      await settle();
+      expect(status()).toBe('denied');
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
     it('takes a refused play quietly', async () => {
       vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(
         new DOMException('gesture required', 'NotAllowedError'),
