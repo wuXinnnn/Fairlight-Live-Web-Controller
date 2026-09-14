@@ -62,6 +62,13 @@ export function createWakeMediaController(doc: Document): WakeMediaController {
     doc.defaultView !== null && typeof doc.defaultView.HTMLVideoElement === 'function';
   let element: HTMLVideoElement | null = null;
   let playing = false;
+  /*
+   * Which start() is the current one. `play()` resolves a turn of the event loop later, and a
+   * page hidden or a mixer left in that window has already paused the clip — recording that
+   * start as playing would leave the flag true over a paused video, and the next gesture would
+   * skip it. The screen would then go dark with everything apparently in order.
+   */
+  let playGeneration = 0;
 
   const handleTimeUpdate = () => {
     if (element !== null && element.currentTime > WAKE_MEDIA_REWIND_AT_S) {
@@ -119,17 +126,25 @@ export function createWakeMediaController(doc: Document): WakeMediaController {
       if (video === null) {
         return;
       }
+      playGeneration += 1;
+      const generation = playGeneration;
       // Awaiting normalises the engines that return nothing from play() alongside those that
       // return a promise. A rejection — no gesture yet, no decodable source, a policy saying no
       // — is the caller's to interpret.
       await video.play();
+      if (generation !== playGeneration) {
+        // Stopped or torn down while this was in flight; it is not playing and never will be.
+        return;
+      }
       playing = true;
     },
     stop() {
+      playGeneration += 1;
       playing = false;
       element?.pause();
     },
     destroy() {
+      playGeneration += 1;
       playing = false;
       const video = element;
       element = null;

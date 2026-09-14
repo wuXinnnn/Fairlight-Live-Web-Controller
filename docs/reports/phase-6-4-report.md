@@ -13,6 +13,7 @@
 | 7. Web app manifest 与 meta | 完成 |
 | 8. 文档 | 完成 |
 | 浏览器冒烟(Playwright + 合成电平服务) | 完成,28/28 通过,见第 5 节 |
+| 评审后修订(Bugbot 1 条 finding) | 完成,见第 10 节 |
 | 真机验收(平板与手机) | **移交用户**,清单见第 6 节 |
 
 本批次全程在用户开发机上执行。质量门(串行,全部实际跑过):
@@ -20,7 +21,7 @@
 ```
 pnpm lint (eslint . && prettier --check .)          成功
 pnpm typecheck (server + web)                        0 error
-pnpm test (shared 44 / test-utils 22 / server 143 / web 479)   全绿
+pnpm test (shared 44 / test-utils 22 / server 143 / web 480)   全绿
 pnpm --filter @flwc/web build                        成功
 git diff origin/main -- pnpm-lock.yaml               无改动
 ```
@@ -30,11 +31,11 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 指标 | 改动前(6.3 收尾) | 改动后 |
 | --- | --- | --- |
 | Statements | 96.94% | **96.91%** |
-| Branches | 92.38% | **92.37%** |
+| Branches | 92.38% | **92.38%** |
 | Functions | 99.15% | **98.92%** |
-| Lines | 96.90% | **96.87%** |
+| Lines | 96.90% | **96.88%** |
 
-用例数 450 → 479(净增 29),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 93.87% / 分支 86.66%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。四项总指标各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
+用例数 450 → 480(净增 30,含评审后新增的 1 条回归锁),测试文件 56 → 60。本批次新增的四个文件覆盖率:`use-wake-lock.ts` 93.1% / 分支 82.6%、`wake-media.ts` 94.64% / 分支 88.23%、`use-fullscreen.ts` 95.65% / 分支 92.3%、`styles.test.ts`(测试文件本身不计入)。Statements、Functions 与 Lines 各降约 0.03 个百分点,是新增文件里几条只在真实浏览器才走到的分支(`release()` 被拒、`play()` 在没有元素时早退、`doc.body === null`)拉下的,离门槛仍有 16 个百分点余量。
 
 `apps/server`、`packages/shared`、`packages/test-utils` 本批次一行未改。
 
@@ -55,7 +56,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 `mixer-touch.integration.test.tsx` 由 8 例增到 9 例,新增用例断言从 ON 上拖过阈值后页码不变、`touchend` 返回 `true`(没被 `preventDefault`,因为这不是翻页手势)。既有三条安全性质用例(单指判定、滚到底再翻、翻页后不误按)未动且仍绿。同样做过破坏验证:移除 `[data-swipe="none"]` 排除后该用例变红。
 
 **5. Wake Lock:两条路径的申请、释放、重申请与拒绝分支 —— 通过,且媒体路径在真实浏览器里实测到了。**
-`use-wake-lock.test.tsx` 八例覆盖原生路径(拿到→系统收回→回到可见重申请、被拒后仍在下次可见时再试且只警告一次、`enabled` 变假时 `release()`)与媒体路径(挂载后不播、首次 `pointerdown` 才播、隐藏时暂停、回到可见不自动播而等下一次 `keydown`、`play()` 被拒→`denied`、`timeupdate` 回绕、卸载移除元素),外加 `unsupported` 分支。集成用例断言 jsdom 下 `.mixer-shell[data-wake-lock]` 为 `idle`、`video.wake-media` 在场且 `muted`,点击后变 `active`,切到配置页后视频被移除。
+`use-wake-lock.test.tsx` 九例覆盖原生路径(拿到→系统收回→回到可见重申请、被拒后仍在下次可见时再试且只警告一次、`enabled` 变假时 `release()`)与媒体路径(挂载后不播、首次 `pointerdown` 才播、隐藏时暂停、回到可见不自动播而等下一次 `keydown`、`play()` 被拒→`denied`、`timeupdate` 回绕、卸载移除元素),外加 `unsupported` 分支。集成用例断言 jsdom 下 `.mixer-shell[data-wake-lock]` 为 `idle`、`video.wake-media` 在场且 `muted`,点击后变 `active`,切到配置页后视频被移除。
 
 浏览器实测把两条路径都走到了:`http://127.0.0.1:3100`(安全上下文)下 `navigator.wakeLock` 是 object、`data-wake-lock` 为 `active`、页面上没有任何 video;`http://192.168.50.115:3100`(同一个服务的局域网地址,**不是**安全上下文,与平板的处境相同)下 `navigator.wakeLock` 为 `undefined`,1×1 px 的静音视频在文档内、两个 source、状态 `idle` 且暂停,点一下页头之后状态变 `active`、`paused` 变 `false`。**这证明了降级路径在真实 Chrome 的非安全源下确实接管并开始播放;但「屏幕是否真的不熄」只有平板知道,移交用户**(操作步骤见第 6 节,含 Chrome 标志的开法)。
 
@@ -238,7 +239,17 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 
 ## 10. 评审后的修订
 
-待填:PR 开出后按 Bugbot 的 findings 逐条处理,格式照 6.3 报告第 10 节(逐条列 finding、判断、改法与回归锁)。
+Cursor Bugbot 在首次推送后给出 **1 条 finding**,成立,已修。
+
+**10.1 `Wake playback flag desyncs after interrupt`(Medium)—— 成立,已修。**
+
+- **finding**:`wake-media.ts` 的 `start()` 在 `await video.play()` **之后**才把 `playing` 置真,中间没有检查这段时间里是否跑过 `stop()` 或 `destroy()`;而 hook 的 `startPlayback` 把 `media.playing` 同时当作「在途」与「已持有」来读。窗口期内发生一次可见性变化或卸载,就会留下 `playing === true` 而视频实际已暂停,此后每一次手势都会被 `media.playing` 挡掉、不再调 `start()`,降级路径从此不再常亮。
+- **判断**:成立,而且是真机上很容易撞到的时序——手指触屏触发 `play()`,在它落地之前平板进了锁屏。屏幕会在「一切看起来正常」的情况下熄掉。
+- **复现用例**(先写,确认变红):`use-wake-lock.test.tsx` 的 `plays again after being hidden while play() was still in flight`——把 `HTMLMediaElement.prototype.play` 换成一个手动控制的 promise,在 resolve 之前切到 `hidden`,再 resolve,然后回到 `visible` 并再次 `pointerdown`,断言 `play()` 被第二次调用且状态最终为 `active`。修复前这条红在「第二次调用」上。
+- **改法**:控制器加一个 `playGeneration` 计数。`start()` 在发起前 `+1` 并记下当时的代号,`await` 之后代号不一致就直接返回、**不**置 `playing`;`stop()` 与 `destroy()` 各自 `+1`,因此任何一次暂停或拆除都会作废在途的那次播放。`playing` 于是只在「这次 start 一路跑完且期间没被打断」时才为真。
+- **回归锁**:上面那条用例;`wake-media.ts` 语句覆盖率由 93.87% 升到 94.64%、分支由 86.66% 升到 88.23%。
+
+处理完之后又等了一轮,没有新的 finding。
 
 ## 11. 依赖清单
 
@@ -272,5 +283,6 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | `6ab2486` | `feat(web): hold the screen awake while the mixer is open` —— 两条路径、媒体控制器、jsdom stub |
 | `6ea0bda` | `feat(web): put a full screen button in the mixer header` —— hook 与页头按钮 |
 | `5716d76` | `feat(web): add the web app manifest and the icons that go with it` —— manifest、两个 PNG、apple meta |
+| 评审后 | `fix(web): do not record a wake video as playing if it was stopped first` —— Bugbot 10.1 |
 
 文档与报告另起一次提交。全部按 Conventional Commits,英文。

@@ -181,6 +181,41 @@ describe('useWakeLock', () => {
       expect(clip.currentTime).toBe(0.2);
     });
 
+    it('plays again after being hidden while play() was still in flight', async () => {
+      let resolvePlay = () => undefined;
+      const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvePlay = () => {
+              resolve();
+            };
+          }),
+      );
+      render(<Probe enabled env={mediaEnvironment()} />);
+
+      fireEvent.pointerDown(document.body);
+      expect(play).toHaveBeenCalledTimes(1);
+
+      // The tablet goes to its lock screen before the clip has started. The play that lands
+      // afterwards is for a video that has since been paused, and must not be recorded as one
+      // that is running — or the next gesture will skip it and the screen will go dark.
+      act(() => {
+        setVisibility('hidden');
+      });
+      resolvePlay();
+      await settle();
+      expect(status()).toBe('idle');
+
+      act(() => {
+        setVisibility('visible');
+      });
+      fireEvent.pointerDown(document.body);
+      expect(play).toHaveBeenCalledTimes(2);
+      resolvePlay();
+      await settle();
+      expect(status()).toBe('active');
+    });
+
     it('takes a refused play quietly', async () => {
       vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(
         new DOMException('gesture required', 'NotAllowedError'),
