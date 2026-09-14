@@ -8,8 +8,8 @@ import { createWakeMediaController, type WakeMediaController } from '../../lib/w
  *  - the Screen Wake Lock API, which the browser only exposes in a secure context. Over plain
  *    http on a local network — which is how the tablet reaches this server — `navigator.wakeLock`
  *    is simply not there;
- *  - failing that, a muted one-pixel video on a loop, which Chrome for Android keeps the screen
- *    on for as long as it is playing and visible.
+ *  - failing that, a muted video on a loop covering the viewport, which Chrome for Android
+ *    keeps the screen on for as long as it is playing and enough of it is visible.
  *
  * Both degrade in silence. Nothing is ever shown on screen about either one, because a desk that
  * interrupts an operator to talk about its own battery is worse than a dark screen.

@@ -1,16 +1,24 @@
 /*
  * The screen wake lock's fallback path.
  *
- * Chrome for Android only holds a screen lock for a <video> that is playing, carries a video
- * track and is visible in the document; a silent audio loop gets a lock that keeps the CPU alive
- * while the screen goes dark anyway. So the fallback is a one-pixel muted video, and these two
- * clips are the smallest ones that decode on the engines this desk is reached from.
+ * Chrome for Android holds a screen lock for a muted <video> only once enough of it is on
+ * screen; a silent audio loop instead gets a lock that keeps the CPU alive while the screen goes
+ * dark anyway. Measured on the target tablet: a one-pixel clip does nothing, a visible 160px
+ * square does nothing either, and a clip filling the viewport holds the screen. So the element
+ * covers the viewport and is transparent — see `.wake-media` in styles.css, where the geometry
+ * that makes this work is spelled out.
  *
  * The two data URIs below are lifted verbatim from nosleep.js 0.12.0 (src/media.js), MIT
  * licensed, Copyright (c) Rich Tibbett:
  * https://github.com/richtr/NoSleep.js/blob/master/LICENSE.md
- * They are copied rather than depended on — this is two strings, not a library — and they carry
- * no audio track at all, which on a desk that controls audio is the whole point.
+ * They are copied rather than depended on — this is two strings, not a library.
+ *
+ * Both clips DO carry an audio track: stereo, 48 kHz, 1.057s, and digitally silent — every
+ * decoded sample measures 0, a peak of -Infinity dBFS. nosleep.js relies on that track being
+ * audible-but-empty, because a video that outputs audio earns a screen lock at any size. This
+ * desk does not take that road: the element is muted, and the silence of the track is a second
+ * line of defence rather than the first. A sound out of the browser during a show is an
+ * incident, and one guarantee is not enough to rest it on.
  */
 
 export interface WakeMediaSource {
@@ -103,8 +111,8 @@ export function createWakeMediaController(doc: Document): WakeMediaController {
     }
     video.addEventListener('timeupdate', handleTimeUpdate);
     // On the body rather than inside the mixer shell: the shell is a grid whose every child
-    // belongs to React, and a fixed one-pixel element needs nothing from it. Leaving the mixer
-    // takes this away through destroy(), which is the cleanup worth holding down anyway.
+    // belongs to React, and a fixed sheet laid over the whole viewport needs nothing from it.
+    // Leaving the mixer takes this away through destroy(), the cleanup worth holding down.
     doc.body.append(video);
     element = video;
   };

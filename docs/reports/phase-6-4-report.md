@@ -14,7 +14,7 @@
 | 8. 文档 | 完成 |
 | 浏览器冒烟(Playwright + 合成电平服务) | 完成,28/28 通过,见第 5 节 |
 | 评审后修订(Bugbot 1 条 finding) | 完成,见第 10 节 |
-| 真机验收(平板与手机) | **移交用户**,清单见第 6 节 |
+| 真机验收(平板与手机) | **移交用户**,清单见第 6 节;常亮一项已验收并修订,见第 14 节 |
 
 本批次全程在用户开发机上执行。质量门(串行,全部实际跑过):
 
@@ -58,7 +58,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 **5. Wake Lock:两条路径的申请、释放、重申请与拒绝分支 —— 通过,且媒体路径在真实浏览器里实测到了。**
 `use-wake-lock.test.tsx` 九例覆盖原生路径(拿到→系统收回→回到可见重申请、被拒后仍在下次可见时再试且只警告一次、`enabled` 变假时 `release()`)与媒体路径(挂载后不播、首次 `pointerdown` 才播、隐藏时暂停、回到可见不自动播而等下一次 `keydown`、`play()` 被拒→`denied`、`timeupdate` 回绕、卸载移除元素),外加 `unsupported` 分支。集成用例断言 jsdom 下 `.mixer-shell[data-wake-lock]` 为 `idle`、`video.wake-media` 在场且 `muted`,点击后变 `active`,切到配置页后视频被移除。
 
-浏览器实测把两条路径都走到了:`http://127.0.0.1:3100`(安全上下文)下 `navigator.wakeLock` 是 object、`data-wake-lock` 为 `active`、页面上没有任何 video;`http://192.168.50.115:3100`(同一个服务的局域网地址,**不是**安全上下文,与平板的处境相同)下 `navigator.wakeLock` 为 `undefined`,1×1 px 的静音视频在文档内、两个 source、状态 `idle` 且暂停,点一下页头之后状态变 `active`、`paused` 变 `false`。**这证明了降级路径在真实 Chrome 的非安全源下确实接管并开始播放;但「屏幕是否真的不熄」只有平板知道,移交用户**(操作步骤见第 6 节,含 Chrome 标志的开法)。
+浏览器实测把两条路径都走到了:`http://127.0.0.1:3100`(安全上下文)下 `navigator.wakeLock` 是 object、`data-wake-lock` 为 `active`、页面上没有任何 video;`http://192.168.50.115:3100`(同一个服务的局域网地址,**不是**安全上下文,与平板的处境相同)下 `navigator.wakeLock` 为 `undefined`,静音视频在文档内、两个 source、状态 `idle` 且暂停,点一下页头之后状态变 `active`、`paused` 变 `false`。**这证明了降级路径在真实 Chrome 的非安全源下确实接管并开始播放;但「屏幕是否真的不熄」只有平板知道,移交用户**(操作步骤见第 6 节,含 Chrome 标志的开法)。
 
 **6. Fullscreen:支持/不支持/拒绝三种;按钮只在支持时渲染;不在安全区 —— 通过。**
 `use-fullscreen.test.tsx` 四例(不支持时不渲染也不报错、进出全屏、被别的路径退出时跟随、被拒时只警告一次且状态不变),集成用例覆盖 jsdom 无 `fullscreenEnabled` 时页头没有按钮、装上假实现后按钮出现并可来回切换。安全区体检用例(`mixer-pages.integration.test.tsx` 里 `within(rail).getAllByRole('button')`)未动且仍绿——按钮在页头,不在安全区。浏览器实测:按钮存在,点击后 `document.fullscreenElement` 非空,再点回到非全屏。**真机移交用户,iPhone Safari 预期没有这个按钮。**
@@ -87,11 +87,11 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 **3.5 Wake Lock 的两条路径,各在什么条件下生效。**
 
 - **原生路径**:`env.wakeLock` 存在时走,即**安全上下文**(`https://`,或 `http://localhost` / `http://127.0.0.1`)。`enabled` 且文档可见时 `request('screen')`,拿到 sentinel 即 `active`;sentinel 的 `release` 事件(系统收回、切后台、省电模式)回 `idle`;`visibilitychange` 回到 `visible` 时重新申请——**被拒过也会再试**,平板从锁屏回来常常就给了。`request` 被拒 → `denied` 且 `console.warn` 一次,不重试、不提示。
-- **媒体降级路径**:`navigator.wakeLock` 为 `undefined` 时走,即平板走 `http://<局域网 IP>` 的实际情况。混音页挂载即把 1×1 px 的静音循环视频放进 `body`,但**不播**;`document` 上第一次 `pointerdown` 或 `keydown` 之后才 `start()`(自动播放策略要求手势);页面隐藏 `pause()` 回 `idle`,回到可见不自动播、等下一次触摸。`play()` 被拒 → `denied` 且 `console.warn` 一次,下一次交互再试。
+- **媒体降级路径**:`navigator.wakeLock` 为 `undefined` 时走,即平板走 `http://<局域网 IP>` 的实际情况。混音页挂载即把铺满视口的透明静音循环视频放进 `body`,但**不播**;`document` 上第一次 `pointerdown` 或 `keydown` 之后才 `start()`(自动播放策略要求手势);页面隐藏 `pause()` 回 `idle`,回到可见不自动播、等下一次触摸。`play()` 被拒 → `denied` 且 `console.warn` 一次,下一次交互再试。
 - 两条路径都**静默**:屏幕上没有任何提示,失败只在 console 留一行,与偏好 hook 的先例一致。状态写在 `.mixer-shell` 的 `data-wake-lock` 上只供测试与冒烟读。
 - `unsupported` 只在两条路都不通时出现(没有原生 API,且文档没有浏览上下文)。提示词给的两条路径都到不了这个值,定义是本批次补的,见第 8 节。
 
-视频落在 `body` 而不是混音页外壳内(用户确认),元素必须在布局里且有几何——`display: none` 的视频不会被当作可见。素材摘自 nosleep.js 0.12.0 的 `src/media.js`,两个 data-URI(webm 7459 B、mp4 5026 B),文件头注明来源、版本与 MIT 许可链接。
+视频落在 `body` 而不是混音页外壳内(用户确认),元素必须在布局里且有几何——`display: none` 的视频不会被当作可见。素材摘自 nosleep.js 0.12.0 的 `src/media.js`,两个 data-URI(webm 7459 B、mp4 5026 B),文件头注明来源、版本与 MIT 许可链接。**两个素材都带一条数字静音的音频轨**,不出声靠的是 `muted`——本报告先前写的「无音频轨」是错的,见第 14.5 节。
 
 **3.6 Fullscreen。** `supported` 要求 `fullscreenEnabled === true` 且 `requestFullscreen` 是函数,不做 `webkit` 前缀回退,因此 iPhone Safari 上按钮根本不渲染。`active` 由 `fullscreenchange` 维护,读 `fullscreenElement` 时按 `!== null && !== undefined` 判断(jsdom 与部分引擎给的是 `undefined`)。两个 promise 被拒都只 `console.warn` 一次并保持原状态。按钮在页头 `CONFIGURE VIEWS` 之后,不放安全区。
 
@@ -124,7 +124,7 @@ git diff origin/main -- pnpm-lock.yaml               无改动
 | 8 | `.mixer-shell` 高度 == `window.innerHeight` | 是 |
 | 9 | 安全源:`data-wake-lock` 且页面上无 video | `active` / 无 |
 | 10 | 局域网源:`typeof navigator.wakeLock` | `undefined` |
-| 11 | 局域网源:视频在场、`muted`、1×1 px、两个 source、状态 `idle` 且暂停 | 全部符合 |
+| 11 | 局域网源:视频在场、`muted`、两个 source、状态 `idle` 且暂停 | 全部符合 |
 | 12 | 局域网源:触摸一下之后 | `active`,`paused === false` |
 | 13 | 触摸上下文里 hover ON 按钮 | 边框不变(`rgb(166, 125, 45)` → 同值) |
 | 14–15 | 桌面上下文报 hover,且 hover 改变边框 | 是;`rgb(166, 125, 45)` → `rgb(104, 110, 123)` |
@@ -286,3 +286,67 @@ Cursor Bugbot 在首次推送后给出 **1 条 finding**,成立,已修。
 | 评审后 | `fix(web): do not record a wake video as playing if it was stopped first` —— Bugbot 10.1 |
 
 文档与报告另起一次提交。全部按 Conventional Commits,英文。
+
+## 14. 真机验收后的修订:常亮在平板上不生效
+
+PR 开出后用户在安卓平板上验收,**视频降级路径没有生效**:刷新页面、点过屏幕之后,到了系统熄屏时间屏幕照样变暗。这一节记录查因、实测与改法。
+
+### 14.1 现象与最初的误判
+
+用户报告:开了开发者选项的「充电时不锁定屏幕」,所以不锁屏,但到默认熄屏时间仍然**变暗**。变暗就是 screen timeout 在走,说明锁根本没拿到。
+
+我最初的猜测是「1×1 px + `opacity: 0` 过不了 Chrome 的可见性判定」。**这个猜测只对了一半**,而且如果照它直接改,会改错方向——见下面 F 与 I 的对比。
+
+### 14.2 诊断办法
+
+写了一个只在会话临时目录里的探针页(Node 静态服务,3200 端口,监听全部网卡,不碰仓库、不碰 3000/5173),把同样的两个素材按不同形状挂上去,一次测一个,页面实时显示 `paused`、`currentTime`、`readyState`、元素矩形、IntersectionObserver 的相交比例、`muted`/`volume` 与页面可见性,并有一个从点下按钮起算的计时器。用户把熄屏时间调到最短,逐个形状放置观察。
+
+### 14.3 实测结果(目标平板,Android Chrome)
+
+| 形状 | 配置 | 结果 |
+| --- | --- | --- |
+| A | 1×1 px,`opacity: 0`,muted | **熄屏**(复现了缺陷) |
+| F | 160 px 方块,`opacity: 1`,muted,**肉眼可见** | **熄屏** |
+| I | 铺满视口,`opacity: 1`,muted | **常亮** |
+| J | 铺满视口,`opacity: 0`,muted | **常亮** |
+| G | 1×1 px,`opacity: 0`,**不 muted**,音量 1 | **常亮** |
+| H | 1×1 px,`opacity: 0`,不 muted,**音量 0** | 熄屏 |
+| W | 原生 `navigator.wakeLock` | 不可用(`secure context: NO`,API 不存在) |
+
+所有形状的视频都确实在播(`paused` 为 false、`currentTime` 在 0–0.5 之间跳动),所以这不是播放失败,是拿不到锁。
+
+三条结论:
+
+1. **F 是决定性的**。一个明明白白看得见、正在播放的视频拿不到锁——所以问题**不是**「元素被藏起来了」。我最初的猜测到此被推翻。
+2. **I 与 F 只差尺寸**,I 拿得到锁。所以 Chrome 对静音视频有一个**可见面积门槛**:160 px 方块不够,铺满视口够。
+3. **J 与 I 只差 `opacity`**,J 同样拿得到锁。所以 Chrome **不看 `opacity`**,只按几何判可见性(与 IntersectionObserver 同一套)。满屏 + 全透明因此两全:拿得到锁,又完全不影响界面。
+4. G 与 H 的对比给出另一条路:不静音的媒体在**任何尺寸**都能拿到锁,但**音量必须大于 0**——H 把音量归零就失效。
+
+### 14.4 改法
+
+`.wake-media` 由「左下角 1×1 px」改为**铺满视口、`opacity: 0`、`pointer-events: none`、`z-index: 40`**(现有最大 `z-index` 是 `.notice` 的 30,所以这张透明布在所有 UI 之上,与实测形状的层叠位置一致;`pointer-events: none` 保证它不吞掉任何一次触摸)。`use-wake-lock.ts` 与 `wake-media.ts` 的逻辑一行未改——问题自始至终只在那几行 CSS 里。
+
+`styles.test.ts` 新增一条回归锁,断言 `.wake-media` 是 `100%` × `100%` 的 `position: fixed`、带 `pointer-events: none`、且不是 `display: none` 或 `visibility: hidden`。这条几何是拿真机换来的,而全网的示例写法都是「一个像素的小方块」;没有这条锁,谁顺手把它改回去,屏幕就会在演出中途熄掉,而其余 480 个用例一个都不会发现。
+
+**没有采纳 G 那条路**(不静音播放)。它要求浏览器持续输出音频流才有效,会去抢 Android 的 audio focus、可能压低或打断别的应用的声音,通知栏还可能挂一个媒体会话。在一台演出现场的控制平板上,这个代价不该为「屏幕别熄」而付。这是一次有意的取舍,不是遗漏。
+
+### 14.5 一处必须更正的错误陈述
+
+本报告第 3.5 节、`docs/architecture.md`、`wake-media.ts` 的文件头注释,以及提交 `6ab2486` 的提交信息里,都写了素材「**没有音频轨**」。**这是错的。**
+
+解码核实(Chrome 的 `OfflineAudioContext.decodeAudioData`,两个素材各一次):
+
+| 素材 | 声道 | 采样率 | 时长 | 峰值采样 | 峰值 |
+| --- | --- | --- | --- | --- | --- |
+| webm (Vorbis) | 2 | 48000 Hz | 1.057 s | 0 | −∞ dBFS |
+| mp4 (AAC) | 2 | 48000 Hz | 1.057 s | 0 | −∞ dBFS |
+
+两个素材**都带一条音频轨**,内容是**数字静音**(每一个解码采样都是 0)。nosleep.js 依赖的正是这条「听得见但是空的」轨道——那也正是 G 形状能生效的原因。
+
+所以「浏览器绝不出声」这个保证,实际上只由 `muted` + `defaultMuted` 这一道守着,而不是我先前声称的「素材无音频轨」那一道。素材本身的静音是第二道防线,不是第一道。源码注释、架构文档与本报告都已改正;提交 `6ab2486` 的信息无法在不打乱评审历史的情况下修改,这里明确记下它那一句是错的。
+
+### 14.6 仍然移交用户
+
+- 这次修好的是**这台平板上这个 Chrome 版本**的行为。面积门槛是 Chrome 的实现细节,没有文档,任何一次版本更新都可能再次改变。视频这条路始终是权宜之计。
+- **可靠的解法仍然是让平板走安全上下文**,用原生 Wake Lock API:`chrome://flags/#unsafely-treat-insecure-origin-as-secure` 加上该源,或者把 Phase 7 的 HTTPS 提前做掉。建议把后者排进计划,而不是长期依赖这张透明布。
+- 修好之后请在平板上复测:混音页放置到超过熄屏时间应当保持常亮,且**满屏的透明视频不得影响任何触摸操作**——推子、ON、翻页、安全区滑动都要照常。这一条是本次改动唯一可能引入的副作用(已由 `pointer-events: none` 与回归锁把关,但真机要看一眼)。

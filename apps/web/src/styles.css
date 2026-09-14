@@ -102,16 +102,28 @@ textarea,
 }
 
 /*
- * The wake lock's video fallback. Chrome for Android only keeps a screen on for a video that is
- * playing, has a video track and is visible in the document, so `display: none` is not an option
- * here: it has to be laid out and it has to have geometry. One pixel is geometry.
+ * The wake lock's video fallback, and the geometry is the whole trick.
+ *
+ * Chrome for Android grants a muted video a screen lock only once enough of it is on screen.
+ * Measured on the target tablet: a one-pixel clip does nothing, a visible 160px square does
+ * nothing either, and a clip filling the viewport holds the screen awake. What it does not look
+ * at is `opacity` — visibility here is decided from geometry the way an IntersectionObserver
+ * decides it — so this fills the viewport and is completely transparent. It cannot be
+ * `display: none`, `visibility: hidden` or a few pixels across; any of those and the screen goes
+ * dark mid-show.
+ *
+ * `pointer-events: none` is what keeps a sheet stretched over the whole desk from swallowing
+ * every touch on it.
+ *
+ * This threshold is Chrome's, undocumented, and free to change in any release. The reliable road
+ * is a secure context and the real Wake Lock API; this is what there is until then.
  */
 .wake-media {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 1px;
-  height: 1px;
+  z-index: 40;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
   pointer-events: none;
 }

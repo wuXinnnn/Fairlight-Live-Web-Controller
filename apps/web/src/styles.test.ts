@@ -225,6 +225,22 @@ describe('styles.css', () => {
     expect(root).toMatch(/-webkit-touch-callout:\s*none/);
   });
 
+  it('keeps the wake-lock video big enough for Chrome to count it as visible', () => {
+    // Bought with a real tablet: one pixel earns no screen lock, a 160px square earns none
+    // either, and a clip filling the viewport holds the screen awake. Shrinking this back to a
+    // token pixel — the shape every example on the web uses — puts the desk to sleep mid-show,
+    // and nothing else in this suite would notice.
+    const wake = declarationsFor('.wake-media');
+    expect(wake).toMatch(/width:\s*100%/);
+    expect(wake).toMatch(/height:\s*100%/);
+    expect(wake).toMatch(/position:\s*fixed/);
+    // Transparent is fine — visibility is decided from geometry — but it must not be taken out
+    // of the layout, and it must never swallow a touch meant for the desk underneath.
+    expect(wake).not.toMatch(/display:\s*none/);
+    expect(wake).not.toMatch(/visibility:\s*hidden/);
+    expect(wake).toMatch(/pointer-events:\s*none/);
+  });
+
   it('gives selection back to what is typed into and what is worth copying', () => {
     const selectable = declarationsFor('input', 'textarea', '[contenteditable]');
     expect(selectable).toMatch(/user-select:\s*text/);
