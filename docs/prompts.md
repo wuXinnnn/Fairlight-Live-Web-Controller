@@ -127,9 +127,11 @@ TYPE ROWS 改为每组一页起),通道条撑满 100dvh,页头压缩为单行,pa
 
 ```
 按 docs/development-plan.md 的 Phase 6.4:全局防误触样式(overscroll-behavior、touch-action、
-user-select、touch-callout、hover 媒体查询、100dvh)、Fader pointerId 过滤与多指并行、44px 命中区、
-只在安全区与非控制表面识别的滑动翻页手势(纯函数 reducer)、dnd-kit touch 传感器延迟与容差、
-Screen Wake Lock 与 Fullscreen 渐进增强。单测覆盖 6.4 验收清单,覆盖率达标;真机触屏验收由本地执行。
+user-select、touch-callout、hover 媒体查询与样式回归测试、dvh)、Fader pointerId 过滤与多指并行、
+手指翻页不从 ON 起手(6.3 的翻页语义与数值不动)、Screen Wake Lock(原生 + 静音视频降级,交互后触发)、
+Fullscreen 页头按钮、web app manifest。不放大命中区、不加 user-scalable=no、不新增依赖。
+单测覆盖 6.4 验收清单,覆盖率达标;平板与手机的真机验收由本地执行。
+详细执行提示词见 docs/prompts/phase-6-4.md。
 ```
 
 ### 6.5 健壮性

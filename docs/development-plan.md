@@ -210,19 +210,22 @@ Fader 滚轮与翻页滚轮共存规则:
 
 ### 6.4 触屏审计
 
+详细执行提示词见 `docs/prompts/phase-6-4.md`。手指翻页已在 6.3 落地(与滚轮共用同一套翻页节奏,安全区直接翻、通道条区滚到底再翻,翻过页的手势不误按松手处的控件),配置页 DnD 的 touch 传感器已在 6.2.1 定值,这两项本批次只做真机复核。
+
 交付物:
 
-- 全局防误触:`overscroll-behavior: none`(禁止下拉刷新)、`touch-action: manipulation`(禁止双击缩放)、关闭 `user-select` 与 `-webkit-touch-callout`(禁止长按菜单);所有 `:hover` 样式包进 `@media (hover: hover)`;`100vh` 全部改为 `100dvh`
-- Fader 按 pointerId 过滤,第二根手指不劫持同一推子;多个推子可同时用多指操作;推子帽与 ON 按钮命中区不小于 44px
-- 滑动翻页:只在安全区与非控制表面(通道名称头、分区头、间隙)识别,推子、ON、电平表上绝不起手;需要最小位移与速度阈值,一次手势只翻一页
-- 配置页 DnD 的 touch 传感器设置按压延迟与容差,与页面滚动区分
-- Screen Wake Lock(混音页保持常亮)与 Fullscreen API 入口(去除浏览器边框),两者都为渐进增强,不支持的浏览器静默降级
+- 全局防误触:`overscroll-behavior: none`(禁止下拉刷新)、`touch-action: manipulation`(禁止双击缩放,暂不禁捏合)、关闭 `user-select` 与 `-webkit-touch-callout`(禁止长按菜单,可编辑控件显式恢复);所有 `:hover` 样式包进 `@media (hover: hover)`,合写的选择器拆开;`vh` 全部改为 `dvh`;一个读取 `styles.css` 源文本的回归测试把这些规则锁住
+- Fader 按 pointerId 过滤:第二根手指落在同一推子上既不重置起点、不触发双击回 0,也不结束或 commit 第一根手指的拖动;多个推子可同时用多指操作,全局拖动光标类改为计数;命中区尺寸维持现状(用户实测无需放大)
+- 手指翻页不从 ON 按钮起手(新增 `data-swipe="none"` 约定),推子轨道照旧排除;电平表、名称头、分区标题栏、间隙与安全区照旧可以起手
+- Screen Wake Lock(混音页保持常亮):原生 API 可用时申请并在回到可见时重申请;不可用时(局域网 `http` 不是安全上下文)降级为静音、无音频轨的 1×1 px 视频循环,只在用户第一次交互后开始播放、隐藏时暂停;两条路径都静默降级、绝不出声
+- Fullscreen API 入口:页头品牌区的 `FULLSCREEN` / `EXIT FULLSCREEN` 文字按钮,不支持的浏览器不渲染;安全区不放它
+- Web app manifest(`display: fullscreen`、192/512 图标)与 Apple web app meta;viewport 不加 `user-scalable=no`。平板顶部状态栏的进一步隐藏方案另行考虑
 
 验收标准:
 
-- [ ] 单测覆盖:滑动手势 reducer(阈值、速度、起手区域判定)、多指 pointerId 过滤、Wake Lock/Fullscreen 不可用时的降级
-- [ ] 本地(平板 + 手机):无下拉刷新、无缩放、无长按菜单;多指同时推两个推子;从安全区滑动翻页,在推子上滑动只动推子;熄屏计时内屏幕保持常亮
-- [ ] 覆盖率达标
+- [ ] 单测覆盖:样式回归(`:hover` 全在媒体查询内、无 `vh`、全局规则在场)、多指 pointerId 过滤与两个推子并行、ON 上起手不翻页、Wake Lock 原生/媒体两条路径的申请、释放、重申请与拒绝、Fullscreen 支持/不支持/拒绝
+- [ ] 本地(平板 + 手机):无下拉刷新、无双击缩放、无长按菜单、无文字选中;双手同时推两路推子,第二根手指落在同一推子上无效;从安全区滑动翻页,从 ON 上滑动不翻页,在推子上滑动只动推子;熄屏计时内屏幕保持常亮(直接访问走视频降级;开启 Chrome 的安全源标志后走原生路径);`FULLSCREEN` 按钮生效
+- [ ] 覆盖率达标;`pnpm-lock.yaml` 无改动
 
 ### 6.5 健壮性
 
