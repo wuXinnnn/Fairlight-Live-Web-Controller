@@ -35,6 +35,27 @@ interface FaderProps {
   onCommit(value: number): void;
 }
 
+/*
+ * How many caps are being dragged right now, across every fader on the page. The cursor class is
+ * global, so the last hand to let go is the one that takes it off — with a plain per-component
+ * effect the first hand to finish would strip it from under the other.
+ */
+let capDragCount = 0;
+
+function beginCapDrag(): void {
+  capDragCount += 1;
+  if (capDragCount === 1) {
+    document.documentElement.classList.add('fader-cap-dragging');
+  }
+}
+
+function endCapDrag(): void {
+  capDragCount = Math.max(0, capDragCount - 1);
+  if (capDragCount === 0) {
+    document.documentElement.classList.remove('fader-cap-dragging');
+  }
+}
+
 const CAP_DRAG_THRESHOLD_PX = 3;
 const CAP_DOUBLE_CLICK_MS = 500;
 const CAP_DOUBLE_CLICK_Y_PX = 12;
@@ -69,6 +90,12 @@ export function Fader({
   const capGrabRef = useRef<{ startY: number; startRatio: number; armed: boolean } | undefined>(
     undefined,
   );
+  /*
+   * The finger that has this cap. Two hands on one fader is a thing that happens by accident —
+   * reaching across the desk, a palm brushing past — and without this the second one would
+   * reset the grab origin, or land inside the double-tap window and send the channel to 0 dB.
+   */
+  const activePointerIdRef = useRef<number | null>(null);
   const unityFromPointerRef = useRef(false);
   const lastCapPointerDownRef = useRef<{ at: number; y: number } | undefined>(undefined);
   const skipInputCommitRef = useRef(false);
@@ -208,10 +235,8 @@ export function Fader({
     if (!dragging) {
       return;
     }
-    document.documentElement.classList.add('fader-cap-dragging');
-    return () => {
-      document.documentElement.classList.remove('fader-cap-dragging');
-    };
+    beginCapDrag();
+    return endCapDrag;
   }, [dragging]);
 
   const applyExactValue = (nextValue: number) => {
@@ -246,6 +271,11 @@ export function Fader({
       return;
     }
     event.preventDefault();
+    if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) {
+      // Another finger already has this cap. This one is not a grab and not half of a double
+      // tap; it is not anything at all until the first one lifts.
+      return;
+    }
     // A wheel gesture on this fader is over the moment a hand lands on the cap.
     commitWheelGesture();
     cancelEditing();
@@ -266,11 +296,15 @@ export function Fader({
       startRatio: levelDbToRatio(value),
       armed: true,
     };
+    activePointerIdRef.current = event.pointerId;
     latestValueRef.current = value;
     setDragging(true);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) {
+      return;
+    }
     if (!dragging || disabled) {
       return;
     }
@@ -300,6 +334,14 @@ export function Fader({
   };
 
   const finishPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) {
+      // A second finger letting go does not end the drag the first one is still in.
+      return;
+    }
+    // Released before the drag is checked, never after: a pointerup that arrives before React has
+    // committed `dragging` would otherwise leave this cap owned by a finger that has left it, and
+    // every later press would be turned away as somebody else's.
+    activePointerIdRef.current = null;
     if (!dragging) {
       return;
     }
