@@ -58,6 +58,7 @@ data/                运行时配置(JSON,不入库)
 - 布局:单元测试与被测代码同目录(`*.test.ts` / `*.test.tsx`);集成测试放各包 `tests/`
 - 覆盖率门槛(v8,写入各包 vitest 配置,CI 强制):`apps/*` 行/分支/函数 ≥ 80%;`packages/shared` ≥ 90%
 - 自动化测试一律使用 `packages/test-utils` 的 Mock Ember+ Provider,**禁止连接真实 Fairlight**
+- 长时间运行用 soak 工具:`pnpm --filter @flwc/server run soak`(默认 60 分钟,自建 Mock 栈)。附着模式 `--url <地址>` 对已有实例**只读**——不发任何控制事件,只翻页与读 DOM,因此可以对着真实台子跑
 - 真实 Fairlight 仅用于各阶段人工验收,且只允许动 MIC-REVERB、BASS、Anagram-Wet、Anagram-Dry 四个输入通道的推子,禁止删改通道
 - 每个功能模块必须覆盖其边界场景,最低清单:
   - 后端:Ember 断线/重连/超时、树变化(通道增删)、非法控制命令(越界 level、未知通道)、配置文件损坏/缺失、并发写入
@@ -67,7 +68,7 @@ data/                运行时配置(JSON,不入库)
 
 - 提交信息:Conventional Commits(`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`),英文
 - PR 标题与正文:英文
-- 不提交 `data/`、构建产物、覆盖率报告
+- 不提交 `data/`、构建产物、覆盖率报告、`soak-reports/`
 
 ## 文档维护
 

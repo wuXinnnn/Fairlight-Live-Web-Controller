@@ -12,7 +12,8 @@
       Installed to a home screen, `display: fullscreen` hides the status bar too; a platform that
       does not have it falls back to standalone. None of this takes effect over plain http on a
       local network, which is not a secure context: "add to home screen" there gives a bookmark
-      that opens in a tab. It is in place for the day the desk is served over https.
+      that opens in a tab. That is the expected outcome, not a gap to be closed: this desk is
+      served over plain http on the local network by design.
     -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="mobile-web-app-capable" content="yes" />

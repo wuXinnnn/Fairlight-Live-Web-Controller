@@ -211,10 +211,21 @@ interface View {
 - 电平表绘制:条带撑满视口后表体高度翻倍,而电平每秒重画 20 次,所以 `Meter` 只用 transform 表达读数,不碰布局也不重绘。`.meter__fill` 是一扇罩在固定渐变上的窗:窗按「没有点亮的那部分」向下平移,窗内的 `.meter__fill-bar` 向上平移同样的量,两个位移是同一个数的正负两面,因此渐变的分色始终钉在刻度上——用 `scaleY` 会把渐变一起压扁,−30 dB 的表会显出红色。峰值线同样是一个满高容器带着线平移,不再用 `bottom`(那是每帧一次布局)。`--meter-ratio` 与 `--meter-peak` 是 `Meter.tsx` 写在行内的两个无单位数,CSS 用 `calc()` 换算成百分比位移。实测(40 通道 / 20 Hz / 3840×1080):布局从每帧一次(352 次/秒)降到 19.9 次/秒——只剩读数文本那一次——主线程从 618 ms/s 降到 455 ms/s;CPU 降频 2 倍时帧率从 142 fps 升到 249 fps。`will-change: transform` 是实测有效的(去掉后主线程回到 530 ms/s)
 - 通道条的两块读数:电平值读数(`LVL`)与电平读数(`MTR`)不待在推子列与电平表列里,而是各占一整行、横跨整条通道条——读数的宽度因此与它旁边那个控件无关。一条通道条自上而下读作**名称 → ON → 电平值 → 表体与推子 → 电平读数**:先是操作员设的,再是台子答的。`.channel-strip__controls` 是一张「电平表井 / 推子轨道 / 刻度」三列、「LVL 行 + 控件行 + MTR 行」的网格,`.meter` 与 `.fader` 用 `display: contents` 摊平,把各自的部件交给这一张网格(元素本身没有盒子,所以「无电平时变暗」的 `opacity` 挂在电平表井与读数上,而不是挂在 `.meter` 上)。两行读数共用一套「标签 / 值 / 单位」三列规则,**只有值那一列是弹性的**:数字向左伸展,到单位的距离是一个固定的 `margin`,位数增减都不会改变它,两行的单位也因此对齐。样式上两者分开:电平值可以点开输入,所以它的值格常驻下沉底色、悬停提亮边框、输入态换成通道色、锁定或断线时整格退色——触摸屏没有 hover,静止态就得有可点的提示;电平读数只是读数,不加边框也不加底色,但**保留一圈透明边框**,否则它的内容盒会比上面那行宽出左右各 1px、三列跟着错位
 - 刻度到底不报数:电平表触底读 `-∞`(`formatMeterDb`),推子在自己刻度底同样读 `-∞`(`formatLevelDb`),响度的 INT 与 TP 触底各读 `--`(`formatReading`)。比刻度底更低的一切在那里读数相同,印出数字等于声称一次没做过的测量;响度那一对恰好在开机与 RESET 之后停在各自的底,那时台子还没积分出任何东西
-- 断线:UI 进入降级态(控件禁用+提示),socket.io 自动重连后以新快照恢复
+- 断线:UI 进入降级态(控件禁用 + 提示),socket.io 自动重连后以新快照恢复。**重连后服务端补发**:每个新 socket 连上来就收到一份 `mixer:snapshot` 与一份 `system:status`;Ember 重连到 `connected` 时即使树没变也补发一次快照(`snapshotDueAfterConnect`)。**前端保留操作状态**:页码、选中的 view、CONTROL LOCK 都在 store 之外或不随快照重置,重连后条带是同一批 DOM 节点(按 id 保持,不重新入场);服务端重启形态的空快照(`channels: []` + 非 `connected`)不清掉已加载的清单(`shouldRetainCachedInventory`)。**离线命令立即失败、不排队**:socket 未连接时 `emitWithAck` 直接以 `OFFLINE` 回执失败,不调 `emit`;已发出的控制命令走 `socket.timeout(ACK_TIMEOUT_MS)`,超时会被库从发送缓冲里删掉,因此传输层断开前刚发出的命令不会在重连后补发。这一条是有来由的:socket.io 默认把断线期间的 emit 缓冲到重连后原样补发,而推子拖动中掉线、松手时仍会 commit(`finishPointer` 不看 `disabled`),那条过期的电平命令会在 UI 已经回滚之后真的动台子。**不做「重连后重放」**——重放过期电平是事故,不是功能
 - 视觉基线:所有前端页面固定使用深色主题,不跟随系统浅色偏好,也不提供深浅色切换;后续页面复用全局深色设计 token
 - 动效基线:交互和状态组件使用简短、克制的过渡避免状态跳变生硬,拖动等直接操作保持即时跟手;非必要动效响应 `prefers-reduced-motion`
 - 文本基线:除设备或应用运行时带入的动态文本(如通道名称)外,前端所有固定 UI 文本使用英文
+
+## 长时间运行(soak)
+
+`apps/server/src/tools/soak.ts`(`pnpm --filter @flwc/server run soak`,零依赖)把混音台按演出现场的样子跑一段时间并量它,回答「几小时之后它还是不是同一个程序」。
+
+- **两种模式**。默认模式自建整套栈:按最新树 dump 起 Mock Provider、以 20 Hz 给全部映射通道喂合成电平(`soak-signal.ts`,每通道每约 20 秒有一段 0 dB 的峰让削波指示也跑到)、用真实 server 托管生产构建、开 headless Chrome,每 5 秒翻一页,每 10 分钟交替拔一次 Ember 与 socket 并要求 30 秒内回到 `MIXER ONLINE`。附着模式(`--url`)什么都不起,只对一个已有地址开浏览器采样——**它是只读的**:不构造 control client、不发任何 socket 事件,只碰 `Performance` / `HeapProfiler` / `Runtime` / `Input` 四个 CDP 域,页面探针是一段没有任何插值的固定字符串、只读属性与元素个数;唯一注入的输入是翻页键,且每次按键前都确认 `document.activeElement === document.body`(推子聚焦时这两个键是 ±10 dB)。这是给用户对真实台子做长时间验收用的。
+- **采什么**。每 30 秒先 `HeapProfiler.collectGarbage`,再取 JS 堆、DOM 节点数、事件监听数、文档与框架数、布局次数、任务耗时,以及页面上的 `data-wake-lock`、页码、条带数、`video` 数与页头是否 `MIXER ONLINE`;默认模式另采服务端的 RSS、堆、活动句柄数与四个 `listenerCount`。样本每次都落盘(先写临时名再改名),中途被杀也有数据。
+- **怎么判定**。热身 10 分钟之后取第一个 10 分钟窗口为基准、最后一个同长窗口为终点,比较两者:JS 堆增长 ≤ 10 MiB 且 ≤ 20%、DOM 节点与监听数漂移 ≤ 5%、服务端堆增长 ≤ 20 MiB、句柄数变化 ≤ 4、每次断连都在 30 秒内恢复。阈值全部是 `soak-report.ts` 里的导出常量,是**实测后定的初值**,不是规范。断连没恢复在任何时长下都直接 `fail`;样本不够两个窗口(不足 30 分钟)则为 `inconclusive`,退出码仍是 0。
+- **产物**。`soak-reports/<时间戳>/` 下的 `samples.json` 与 `report.md`(英文,由 `renderMarkdown` 生成),该目录不提交。`fail` 退出码 1。
+- **CI**。`.github/workflows/soak.yml` 只能手动触发(`workflow_dispatch`,输入分钟数),用 runner 自带的 Chrome,报告作为 artifact 上传保留 30 天;`ci.yml` 不跑 soak。
+- soak 的第一次实跑就找到了一个真实缺陷:总线目录探针每 2 秒建一个 Ember 客户端,断开时只 `disconnect()` 而没有 `discard()`,而 `EmberClient` 的重发定时器只有 `discard()` 会清——服务端句柄数每 10 秒涨 5 个,一小时一千八百个。修法见 `ember-service.ts` 的探针 `finally`。
 
 ## 部署
 
