@@ -11,7 +11,7 @@
 | 5. `.github/workflows/soak.yml` | 完成,CI 短跑成功,见第 6 节 |
 | 6. 文档(`architecture.md` / `conventions.md` / `index.html`) | 完成 |
 | 3 分钟冒烟 | 完成,两种 churn 都恢复,判定 `inconclusive` |
-| 60 分钟实跑 | 见第 5 节 |
+| 60 分钟实跑 | **完成,判定 `PASS`**,见第 5 节 |
 | 计划外的修复 ①:总线目录探针泄漏定时器 | 完成,**soak 发现**,见第 3.6 节 |
 | 计划外的修复 ②:CI 上的浏览器参数解析 | 完成,**CI 短跑发现**,见第 3.7 节 |
 | 计划外的修复 ③:target list 失败时遗留 Chrome 进程 | 完成,**Bugbot 发现**,见第 10 节 |
@@ -26,7 +26,7 @@
 ```
 pnpm lint (eslint . && prettier --check .)                        成功
 pnpm typecheck (shared + test-utils + server + web)               0 error
-pnpm test (shared 44 / test-utils 22 / server 244 / web 496)      全绿
+pnpm test (shared 44 / test-utils 22 / server 245 / web 496)      全绿
 pnpm build                                                        成功
 git status --short pnpm-lock.yaml                                 无改动
 ```
@@ -37,17 +37,17 @@ git status --short pnpm-lock.yaml                                 无改动
 | --- | ---: | ---: | ---: |
 | `packages/shared` | 44 | 44 | 0 |
 | `packages/test-utils` | 22 | 22 | 0 |
-| `apps/server` | 143 | 244 | +101 |
+| `apps/server` | 143 | 245 | +102 |
 | `apps/web` | 487 | 496 | +9 |
 
 覆盖率:
 
 | 包 | 指标 | 改动前 | 改动后 |
 | --- | --- | ---: | ---: |
-| `apps/server` | Statements | 92.51% | **94.59%** |
-| | Branches | 85.77% | **86.68%** |
-| | Functions | 96.28% | **97.16%** |
-| | Lines | 92.46% | **94.53%** |
+| `apps/server` | Statements | 92.51% | **94.71%** |
+| | Branches | 85.77% | **86.98%** |
+| | Functions | 96.28% | **97.19%** |
+| | Lines | 92.46% | **94.65%** |
 | `apps/web` | Statements | 96.93% | 96.94% |
 | | Branches | 92.44% | 92.47% |
 | | Functions | 98.92% | 98.92% |
@@ -62,7 +62,7 @@ git status --short pnpm-lock.yaml                                 无改动
 | 1 | 后端 7 条重连用例全绿;第 6 条的四个监听器计数与 patch 计数是真实断言;既有 6 例改 import 后全绿 | **通过**。第 6 条先断言绝对值 `{status:1, tree:1, patch:1, snapshot:1}` 再断言 5 轮后相等;patch 用 200 ms 静默窗口断言恰好一条。既有 6 例断言一字未改 |
 | 2 | 前端 6 条重连用例全绿;第 1 条断言 `article` 节点同一;第 2 条断言 `emitted` 里没有离线期间的 `control:set-level` | **通过**。四条用例都断言了节点同一,并实际验证过它们能红(第 3 节) |
 | 3 | `socket.test.ts` 新增 3 条全绿;`createBrowserSocket` 对带回调的 `emit` 确实调用了 `timeout()` | **通过** |
-| 4 | 三个 soak 模块单测全绿且各 ≥ 90% 行覆盖;3 分钟冒烟两种 churn 都恢复;60 分钟实跑完成;`soak-reports/` 已忽略 | **通过**,见第 1、5 节。仓库里没有样本文件 |
+| 4 | 三个 soak 模块单测全绿且各 ≥ 90% 行覆盖;3 分钟冒烟两种 churn 都恢复;60 分钟实跑完成;`soak-reports/` 已忽略 | **通过**。60 分钟实跑判定 `PASS`,5 次断连全部恢复,句柄与监听零漂移,见第 5 节。仓库里没有样本文件 |
 | 5 | `soak.yml` 手动触发 3 分钟短跑成功,artifact 可下载;`ci.yml` 无 diff | **通过**,但触发方式与提示词不同,见第 6 节 |
 | 6 | 全量质量门全绿,远端 CI 全绿,lockfile 无 diff,覆盖率排除只多一项 | **通过**。远端 CI 两个 job 均 `pass`,Bugbot 复查 `pass` |
 | 7 | 全程没有碰真实 Fairlight,没有动 3000 / 5173 | **通过**。所有 Provider 与 server 都用 `findFreePort()`;开始前确认过 3000/5173 空闲,全程未占用 |
@@ -206,7 +206,76 @@ git status --short pnpm-lock.yaml                                 无改动
 
 ## 5. soak 实跑结果
 
-<!-- 60 分钟实跑数据待填 -->
+### 5.1 冒烟(3 分钟)
+
+| 项 | 值 |
+| --- | --- |
+| 命令 | `pnpm --filter @flwc/server run soak --minutes 3 --sample-seconds 10 --churn-minutes 1` |
+| 运行时长 | 3 分 4 秒,17 个样本 |
+| 通道 | 20 条(dump 里全部映射通道:channel 9 / main 1 / aux 10) |
+| churn | ember 3507 ms(观测到中断)、socket 502 ms(观测到中断),**两种都恢复** |
+| 判定 | `inconclusive` —— 预期如此,3 分钟装不下两个 10 分钟窗口 |
+| 退出码 | 0,进程自行干净退出 |
+
+冒烟的价值兑现在第 3.6 节:它发现了总线目录探针的定时器泄漏,当时服务端句柄 3 分钟里从 21 涨到 102。修复后同一条命令下句柄恒定在 15。
+
+### 5.2 完整实跑(60 分钟,默认参数)
+
+运行环境:Windows 11,Chrome **151.0.7922.176**(`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`),Node 22.14.0。开始 2026-09-15 03:16(本地时间),结束 04:16,**实测 60.0 分钟,120 个样本**。
+
+```
+pnpm --filter @flwc/server run soak --out soak-reports/full
+```
+
+窗口:基准是热身 10 分钟之后的第一个 10 分钟窗口(10.1 → 19.7 min,20 个样本),终点是最后一个同长窗口(50.3 → 60.0 min,21 个样本)。
+
+**浏览器**
+
+| 指标 | 基准 | 终点 | 变化 | 变化 % |
+| --- | ---: | ---: | ---: | ---: |
+| JS heap used | 3.93 MiB | 4.10 MiB | +0.18 MiB | +4.6% |
+| JS heap total | 4.67 MiB | 4.90 MiB | +0.23 MiB | +4.9% |
+| DOM nodes | 1328 | 1328 | +0 | **+0.0%** |
+| JS event listeners | 229 | 229 | +0 | **+0.0%** |
+| Documents | 1 | 1 | +0 | +0.0% |
+| Frames | 1 | 1 | +0 | +0.0% |
+| Layout count | 17841.15 | 66179.38 | +48338.23 | +270.9% |
+| Task duration | 206.37 s | 781.53 s | +575.16 s | +278.7% |
+| Channel strips | 20 | 20 | +0 | +0.0% |
+| Video elements | 0 | 0 | +0 | +0.0% |
+
+JS 堆斜率(热身后全部样本的最小二乘):**+4.9 KiB/分**。
+
+**Layout count 与 Task duration 是累计计数器**,不是瞬时值,所以它们必然单调增长,那两个百分比不代表任何退化——判定也不看它们。有意义的读法是速率:布局约 4800 次/分(每 5 秒翻一页 + 20 Hz 电平重绘),主线程忙约 1.15 秒/分,即**约 1.9% 的占用**。
+
+`Video elements: 0` 是因为 `127.0.0.1` 是安全上下文,常亮走的是原生 Wake Lock API 而不是视频降级路径;`Wake lock states seen: active` 说明它全程持有。平板走局域网 IP 时会是另一条路径,那由第 8 节的真机验收覆盖。
+
+**服务端**
+
+| 指标 | 基准 | 终点 | 变化 |
+| --- | ---: | ---: | ---: |
+| RSS | 122.37 MiB | 124.44 MiB | +2.07 MiB |
+| Heap used | 30.83 MiB | 32.95 MiB | +2.12 MiB |
+| Active handles | 15 | 15 | **+0** |
+| Listeners: patch / snapshot / status / tree | 1 / 1 / 1 / 1 | 1 / 1 / 1 / 1 | **全部 +0** |
+
+句柄数与四个 listenerCount 在一小时里**一个都没动**,这正是第 3.6 节那处修复要保住的性质。
+
+**断连恢复**
+
+| 时刻 | 类型 | 恢复 | 中断是否上屏 |
+| ---: | --- | ---: | --- |
+| 10.1 min | ember | 3506 ms | 是 |
+| 20.2 min | socket | 1003 ms | 是 |
+| 30.2 min | ember | 3509 ms | 是 |
+| 40.3 min | socket | 501 ms | 是 |
+| 50.3 min | ember | 3506 ms | 是 |
+
+5 次断连**全部恢复**,最慢 3509 ms,阈值是 30 000 ms;每一次的中断都真的到达了页面(不是「还没察觉就已经回来」的假数据)。Ember 侧稳定在 3.5 秒,是 5 秒离线窗口减去重连退避的结果;socket 侧 0.5–1 秒,是客户端自己的重连延迟。
+
+**判定:`PASS`**,退出码 0,没有任何一条检查落在阈值之外。
+
+`samples.json` 与 `report.md` 在 `soak-reports/full/`,该目录已被 `.gitignore` 忽略,仓库里没有样本文件。
 
 ## 6. CI 短跑
 
@@ -292,6 +361,40 @@ pnpm --filter @flwc/server run soak --minutes 60 --url http://localhost:5173/ --
 
 第 4 条是本批次修复的端到端验证,也是唯一需要碰推子的一条:**做完请把电平复原到验收前的值**。
 
+## 8.5 交付物清单
+
+**新增**
+
+| 文件 | 说明 |
+| --- | --- |
+| `apps/server/tests/mixer-stack.ts` | 共享的栈夹具(不计入覆盖率:`include` 只含 `src/**`) |
+| `apps/server/tests/reconnect.integration.test.ts` | 7 条重连用例 |
+| `apps/server/tests/strip-probe.integration.test.ts` | 2 条探针用例(其一是泄漏的回归锁) |
+| `apps/server/src/tools/cdp.ts` + `.test.ts` | 极简 CDP 客户端,32 条单测,行覆盖 100% |
+| `apps/server/src/tools/soak-signal.ts` + `.test.ts` | 合成节目,14 条单测,行覆盖 100% |
+| `apps/server/src/tools/soak-report.ts` + `.test.ts` | 统计与判定,39 条单测,行覆盖 99.54% |
+| `apps/server/src/tools/soak.ts` | 驱动(唯一新增的覆盖率排除项) |
+| `apps/web/tests/reconnect.integration.test.tsx` | 6 条前端重连用例 |
+| `.github/workflows/soak.yml` | 手动触发的 soak 工作流 |
+| `docs/reports/phase-6-5-report.md` | 本报告 |
+
+**修改**
+
+| 文件 | 说明 |
+| --- | --- |
+| `apps/server/src/ember/ember-service.ts` | 探针 `finally` 总是 `discard()` 并 retire(第 3.6 节) |
+| `apps/server/src/tools/cli-args.ts` + `.test.ts` | 接收 soak 的参数解析,+9 条单测(第 3.7 节) |
+| `apps/server/tests/mixer.integration.test.ts` | 只改 import 与 `afterEach` 接线 |
+| `apps/server/package.json` | 加 `soak` 脚本 |
+| `apps/server/vitest.config.ts` | 覆盖率排除加 `src/tools/soak.ts` |
+| `apps/web/src/lib/socket.ts` + `.test.ts` | 离线短路与 `timeout()` 包装,+3 条单测 |
+| `apps/web/index.html` | 改掉「等 https」那句注释 |
+| `docs/architecture.md` | 扩写「断线」,新增「长时间运行(soak)」 |
+| `docs/conventions.md` | 不提交清单加 `soak-reports/`,测试一节加 soak 命令 |
+| `.gitignore` | 加 `soak-reports/` |
+
+`packages/shared` 与 `packages/test-utils` 一行未改;`.github/workflows/ci.yml` 一字未改;`pnpm-lock.yaml` 无 diff。
+
 ## 9. 被改写的既有用例清单
 
 | 文件 | 改动 | 是否触及断言意图 |
@@ -326,7 +429,7 @@ Cursor Bugbot 在 `8016d4a` 上给出 **1 条 finding**,成立,已修。
 
 ## 12. 遗留问题与移交事项
 
-1. **60 分钟实跑的判定见第 5 节**;若为 `fail`,处理情况写在那一节。
+1. **60 分钟实跑判定 `PASS`**(第 5 节),没有遗留的泄漏。
 2. **真机长时间运行验收移交用户**,清单见第 8 节。这是开发计划 6.5 验收框里「本地对真实 Fairlight 长时间运行(≥1 小时)无内存泄漏、无断连不恢复」与「触屏与鼠标操作均流畅」两条。
 3. **soak 的阈值是初值**。第 4 节的 8 个判定阈值基于本机一次 60 分钟实跑定下,换机器或换浏览器版本可能需要调整。调整方式是改 `soak-report.ts` 的导出常量,不是放宽判定逻辑。
 4. **`workflow_dispatch` 要合并后才能用**。`soak.yml` 进入默认分支之后,`gh workflow run soak.yml -f minutes=60` 才会工作(原因见第 6 节)。合并后建议手动触发一次 60 分钟的跑,确认 runner 上的长跑也通过。
