@@ -22,6 +22,8 @@ export interface StartStackOptions {
    * because `lastError` does not exist until one does.
    */
   timeoutMs?: number;
+  /** How often the mixer strip probe runs. Zero, the default here, turns it off. */
+  busDirectoryPollMs?: number;
 }
 
 export interface Stack {
@@ -177,7 +179,7 @@ export function createStackHarness(): StackHarness {
       reconnectMaxMs: 100,
       treeRefreshDebounceMs: 20,
       incompleteStripRetryMs: extra.incompleteStripRetryMs,
-      busDirectoryPollMs: 0,
+      busDirectoryPollMs: extra.busDirectoryPollMs ?? 0,
     });
     servers.push(server);
     return server;
