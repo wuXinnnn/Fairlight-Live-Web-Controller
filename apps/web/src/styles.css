@@ -64,19 +64,25 @@ button {
 }
 
 .mixer-shell {
-  min-height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
 }
 
+/*
+ * The header runs on one line for as long as its cells fit and takes a second one when they do
+ * not. Wrapping is what decides that, not a width in a media query: the cells are labels and
+ * numbers, so what they need depends on the font and on the text, and any figure picked here
+ * would be wrong for some of them — too early and the desk loses a row of height it needs, too
+ * late and the cells run into each other.
+ */
 .console-header {
-  position: sticky;
+  position: relative;
   z-index: 10;
-  top: 0;
-  display: grid;
-  grid-template-columns: minmax(12rem, 1fr) auto auto minmax(25rem, auto);
-  min-height: 6.5rem;
+  display: flex;
+  min-height: 3rem;
   align-items: stretch;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--line-strong);
   background: rgb(17 19 24 / 94%);
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 22%);
@@ -86,9 +92,9 @@ button {
 .console-brand {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  padding: 1rem 1.5rem;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0 1.1rem;
   border-right: 1px solid var(--line);
 }
 
@@ -98,13 +104,15 @@ button {
   font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.19em;
+  white-space: nowrap;
 }
 
 .console-brand h1 {
-  margin: 0.18rem 0 0;
-  font-size: clamp(1.45rem, 2.3vw, 2.15rem);
-  letter-spacing: 0.08em;
-  line-height: 0.92;
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .connection-status-region {
@@ -116,11 +124,11 @@ button {
 .connection-status {
   display: flex;
   flex: 1;
-  min-width: 10.5rem;
+  min-width: 9.5rem;
   align-items: center;
   justify-content: center;
   gap: 0.65rem;
-  padding: 0.75rem 1.15rem;
+  padding: 0 1.05rem;
   border: 0;
   border-right: 1px solid var(--line);
   background: transparent;
@@ -182,8 +190,8 @@ button {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.45rem 0.8rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0 0.8rem;
+  border-right: 1px solid var(--line);
   color: var(--text-dim);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.6rem;
@@ -191,21 +199,19 @@ button {
   white-space: nowrap;
 }
 
+/* The three preferences are laid out by the header grid itself, one cell each. */
 .console-preferences {
-  display: grid;
-  min-width: 17rem;
-  grid-auto-rows: minmax(2.1rem, 1fr);
-  border-right: 1px solid var(--line);
+  display: contents;
 }
 
 .view-selector {
   display: grid;
   min-width: 0;
-  grid-template-columns: auto minmax(7rem, 1fr);
+  grid-template-columns: auto minmax(6.5rem, 1fr);
   align-items: center;
   gap: 0.65rem;
-  padding: 0.4rem 0.8rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0 0.8rem;
+  border-right: 1px solid var(--line);
   color: var(--text-dim);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.52rem;
@@ -276,8 +282,9 @@ button {
   align-items: center;
   gap: 0.65rem;
   margin: 0;
-  padding: 0.38rem 0.8rem;
+  padding: 0 0.8rem;
   border: 0;
+  border-right: 1px solid var(--line);
 }
 
 .control-lock legend {
@@ -334,7 +341,7 @@ button {
 .notice {
   position: fixed;
   z-index: 30;
-  top: 7.3rem;
+  top: 3.8rem;
   right: 1rem;
   max-width: min(24rem, calc(100vw - 2rem));
   padding: 0.75rem 1rem;
@@ -349,8 +356,17 @@ button {
 
 .loudness-panel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(6.5rem, 1fr)) minmax(7.8rem, auto);
+  grid-template-columns: repeat(2, minmax(5.6rem, auto)) auto;
   align-items: stretch;
+  /*
+   * Never narrower than the numbers it is showing. Squeezed below that, the readings keep their
+   * own width and spill out of the tracks they were given — the unit of the first one lands on
+   * the label of the second. The header wraps on content everywhere else; this is what lets it
+   * wrap here too, by taking a line of its own rather than being pressed into the end of one.
+   */
+  min-width: max-content;
+  /* Last on the line, and hard against its end whatever the cells before it come to. */
+  margin-inline-start: auto;
 }
 
 /* CONNECTION panel: the application's only modal, drawn with the console tokens. */
@@ -546,17 +562,15 @@ body.is-modal-open {
 
 .loudness-reading {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: 1fr auto;
-  align-items: end;
-  gap: 0 0.65rem;
-  padding: 0.75rem 1rem;
-  border-right: 1px solid var(--line);
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0 0.55rem;
+  padding: 0 0.9rem;
+  border-left: 1px solid var(--line);
   background: linear-gradient(180deg, rgb(255 255 255 / 1.5%), transparent);
 }
 
 .loudness-reading > span {
-  grid-row: 1 / 3;
   align-self: center;
   color: var(--amber);
   font-family: 'IBM Plex Mono', monospace;
@@ -566,7 +580,7 @@ body.is-modal-open {
 
 .loudness-reading strong {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 1.45rem;
+  font-size: 1.05rem;
   font-weight: 500;
   line-height: 1;
   text-align: right;
@@ -576,20 +590,22 @@ body.is-modal-open {
 .loudness-reading small {
   color: var(--text-dim);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.58rem;
+  font-size: 0.5rem;
   letter-spacing: 0.08em;
   text-align: right;
 }
 
 .reset-button {
-  margin: 1.15rem;
-  padding: 0.6rem 1rem;
+  margin: 0.4rem 0.7rem;
+  padding: 0.35rem 0.85rem;
   border: 1px solid var(--line-strong);
   background: #1a1d23;
   color: var(--text-dim);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.12em;
+  /* CONFIRM RESET is two words and must not become two lines: the header would grow under it. */
+  white-space: nowrap;
   cursor: pointer;
   transition:
     border-color var(--motion-fast) ease,
@@ -618,40 +634,87 @@ body.is-modal-open {
   opacity: 0.38;
 }
 
+.mixer-deck {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 1fr auto;
+}
+
+/*
+ * The pager viewport. It only ever clips: a strip is either on the page you are looking at or on
+ * another one, and the track slides by whole pages. Nothing scrolls here, because the track moves
+ * on the same axis a scroll would — a page taller than the viewport scrolls inside itself instead.
+ */
 .mixer-bays {
-  display: flex;
   min-width: 0;
-  align-content: flex-start;
-  flex-wrap: wrap;
-  column-gap: 1px;
-  row-gap: 0.9rem;
-  padding: 1.6rem 1.5rem 2.5rem;
+  overflow: hidden;
+  padding: 0;
 }
 
-.mixer-section,
-.channel-bay {
-  display: contents;
+/* Pages are stacked downwards and the track slides up, so a page turn reads as a scroll. */
+.mixer-pages {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  transform: translateY(calc(-100% * var(--page-index, 0)));
+  transition: transform var(--page-transition) ease;
 }
 
-.channel-group-lead {
+/*
+ * A page is exactly one viewport tall, so the track is always `pageCount` viewports and the
+ * translation lands square. The degraded case — a viewport shorter than `--strip-min-height` —
+ * is carried by the strips inside, which overflow the page and let it scroll.
+ *
+ * That scrollbar stays hidden. It would otherwise take its width out of the page's content box
+ * while the pager is sized from the viewport, and the last strip on a full page would be clipped.
+ */
+.mixer-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 0 0 100%;
+  align-items: stretch;
+  overflow: hidden auto;
+  padding-block: 0.9rem;
+  padding-inline: calc(var(--page-padding-x) + var(--page-lead, 0px)) var(--page-padding-x);
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.mixer-page::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * A section is its label band over its own run of strips. The band spans exactly the strips it
+ * names, which is what makes it readable as their shoulder without standing beside them and
+ * taking a strip's worth of width off every page. Its row is reserved whether or not the section
+ * has a label, so two sections side by side start their strips at the same height.
+ */
+.mixer-section {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: var(--section-header-height) minmax(var(--strip-min-height), 1fr);
+  row-gap: var(--section-header-gap);
+}
+
+.mixer-section__strips {
   display: flex;
   min-width: 0;
-  flex: 0 0 auto;
-  gap: 1px;
+  min-height: 0;
+  grid-row: 2;
+  gap: var(--strip-gap);
 }
 
 .mixer-section__header {
   display: flex;
-  width: 3.2rem;
-  min-width: 3.2rem;
-  min-height: 33rem;
-  flex: 0 0 3.2rem;
-  flex-direction: column;
+  min-width: 0;
+  grid-row: 1;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.7rem;
-  padding: 1rem 0.7rem;
+  gap: 0.55rem;
+  padding: 0 0.6rem;
   border: 1px solid color-mix(in srgb, var(--channel-accent) 48%, #23262d);
+  border-bottom: 2px solid var(--channel-accent);
   background:
     linear-gradient(
       180deg,
@@ -660,93 +723,161 @@ body.is-modal-open {
     ),
     #15171c;
   color: var(--channel-accent);
-  transition:
-    flex-basis var(--motion-medium) ease,
-    width var(--motion-medium) ease,
-    min-height var(--motion-medium) ease;
 }
 
+/* The rule runs out to the end of the band, which is the end of the run the band is naming. */
 .mixer-section__header::after {
-  width: 1px;
-  min-height: 3rem;
+  height: 1px;
+  min-width: 1.5rem;
   flex: 1;
-  background: linear-gradient(180deg, var(--channel-accent), transparent);
+  background: linear-gradient(90deg, var(--channel-accent), transparent);
   content: '';
 }
 
 .mixer-section__header h2 {
+  overflow: hidden;
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   letter-spacing: 0.19em;
-  writing-mode: vertical-rl;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mixer-section__header span {
   color: color-mix(in srgb, var(--channel-accent) 70%, var(--text-dim));
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.64rem;
-  writing-mode: vertical-rl;
+  font-size: 0.62rem;
 }
 
-.mixer-section:not(:first-child) .mixer-section__header {
-  margin-left: 0.85rem;
+.mixer-section__header small {
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
 }
 
-.mixer-bays.is-view-mode:not(.is-type-rows) .channel-strip.is-after-group {
-  margin-left: 0.85rem;
+.mixer-section + .mixer-section {
+  margin-left: var(--segment-gap);
 }
 
-/* In TYPE ROWS mode ungrouped strips that follow a group start their own row. */
-.view-row-break {
-  display: none;
+/*
+ * The page rail. It is always there on every pointer device, in the same place whatever the page
+ * count, because it is the only surface an operator can grab without risking the sound.
+ */
+.page-rail {
+  display: flex;
+  width: var(--page-rail-width);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 0.55rem;
+  border-left: 1px solid var(--line-strong);
+  background: rgb(17 19 24 / 94%);
+  touch-action: none;
+  user-select: none;
 }
 
-.mixer-bays.is-type-rows .view-row-break {
-  display: block;
+/* Physical keys, in the same bevelled language as the ON button. */
+.page-rail__step {
+  display: flex;
   width: 100%;
-  height: 0;
-  flex-basis: 100%;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3d424d;
+  background: #171a20;
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 3%),
+    0 0.2rem 0.45rem rgb(0 0 0 / 30%);
+  color: #8f95a1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform 90ms ease;
 }
 
-.mixer-bays.is-type-rows .mixer-section__header {
+.page-rail__step svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.page-rail__step:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
+}
+
+.page-rail__step:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.page-rail__step:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.page-rail__count {
+  display: flex;
   width: 100%;
-  min-width: 100%;
-  min-height: 2.3rem;
-  flex-basis: 100%;
-  flex-direction: row;
-  justify-content: flex-start;
-  margin-left: 0;
-  padding: 0.55rem 0.8rem;
+  justify-content: center;
 }
 
-.mixer-bays.is-type-rows .channel-group-lead {
-  display: contents;
+/*
+ * The counter is also the way to a page by its number. It wears a field's border whether or not
+ * it is being used — a touch screen has no hover to discover it with — and turns into a real
+ * field when it is pressed.
+ */
+.page-rail__jump {
+  width: 100%;
+  padding: 0.25rem 0.1rem;
+  border: 1px solid #2f333c;
+  background: #12141a;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
 }
 
-.mixer-bays.is-type-rows .mixer-section__header::after {
-  width: auto;
-  height: 1px;
-  min-height: 0;
-  background: linear-gradient(90deg, var(--channel-accent), transparent);
+.page-rail__jump:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
 }
 
-.mixer-bays.is-type-rows .mixer-section__header h2,
-.mixer-bays.is-type-rows .mixer-section__header span {
-  writing-mode: horizontal-tb;
+.page-rail__jump:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
 }
 
-.mixer-bays.is-type-rows .mixer-section__header span {
-  order: 3;
+input.page-rail__jump {
+  appearance: none;
+  border-color: var(--amber);
+  color: var(--amber-pale);
+  caret-color: var(--amber);
+  cursor: text;
+}
+
+/* Reserved for the swipe gesture: it takes the leftover height and swallows touches. */
+.page-rail__track {
+  width: 100%;
+  flex: 1;
+  touch-action: none;
 }
 
 .channel-strip {
   position: relative;
   display: grid;
-  width: 9.25rem;
-  min-width: 9.25rem;
-  min-height: 33rem;
-  flex: 0 0 9.25rem;
-  grid-template-rows: auto auto 1fr;
+  width: var(--strip-width);
+  min-width: var(--strip-width);
+  height: 100%;
+  flex: 0 0 var(--strip-width);
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: 0 0.65rem 0.8rem;
   border: 1px solid var(--line);
   border-top-color: color-mix(in srgb, var(--channel-accent) 68%, var(--line));
@@ -779,10 +910,14 @@ body.is-modal-open {
   transform: translateY(0.6rem);
 }
 
+/*
+ * Sized by what is in it rather than to a fixed height. Every name is one line — they are clipped
+ * with an ellipsis, never wrapped — so the headers of two strips come out the same height anyway,
+ * and a fixed one only left dead space between the name and the ON key.
+ */
 .channel-strip__header {
   min-width: 0;
-  height: 4.15rem;
-  padding: 0.85rem 0.15rem;
+  padding: 0.8rem 0.15rem 0.6rem;
   border-bottom: 1px solid var(--line);
 }
 
@@ -810,7 +945,7 @@ body.is-modal-open {
 
 .channel-strip > .on-button {
   width: 100%;
-  margin-top: 0.8rem;
+  margin-top: 0.55rem;
 }
 
 .missing-channel-strip {
@@ -864,6 +999,7 @@ body.is-modal-open {
 
 .missing-channel-strip__trace {
   display: grid;
+  min-height: 0;
   align-content: center;
   gap: 1.4rem;
   padding: 2.1rem 0.8rem;
@@ -881,27 +1017,32 @@ body.is-modal-open {
   );
 }
 
+/*
+ * The level field is the top row and the meter reading the bottom one, with the well, the track
+ * and the scale between them — what the operator sets sits above what the desk answers back. Each
+ * reading takes a row of its own across the whole strip, which is what lets its digits sit hard
+ * against a fixed unit column: they grow leftwards into space nothing else wants, so the gap to
+ * `dB` never moves and a long value can never be driven into its neighbour. `.meter` and `.fader`
+ * are flattened out of the way so their parts can be placed on this one grid.
+ */
 .channel-strip__controls {
   display: grid;
-  grid-template-columns: 3.25rem 1fr;
-  gap: 0.45rem;
+  min-height: 0;
+  grid-template-columns: 1.45rem minmax(0, 1fr) 1.55rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 0.35rem;
   padding: 0.8rem 0 0;
 }
 
+.meter,
 .fader {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 1fr 1.55rem;
-  grid-template-rows: 21rem 2.6rem;
-  row-gap: 0.35rem;
-  transition: opacity var(--motion-fast) ease;
+  display: contents;
 }
 
 .fader__scale {
   position: relative;
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 3;
+  grid-row: 2;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
   pointer-events: none;
@@ -929,8 +1070,8 @@ body.is-modal-open {
 
 .fader__track {
   position: relative;
-  grid-column: 1;
-  grid-row: 1;
+  grid-column: 2;
+  grid-row: 2;
   height: calc(100% - 1.85rem);
   margin: 0.925rem 0;
   user-select: none;
@@ -1027,77 +1168,106 @@ html.fader-cap-dragging * {
   color: var(--amber-pale);
 }
 
+/*
+ * The two readings sit at opposite ends of the strip but run on the same three columns — label,
+ * value, unit — and only the value column is elastic, so the digits grow leftwards and the two
+ * `dB` stand on one vertical line whatever is being read out.
+ */
+.meter__readout,
 .fader__readout {
-  grid-column: 1 / 3;
-  grid-row: 2;
-  align-self: stretch;
-  transition: color var(--motion-fast) ease;
-}
-
-.fader__readout,
-.meter__readout {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 0.65rem 1fr;
+  grid-column: 1 / -1;
+  grid-template-columns: 1.4rem minmax(0, 1fr) 0.9rem;
   align-items: center;
-  padding: 0.22rem 0.28rem;
+  padding: 0.16rem 0.3rem;
   border: 1px solid #343945;
   background: #111318;
   color: #d6d3ca;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.64rem;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  white-space: nowrap;
+}
+
+/*
+ * Printed, not set: the meter value carries no frame of its own. The border stays in place but
+ * transparent — dropping it would widen this line's content box by a pixel on each side and take
+ * its columns out of line with the level field's.
+ */
+.meter__readout {
+  grid-row: 3;
+  margin-top: 0.5rem;
+  border-color: transparent;
+  background: none;
+  font-size: 0.68rem;
 }
 
 .fader__readout {
-  border-color: transparent;
-  background: transparent;
+  grid-row: 1;
+  margin-bottom: 0.5rem;
+  font-size: 0.84rem;
+  transition: color var(--motion-fast) ease;
 }
 
 .readout__label {
-  grid-column: 1 / 3;
-  align-self: start;
+  grid-column: 1;
+  justify-self: start;
   color: color-mix(in srgb, var(--channel-accent) 72%, var(--text-dim));
-  font-size: 0.42rem;
+  font-size: 0.44rem;
   letter-spacing: 0.12em;
   line-height: 1;
-  text-align: left;
 }
 
 .readout__value,
 .fader__readout button,
 .fader__readout input {
   min-width: 0;
-  grid-column: 1;
-  grid-row: 2;
-  overflow: visible;
+  grid-column: 2;
+  overflow: hidden;
+  /* One inset on both lines, so the digits share a right edge even though only one wears a box. */
+  padding: 0.02rem 0.16rem;
+  border: 1px solid transparent;
   color: inherit;
   font-family: inherit;
-  font-size: 0.64rem;
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: right;
+  text-overflow: ellipsis;
 }
 
+/*
+ * The level can be typed and the meter reading can only be read, so the level value sits in a
+ * sunken cell whether or not anyone is using it — a touch screen has no hover to discover a
+ * control with, so the affordance has to be there at rest. The target is the whole cell.
+ */
 .fader__readout button {
-  padding: 0;
-  border: 0;
-  background: transparent;
+  align-self: stretch;
+  justify-self: stretch;
+  background: #12141a;
   cursor: text;
+  transition:
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
 }
 
+.fader__readout button:hover:not(:disabled) {
+  border-color: #686e7b;
+  color: var(--amber-pale);
+}
+
+/* A locked or disconnected fader must not go on advertising a field that will not open. */
 .fader__readout button:disabled {
   cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .fader__readout input {
   width: 100%;
-  padding: 0.08rem 0.12rem;
-  border: 1px solid var(--channel-accent);
+  border-color: var(--channel-accent);
   outline: 0;
   background: #090b0e;
+  caret-color: var(--channel-accent);
   appearance: textfield;
 }
 
@@ -1107,9 +1277,8 @@ html.fader-cap-dragging * {
   appearance: none;
 }
 
+/* The field carries the state, not the panel around it. */
 .fader__readout.is-invalid {
-  border-color: transparent;
-  box-shadow: none;
   color: var(--red);
 }
 
@@ -1117,61 +1286,35 @@ html.fader-cap-dragging * {
   border-color: var(--red);
 }
 
-.fader__readout small,
-.meter__readout small {
-  grid-column: 2;
-  grid-row: 2;
-  margin-left: 0.14rem;
+/*
+ * The unit stands at the left edge of a column of its own, so the space between a value and its
+ * `dB` is this margin and nothing else — losing or gaining a digit cannot move it.
+ */
+.meter__readout small,
+.fader__readout small {
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 0.28rem;
   color: var(--text-dim);
-  font-size: 0.43rem;
+  font-size: 0.44rem;
   line-height: 1;
 }
 
-.fader__readout {
-  display: grid;
-  overflow: visible;
-  grid-column: 1 / 3;
-  grid-template-columns: minmax(0, 1fr) 1.55rem;
-  grid-template-rows: 1fr;
-  align-items: center;
-  padding: 0;
-  font-size: 0.86rem;
-  white-space: nowrap;
-}
-
-.fader__readout button,
-.fader__readout input {
-  width: auto;
-  min-width: 2.7rem;
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: center;
-  font-size: 0.86rem;
-  text-align: center;
-}
-
-.fader__readout small {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: start;
-  margin: 0 0 0 0.38rem;
-  font-size: 0.46rem;
-}
-
-.meter {
-  display: grid;
-  grid-template-rows: 21rem 2.6rem;
-  row-gap: 0.35rem;
-  min-width: 0;
+/* No meters, no reading: the well and its number fade together and the frame stays put. */
+.meter__well,
+.meter__readout {
   transition: opacity var(--motion-medium) ease;
 }
 
-.meter.is-frozen {
+.meter.is-frozen .meter__well,
+.meter.is-frozen .meter__readout {
   opacity: 0.35;
 }
 
 .meter__well {
   position: relative;
+  grid-column: 1;
+  grid-row: 2;
   width: 1.05rem;
   height: 100%;
   margin: 0 auto;
@@ -1203,36 +1346,59 @@ html.fader-cap-dragging * {
     );
 }
 
+/*
+ * The bar is a window over a gradient that never moves. The window slides down by the part of
+ * the well that is not lit; the gradient inside slides up by exactly as much, so it stays put
+ * against the scale while only the amount on show changes. Both are transforms, which keeps a
+ * reading off the main thread — `bottom` and `clip-path` cost a layout and a paint per frame.
+ */
 .meter__fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform: translateY(calc((1 - var(--meter-ratio, 0)) * 100%));
+  transition: transform 45ms linear;
+  will-change: transform;
+}
+
+.meter__fill-bar {
   position: absolute;
   inset: 0;
   background: linear-gradient(0deg, var(--green) 0 70%, var(--amber) 70% 90%, var(--red) 90% 100%);
   box-shadow: 0 0 0.55rem currentColor;
-  clip-path: inset(var(--meter-reveal, 100%) 0 0);
+  transform: translateY(calc((var(--meter-ratio, 0) - 1) * 100%));
   transition:
-    clip-path 45ms linear,
+    transform 45ms linear,
     background-color var(--motion-fast) ease;
 }
 
 .meter.is-clipping .meter__fill {
+  transform: none;
+}
+
+.meter.is-clipping .meter__fill-bar {
   background: var(--red);
-  clip-path: inset(0);
+  transform: none;
   animation: clipping-alert 420ms steps(2, jump-none) infinite;
 }
 
 .meter__peak {
   position: absolute;
+  inset: 0;
+  transform: translateY(calc((1 - var(--meter-peak, 0)) * 100%));
+  transition: transform 60ms linear;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.meter__peak-line {
+  position: absolute;
+  top: -2px;
   right: -1px;
   left: -1px;
   height: 2px;
   background: #f5eee0;
   box-shadow: 0 0 0.35rem #fff0c4;
-  transition: bottom 60ms linear;
-}
-
-.meter__readout {
-  align-self: stretch;
-  overflow: visible;
 }
 
 .meter--warning .meter__readout {
@@ -1385,8 +1551,8 @@ html.fader-cap-dragging * {
 
 .console-brand__action {
   width: fit-content;
-  margin-top: 0.55rem;
   padding: 0;
+  white-space: nowrap;
   border: 0;
   border-bottom: 1px solid #75602f;
   background: transparent;
@@ -2816,27 +2982,15 @@ html.fader-cap-dragging * {
 }
 
 @media (max-width: 800px) {
-  .console-header {
-    position: relative;
-    grid-template-columns: 1fr auto;
-  }
-
-  .connection-status {
-    border-right: 0;
-  }
-
-  .console-preferences {
-    grid-column: 1 / 3;
-    border-top: 1px solid var(--line);
-  }
-
+  /* Narrow enough that the loudness readouts are better off filling their line than hugging it. */
   .loudness-panel {
-    grid-column: 1 / 3;
-    border-top: 1px solid var(--line);
+    flex: 1;
+    margin-inline-start: 0;
   }
 
-  .mixer-bays {
-    padding: 1rem 0.75rem 2rem;
+  /* Only the vertical padding gives way; the sides stay at the width the pager was told. */
+  .mixer-page {
+    padding-block: 0.6rem;
   }
 
   .settings-header {
@@ -2900,6 +3054,10 @@ html.fader-cap-dragging * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mixer-pages {
+    transition: none;
+  }
+
   :root {
     --motion-fast: 1ms;
     --motion-medium: 1ms;

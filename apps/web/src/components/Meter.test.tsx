@@ -7,6 +7,7 @@ import {
   Meter,
   PEAK_HOLD_MS,
   clampMeterDb,
+  formatMeterDb,
   meterLevelClass,
 } from './Meter.js';
 
@@ -33,11 +34,24 @@ describe('Meter', () => {
     expect(screen.getByLabelText('BASS meter')).toHaveClass('meter--clip');
   });
 
-  it('reveals a fixed meter gradient by clipping and warns after repeated 0 dB frames', () => {
+  it('reads the bottom of the scale as silence rather than as a figure', () => {
+    expect(formatMeterDb(METER_DB_MIN)).toBe('-∞');
+    // Everything below the floor reads the same there, so none of it may print a number.
+    expect(formatMeterDb(-99)).toBe('-∞');
+    expect(formatMeterDb(METER_DB_MIN + 0.1)).toBe('-59.9');
+
+    applyMetersFrame({ meters: [['channel/1', -80]] });
+    render(<Meter id="channel/1" label="BASS" active />);
+    expect(screen.getByLabelText('BASS meter value')).toHaveTextContent('-∞dB');
+  });
+
+  it('reveals a fixed meter gradient by sliding it and warns after repeated 0 dB frames', () => {
     applyMetersFrame({ meters: [['channel/1', -30]] });
     const { container } = render(<Meter id="channel/1" label="BASS" active />);
     const fill = container.querySelector<HTMLElement>('.meter__fill');
-    expect(fill?.style.getPropertyValue('--meter-reveal')).toBe('50%');
+    expect(fill?.style.getPropertyValue('--meter-ratio')).toBe('0.5');
+    // The gradient slides back by whatever the window slid forward, so it stays on the scale.
+    expect(container.querySelector('.meter__fill-bar')).not.toBeNull();
     expect(screen.getByLabelText('BASS meter')).toHaveAttribute('data-clipping', 'false');
 
     act(() => {
@@ -57,18 +71,18 @@ describe('Meter', () => {
       vi.advanceTimersByTime(0);
     });
     const peak = container.querySelector<HTMLElement>('.meter__peak');
-    expect(peak?.style.bottom).toBe('95%');
+    expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0.95');
 
     act(() => {
       applyMetersFrame({ meters: [['channel/1', -30]] });
       vi.advanceTimersByTime(PEAK_HOLD_MS - 1);
     });
-    expect(peak?.style.bottom).toBe('95%');
+    expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0.95');
 
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    expect(peak?.style.bottom).toBe('50%');
+    expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0.5');
   });
 
   it('visually freezes when the control surface is inactive', () => {
