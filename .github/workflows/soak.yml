@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - '.github/workflows/soak.yml'
+      - 'apps/server/src/tools/**'
   workflow_dispatch:
     inputs:
       minutes:
