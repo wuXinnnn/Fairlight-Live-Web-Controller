@@ -423,6 +423,23 @@ describe('renderMarkdown', () => {
     expect(markdown).toMatch(/too short to hold two windows/);
   });
 
+  it('names the pages the operator turned to, separately from the sampled ones', () => {
+    const summary = summarize(runOf(60));
+    const markdown = renderMarkdown(summary, verdict(summary), {
+      ...meta,
+      pagesVisited: ['1 / 2', '2 / 2'],
+    });
+    expect(markdown).toMatch(/Pages the operator turned to during the run: 1 \/ 2, 2 \/ 2/);
+    expect(markdown).toMatch(/lands on the same phase/);
+  });
+
+  it('leaves the pager line out when nothing recorded a page turn', () => {
+    const summary = summarize(runOf(60));
+    expect(renderMarkdown(summary, verdict(summary), meta)).not.toMatch(
+      /Pages the operator turned to/,
+    );
+  });
+
   it('renders custom thresholds rather than the defaults', () => {
     const thresholds: SoakThresholds = { ...SOAK_DEFAULT_THRESHOLDS, churnRecoveryMs: 5000 };
     const summary = summarize(runOf(60));

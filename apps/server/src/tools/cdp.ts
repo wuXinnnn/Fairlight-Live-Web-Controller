@@ -274,6 +274,15 @@ export async function launchChrome(options: LaunchChromeOptions): Promise<Launch
     pageSocketUrl: page.webSocketDebuggerUrl,
     kill() {
       child.kill();
+      /*
+       * The stderr pipe keeps a handle open for as long as anyone is listening to it, and a Node
+       * process does not exit while one is live. Nothing is read from it after the address has
+       * been found, so it is let go of here rather than holding the run open after its report is
+       * already written.
+       */
+      child.stderr?.removeAllListeners();
+      child.stderr?.destroy();
+      child.unref();
     },
   };
 }

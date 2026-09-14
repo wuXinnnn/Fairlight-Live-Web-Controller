@@ -270,11 +270,15 @@ describe('resolveChromeExecutable', () => {
 /** A child process whose stderr and lifetime the test drives. Chrome itself is never started. */
 function fakeChild(): ChildProcess & { stderr: EventEmitter; kill: ReturnType<typeof vi.fn> } {
   const child = new EventEmitter() as EventEmitter & {
-    stderr: EventEmitter;
+    stderr: EventEmitter & { destroy: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
+    unref: ReturnType<typeof vi.fn>;
   };
-  child.stderr = new EventEmitter();
+  const stderr = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+  stderr.destroy = vi.fn();
+  child.stderr = stderr;
   child.kill = vi.fn();
+  child.unref = vi.fn();
   return child as unknown as ChildProcess & {
     stderr: EventEmitter;
     kill: ReturnType<typeof vi.fn>;
@@ -401,5 +405,8 @@ describe('launchChrome', () => {
     const chrome = await pending;
     chrome.kill();
     expect(child.kill).toHaveBeenCalled();
+    // The stderr pipe is let go of too: a live one would keep the run's process from exiting.
+    const stderr = child.stderr as unknown as { destroy: ReturnType<typeof vi.fn> };
+    expect(stderr.destroy).toHaveBeenCalled();
   });
 });

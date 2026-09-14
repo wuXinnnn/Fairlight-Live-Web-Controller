@@ -179,6 +179,8 @@ export interface SoakMeta {
   browserVersion?: string;
   url?: string;
   channels?: number;
+  /** Which pages the operator was on during the run, as opposed to at the sampling instants. */
+  pagesVisited?: string[];
   thresholds: SoakThresholds;
 }
 
@@ -564,8 +566,16 @@ export function renderMarkdown(summary: SoakSummary, result: SoakVerdict, meta: 
   lines.push('');
   lines.push(
     `Wake lock states seen: ${summary.wakeLockStates.join(', ') || 'none'}. ` +
-      `Page labels seen: ${summary.pageLabels.join(', ') || 'none'}.`,
+      `Page labels at the sampling instants: ${summary.pageLabels.join(', ') || 'none'}.`,
   );
+  if (meta.pagesVisited !== undefined) {
+    lines.push('');
+    lines.push(
+      `Pages the operator turned to during the run: ${meta.pagesVisited.join(', ')}. ` +
+        'A sample interval that is a multiple of the page interval lands on the same phase every ' +
+        'time, so the line above can name a single page even while the pager is working.',
+    );
+  }
   lines.push('');
 
   lines.push('## Server');
