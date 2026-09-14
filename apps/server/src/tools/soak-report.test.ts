@@ -389,14 +389,23 @@ describe('renderMarkdown', () => {
     }
   });
 
-  it('renders one row per churn event', () => {
+  it('renders one row per churn event and says whether the outage was seen', () => {
     const samples = runOf(60);
-    samples[20] = sampleAt(10 * MINUTE, { churn: { kind: 'ember', recoveredMs: 900 } });
+    samples[20] = sampleAt(10 * MINUTE, {
+      churn: { kind: 'ember', recoveredMs: 900, outageObserved: true },
+    });
     samples[40] = sampleAt(20 * MINUTE, { churn: { kind: 'socket', recoveredMs: null } });
     const summary = summarize(samples);
     const markdown = renderMarkdown(summary, verdict(summary), meta);
-    expect(markdown).toMatch(/\| ember \| 900 ms \|/);
-    expect(markdown).toMatch(/\| socket \| never \|/);
+    expect(markdown).toMatch(/\| ember \| 900 ms \| yes \|/);
+    expect(markdown).toMatch(/\| socket \| never \| no \|/);
+    expect(markdown).toMatch(/upper bound set by the polling/);
+  });
+
+  it('reads a churn that did not record an observation as not having seen one', () => {
+    const samples = runOf(60);
+    samples[20] = sampleAt(10 * MINUTE, { churn: { kind: 'ember', recoveredMs: 400 } });
+    expect(summarize(samples).churn.events[0]?.outageObserved).toBe(false);
   });
 
   it('says the churn section is empty when nothing was churned', () => {

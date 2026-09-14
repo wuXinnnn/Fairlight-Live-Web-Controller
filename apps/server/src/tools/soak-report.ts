@@ -37,6 +37,12 @@ export interface SoakChurnSample {
   kind: SoakChurnKind;
   /** How long the desk took to come back, or null if it had not by the deadline. */
   recoveredMs: number | null;
+  /**
+   * Whether the page was ever seen offline. A recovery so fast that the outage never reached the
+   * screen is a good outcome, but its recovery time measures the polling rather than the mixer,
+   * so the report says which kind of number it is rather than presenting both alike.
+   */
+  outageObserved?: boolean;
 }
 
 export interface SoakSample {
@@ -76,7 +82,12 @@ export interface SoakChurnSummary {
   byKind: Record<SoakChurnKind, number>;
   maxRecoveredMs: number | null;
   failures: number;
-  events: Array<{ atMs: number; kind: SoakChurnKind; recoveredMs: number | null }>;
+  events: Array<{
+    atMs: number;
+    kind: SoakChurnKind;
+    recoveredMs: number | null;
+    outageObserved: boolean;
+  }>;
 }
 
 type BrowserMetricKey =
@@ -222,6 +233,7 @@ function summarizeChurn(samples: readonly SoakSample[]): SoakChurnSummary {
       atMs: sample.atMs,
       kind: sample.churn.kind,
       recoveredMs: sample.churn.recoveredMs,
+      outageObserved: sample.churn.outageObserved ?? false,
     }));
   const recovered = events
     .map((event) => event.recoveredMs)
@@ -610,14 +622,20 @@ export function renderMarkdown(summary: SoakSummary, result: SoakVerdict, meta: 
         `${summary.churn.failures} never recovered.`,
     );
     lines.push('');
-    lines.push('| At | Kind | Recovered |');
-    lines.push('| ---: | --- | ---: |');
+    lines.push('| At | Kind | Recovered | Outage seen |');
+    lines.push('| ---: | --- | ---: | --- |');
     for (const event of summary.churn.events) {
       lines.push(
         `| ${minutes(event.atMs)} | ${event.kind} | ` +
-          `${event.recoveredMs === null ? 'never' : `${event.recoveredMs} ms`} |`,
+          `${event.recoveredMs === null ? 'never' : `${event.recoveredMs} ms`} | ` +
+          `${event.outageObserved ? 'yes' : 'no'} |`,
       );
     }
+    lines.push('');
+    lines.push(
+      'An outage that was never seen means the desk was back before the next poll; the recovery ' +
+        'time for such a row is an upper bound set by the polling, not a measurement of the mixer.',
+    );
   }
   lines.push('');
 

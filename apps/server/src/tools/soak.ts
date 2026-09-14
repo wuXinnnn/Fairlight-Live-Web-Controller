@@ -55,6 +55,12 @@ export const SOAK_EMBER_OUTAGE_MS = 5_000;
 export const SOAK_TICK_MS = 250;
 /** How often the page is asked whether the desk is back after a churn. */
 export const SOAK_RECOVERY_POLL_MS = 500;
+/**
+ * How long a churn is given to show up on screen before the recovery is timed. A client that has
+ * lost its transport needs a moment to notice, and timing a recovery from before it noticed would
+ * measure the polling rather than the mixer.
+ */
+export const SOAK_OUTAGE_OBSERVE_MS = 4_000;
 
 interface SoakArgs {
   minutes: number;
@@ -191,12 +197,16 @@ function readServer(server: StartedServer | undefined): SoakServerSample | null 
   };
 }
 
-/** Waits for the header to read `MIXER ONLINE`, and says how long it took. */
-async function waitForOnline(cdp: CdpConnection, timeoutMs: number): Promise<number | null> {
+/** Waits for the header to read what `want` asks for, and says how long it took. */
+async function waitForOnlineState(
+  cdp: CdpConnection,
+  want: boolean,
+  timeoutMs: number,
+): Promise<number | null> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      if ((await readPage(cdp)).online) {
+      if ((await readPage(cdp)).online === want) {
         return Date.now() - startedAt;
       }
     } catch {
@@ -205,6 +215,11 @@ async function waitForOnline(cdp: CdpConnection, timeoutMs: number): Promise<num
     await delay(SOAK_RECOVERY_POLL_MS);
   }
   return null;
+}
+
+/** Waits for the header to read `MIXER ONLINE`, and says how long it took. */
+async function waitForOnline(cdp: CdpConnection, timeoutMs: number): Promise<number | null> {
+  return waitForOnlineState(cdp, true, timeoutMs);
 }
 
 interface LocalStack {
@@ -467,10 +482,20 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           socket.conn.close(true);
         }
       }
+      /*
+       * The outage is waited for before the recovery is. A client takes a moment to notice its
+       * transport has gone, and reading the page immediately after cutting it finds the header
+       * still saying MIXER ONLINE — which would be recorded as a recovery in about a millisecond
+       * and would mean nothing at all. Whether the outage was seen is recorded either way: a desk
+       * back before the next poll is a good outcome, not a measurement to be believed.
+       */
+      const outageObserved =
+        (await waitForOnlineState(connection, false, SOAK_OUTAGE_OBSERVE_MS)) !== null;
       const recoveredMs = await waitForOnline(connection, SOAK_CHURN_RECOVERY_MS);
-      pendingChurn = { kind, recoveredMs };
+      pendingChurn = { kind, recoveredMs, outageObserved };
       console.error(
-        `soak: ${kind} churn recovered in ${recoveredMs === null ? 'never' : `${recoveredMs}ms`}`,
+        `soak: ${kind} churn recovered in ${recoveredMs === null ? 'never' : `${recoveredMs}ms`}` +
+          `${outageObserved ? '' : ' (the outage never reached the screen)'}`,
       );
     };
 
