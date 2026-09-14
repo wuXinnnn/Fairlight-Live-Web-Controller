@@ -9,6 +9,7 @@ const socketIoMock = vi.hoisted(() => ({
   emit: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  timeout: vi.fn(() => socketIoMock),
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -16,6 +17,7 @@ vi.mock('socket.io-client', () => ({
 }));
 
 import {
+  ACK_TIMEOUT_MS,
   bindMixerSocket,
   createBrowserSocket,
   createControlClient,
@@ -136,5 +138,53 @@ describe('socket client', () => {
       ok: false,
       error: { code: 'INVALID_ACK' },
     });
+  });
+  it('fails every control command while the socket is down instead of queueing it', async () => {
+    const emit = vi.fn();
+    const socket: MixerSocket = {
+      connected: false,
+      on: vi.fn(),
+      off: vi.fn(),
+      emit,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    const client = createControlClient(socket);
+
+    const offline = { ok: false, error: { code: 'OFFLINE', message: 'The mixer is offline.' } };
+    await expect(client.setLevel({ id: 'channel/1', levelDb: -6 })).resolves.toEqual(offline);
+    await expect(client.setOn({ id: 'channel/1', on: false })).resolves.toEqual(offline);
+    await expect(client.resetLoudness()).resolves.toEqual(offline);
+    // Nothing reached the transport, so Socket.IO has nothing to replay on reconnect.
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('sends commands with a transport timeout and translates its acknowledgement', () => {
+    const socket = createBrowserSocket();
+    const receive = vi.fn();
+    socket.emit(SOCKET_EVENTS.CONTROL_SET_LEVEL, { id: 'channel/1', levelDb: -6 }, receive);
+
+    expect(socketIoMock.timeout).toHaveBeenCalledWith(ACK_TIMEOUT_MS);
+    const call = socketIoMock.emit.mock.calls.at(-1);
+    expect(call?.[0]).toBe(SOCKET_EVENTS.CONTROL_SET_LEVEL);
+    expect(call?.[1]).toEqual({ id: 'channel/1', levelDb: -6 });
+
+    const translate = call?.at(-1) as (error: Error | null, ...response: unknown[]) => void;
+    translate(new Error('operation has timed out'));
+    expect(receive).toHaveBeenLastCalledWith({
+      ok: false,
+      error: { code: 'TIMEOUT', message: 'The mixer did not respond.' },
+    });
+
+    translate(null, { ok: true });
+    expect(receive).toHaveBeenLastCalledWith({ ok: true });
+  });
+
+  it('leaves an emit without an acknowledgement on the plain transport', () => {
+    const socket = createBrowserSocket();
+    socket.emit('some:event', { value: 1 });
+
+    expect(socketIoMock.timeout).not.toHaveBeenCalled();
+    expect(socketIoMock.emit).toHaveBeenLastCalledWith('some:event', { value: 1 });
   });
 });

@@ -22,6 +22,14 @@ import {
 
 type SocketListener = (...args: unknown[]) => void;
 
+/** How long a command waits for the desk to answer, on the transport and in the promise alike. */
+export const ACK_TIMEOUT_MS = 5000;
+
+const TIMEOUT_ACK: ControlAck = {
+  ok: false,
+  error: { code: 'TIMEOUT', message: 'The mixer did not respond.' },
+};
+
 export interface MixerSocket {
   readonly connected: boolean;
   on(event: string, listener: SocketListener): void;
@@ -44,7 +52,30 @@ export function createBrowserSocket(): MixerSocket {
       socket.off(event, listener);
     },
     emit(event, ...args) {
-      socket.emit(event, ...args);
+      const callback = args.at(-1);
+      if (typeof callback !== 'function') {
+        socket.emit(event, ...args);
+        return;
+      }
+      /*
+       * Socket.IO buffers a packet it cannot send now and replays it once the socket is back. A
+       * fader let go of a second before the network dropped would reach the desk minutes later,
+       * long after the UI gave up on it and rolled the strip back, and nobody would be touching
+       * the tablet when it moved. Only a packet sent with a timeout is dropped from that buffer,
+       * so every command that expects an answer goes out with one.
+       *
+       * A timed acknowledgement arrives as `(err, ...response)`: on timeout `err` is an Error and
+       * there is no response at all, otherwise `err` is null and `response[0]` is the desk's
+       * answer. The failure is translated here rather than handed to the acknowledgement parser,
+       * which would see an Error, fail to recognise it and call it an invalid response.
+       */
+      const deliver = callback as (ack: unknown) => void;
+      const payload = args.slice(0, -1);
+      socket
+        .timeout(ACK_TIMEOUT_MS)
+        .emit(event, ...payload, (error: Error | null, ...response: unknown[]) => {
+          deliver(error === null || error === undefined ? response[0] : TIMEOUT_ACK);
+        });
     },
     connect() {
       socket.connect();
@@ -120,21 +151,37 @@ export function bindMixerSocket(socket: MixerSocket): () => void {
   };
 }
 
-const ACK_TIMEOUT_MS = 5000;
-
 function emitWithAck(
   socket: MixerSocket,
   event: string,
   payload: SetLevelCommand | SetOnCommand | ResetLoudnessCommand,
 ): Promise<ControlAck> {
+  /*
+   * A command handed to a socket that is down is not sent, it is queued. This app does not replay
+   * queued commands on reconnect — replaying a stale level is an accident, not a feature — so the
+   * command fails here instead, before `emit` is ever reached. Nothing is sent, no timer is
+   * started, and the strip rolls back on the next microtask.
+   */
+  if (!socket.connected) {
+    return Promise.resolve({
+      ok: false,
+      error: { code: 'OFFLINE', message: 'The mixer is offline.' },
+    });
+  }
   return new Promise((resolve) => {
     let settled = false;
+    /*
+     * Kept alongside the transport timeout above, because they are not the same guarantee and not
+     * every socket has both. `MixerSocket` is an interface: a test double, or any implementation
+     * that is not the browser client, has no `timeout()` at all, and the promise still has to
+     * settle for the caller. The transport timer drops the packet from the send buffer, which this
+     * one cannot do; this one answers the caller, which that one cannot do on such a socket. They
+     * resolve to the same acknowledgement, and `settled` makes whichever arrives first the one
+     * that counts.
+     */
     const timeout = window.setTimeout(() => {
       settled = true;
-      resolve({
-        ok: false,
-        error: { code: 'TIMEOUT', message: 'The mixer did not respond.' },
-      });
+      resolve(TIMEOUT_ACK);
     }, ACK_TIMEOUT_MS);
 
     const receiveAck = (value: unknown) => {
