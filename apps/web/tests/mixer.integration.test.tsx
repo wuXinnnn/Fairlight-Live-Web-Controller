@@ -357,4 +357,58 @@ describe('mixer socket integration', () => {
     await screen.findByRole('heading', { name: 'VIEW CONFIGURATION' });
     expect(document.querySelector('video.wake-media')).toBeNull();
   });
+
+  it('offers full screen only where the browser has it', async () => {
+    const socket = new FakeSocket();
+    const { unmount } = render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    // jsdom has no element full screen, and neither does iPhone Safari: no button at all rather
+    // than a button that does nothing.
+    expect(screen.queryByRole('button', { name: 'FULLSCREEN' })).not.toBeInTheDocument();
+    unmount();
+
+    let element: Element | null = null;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => element,
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: () => {
+        element = null;
+        fireEvent(document, new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: () => {
+        element = document.documentElement;
+        fireEvent(document, new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      const second = new FakeSocket();
+      render(<App socket={second} />);
+      second.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+      await screen.findByRole('heading', { name: 'BASS' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'FULLSCREEN' }));
+      const exit = screen.getByRole('button', { name: 'EXIT FULLSCREEN' });
+      expect(exit).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(exit);
+      expect(screen.getByRole('button', { name: 'FULLSCREEN' })).toBeInTheDocument();
+    } finally {
+      for (const key of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
+        Reflect.deleteProperty(document, key);
+      }
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    }
+  });
 });

@@ -46,6 +46,7 @@ import { useChannelPresence, type PresenceChannel } from './use-channel-presence
 import { useControlLockPreference } from './use-control-lock-preference.js';
 import { usePager } from './use-pager.js';
 import { usePagerViewport } from './use-pager-viewport.js';
+import { useFullscreen } from '../../lib/use-fullscreen.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
 import { useWakeLock } from './use-wake-lock.js';
 import {
@@ -170,6 +171,7 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const [lockMode, setLockMode] = useControlLockPreference();
   // The mixer holds the screen awake; the settings page has no reason to.
   const wakeLockStatus = useWakeLock(true);
+  const fullscreen = useFullscreen();
   const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
     socketConnected,
@@ -533,6 +535,21 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
           <button type="button" className="console-brand__action" onClick={onOpenSettings}>
             CONFIGURE VIEWS
           </button>
+          {/*
+           * Not in the rail: that surface is the one place a hand can land without consequence,
+           * and it holds page controls only. Full screen is a document-level state, so it
+           * survives a trip to the settings page and back.
+           */}
+          {fullscreen.supported && (
+            <button
+              type="button"
+              className="console-brand__action"
+              aria-pressed={fullscreen.active}
+              onClick={fullscreen.toggle}
+            >
+              {fullscreen.active ? 'EXIT FULLSCREEN' : 'FULLSCREEN'}
+            </button>
+          )}
         </div>
         <ConnectionStatus onOpen={onOpenConnection} />
         <div className="console-preferences">
