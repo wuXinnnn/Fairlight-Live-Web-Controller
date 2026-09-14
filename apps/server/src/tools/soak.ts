@@ -23,7 +23,14 @@ import {
 } from '@flwc/test-utils';
 import { start, type StartedServer } from '../server.js';
 import { resolveWebDist } from '../paths.js';
-import { parseFlagArgs } from './cli-args.js';
+import {
+  parseSoakArgs,
+  SOAK_CHURN_INTERVAL_MINUTES,
+  SOAK_DEFAULT_MINUTES,
+  SOAK_METER_HZ,
+  SOAK_PAGE_TURN_INTERVAL_S,
+  SOAK_SAMPLE_INTERVAL_S,
+} from './cli-args.js';
 import { connectCdp, launchChrome, resolveChromeExecutable, type CdpConnection } from './cdp.js';
 import { resolveRepoPath } from './repo-paths.js';
 import { collectMeterPaths, loudnessSignal, meterSignal } from './soak-signal.js';
@@ -39,16 +46,14 @@ import {
   type SoakServerSample,
 } from './soak-report.js';
 
-/** How long a run lasts unless told otherwise. */
-export const SOAK_DEFAULT_MINUTES = 60;
-/** How often every counter is read. */
-export const SOAK_SAMPLE_INTERVAL_S = 30;
-/** How often the operator turns a page. */
-export const SOAK_PAGE_TURN_INTERVAL_S = 5;
-/** How often a connection is pulled out, alternating between Ember and the socket. */
-export const SOAK_CHURN_INTERVAL_MINUTES = 10;
-/** How fast the desk is fed levels. */
-export const SOAK_METER_HZ = 20;
+export {
+  SOAK_CHURN_INTERVAL_MINUTES,
+  SOAK_DEFAULT_MINUTES,
+  SOAK_METER_HZ,
+  SOAK_PAGE_TURN_INTERVAL_S,
+  SOAK_SAMPLE_INTERVAL_S,
+};
+
 /** How long a provider stays away before it comes back on the port it left. */
 export const SOAK_EMBER_OUTAGE_MS = 5_000;
 /** How often the run loop wakes to see whether anything is due. */
@@ -61,69 +66,6 @@ export const SOAK_RECOVERY_POLL_MS = 500;
  * measure the polling rather than the mixer.
  */
 export const SOAK_OUTAGE_OBSERVE_MS = 4_000;
-
-interface SoakArgs {
-  minutes: number;
-  sampleSeconds: number;
-  pageSeconds: number;
-  churnMinutes: number;
-  meterHz: number;
-  browser?: string;
-  browserArgs: string[];
-  out?: string;
-  url?: string;
-  dump?: string;
-}
-
-function numberFlag(
-  flags: Record<string, string | true>,
-  name: string,
-  fallback: number,
-  { allowZero = false } = {},
-): number {
-  const raw = flags[name];
-  if (raw === undefined) {
-    return fallback;
-  }
-  if (raw === true) {
-    throw new Error(`--${name} needs a value`);
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0 || (!allowZero && value <= 0)) {
-    throw new Error(`--${name} must be a positive number, got '${raw}'`);
-  }
-  return value;
-}
-
-function stringFlag(flags: Record<string, string | true>, name: string): string | undefined {
-  const raw = flags[name];
-  if (raw === undefined) {
-    return undefined;
-  }
-  if (raw === true) {
-    throw new Error(`--${name} needs a value`);
-  }
-  return raw;
-}
-
-export function parseSoakArgs(argv: string[]): SoakArgs {
-  const flags = parseFlagArgs(argv);
-  const browserArgs = stringFlag(flags, 'browser-args');
-  return {
-    minutes: numberFlag(flags, 'minutes', SOAK_DEFAULT_MINUTES),
-    sampleSeconds: numberFlag(flags, 'sample-seconds', SOAK_SAMPLE_INTERVAL_S),
-    pageSeconds: numberFlag(flags, 'page-seconds', SOAK_PAGE_TURN_INTERVAL_S),
-    churnMinutes: numberFlag(flags, 'churn-minutes', SOAK_CHURN_INTERVAL_MINUTES, {
-      allowZero: true,
-    }),
-    meterHz: numberFlag(flags, 'meter-hz', SOAK_METER_HZ),
-    browser: stringFlag(flags, 'browser'),
-    browserArgs: browserArgs === undefined ? [] : browserArgs.split(' ').filter(Boolean),
-    out: stringFlag(flags, 'out'),
-    url: stringFlag(flags, 'url'),
-    dump: stringFlag(flags, 'dump'),
-  };
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {

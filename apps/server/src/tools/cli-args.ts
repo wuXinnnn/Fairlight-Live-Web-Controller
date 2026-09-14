@@ -1,3 +1,14 @@
+/** How long a soak run lasts unless told otherwise. */
+export const SOAK_DEFAULT_MINUTES = 60;
+/** How often every counter is read. */
+export const SOAK_SAMPLE_INTERVAL_S = 30;
+/** How often the operator turns a page. */
+export const SOAK_PAGE_TURN_INTERVAL_S = 5;
+/** How often a connection is pulled out, alternating between Ember and the socket. */
+export const SOAK_CHURN_INTERVAL_MINUTES = 10;
+/** How fast the desk is fed levels. */
+export const SOAK_METER_HZ = 20;
+
 export interface DumpTreeArgs {
   host: string;
   port: number;
@@ -13,6 +24,19 @@ export interface VerifyEmberArgs {
   channel?: string;
   deltaDb: number;
   confirmWrite: boolean;
+}
+
+export interface SoakArgs {
+  minutes: number;
+  sampleSeconds: number;
+  pageSeconds: number;
+  churnMinutes: number;
+  meterHz: number;
+  browser?: string;
+  browserArgs: string[];
+  out?: string;
+  url?: string;
+  dump?: string;
 }
 
 export function parseFlagArgs(argv: string[]): Record<string, string | true> {
@@ -107,4 +131,74 @@ function parseDeltaDb(value: string | true | undefined): number {
     throw new Error('--delta-db must be a non-zero number');
   }
   return parsed;
+}
+
+function soakNumber(
+  flags: Record<string, string | true>,
+  name: string,
+  fallback: number,
+  { allowZero = false } = {},
+): number {
+  const raw = flags[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  if (raw === true) {
+    throw new Error(`--${name} needs a value`);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || (!allowZero && value <= 0)) {
+    throw new Error(`--${name} must be a positive number, got '${raw}'`);
+  }
+  return value;
+}
+
+function soakString(flags: Record<string, string | true>, name: string): string | undefined {
+  const raw = flags[name];
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (raw === true) {
+    throw new Error(`--${name} needs a value`);
+  }
+  return raw;
+}
+
+/**
+ * The browser arguments, read by position rather than through `parseFlagArgs`.
+ *
+ * Every browser flag begins with `--`, and `parseFlagArgs` treats a value that begins with `--` as
+ * the next flag rather than as this one's value. A shell has usually removed the quotes by the
+ * time the process sees them, so `--browser-args "--no-sandbox"` arrives as two plain tokens and
+ * would otherwise be read as a flag with nothing after it. Several arguments still arrive as one
+ * space-separated token, because the quotes that group them are the caller's own.
+ */
+export function parseBrowserArgs(argv: string[]): string[] {
+  const at = argv.lastIndexOf('--browser-args');
+  if (at === -1) {
+    return [];
+  }
+  const value = argv[at + 1];
+  if (value === undefined) {
+    throw new Error('--browser-args needs a value');
+  }
+  return value.split(' ').filter(Boolean);
+}
+
+export function parseSoakArgs(argv: string[]): SoakArgs {
+  const flags = parseFlagArgs(argv);
+  return {
+    minutes: soakNumber(flags, 'minutes', SOAK_DEFAULT_MINUTES),
+    sampleSeconds: soakNumber(flags, 'sample-seconds', SOAK_SAMPLE_INTERVAL_S),
+    pageSeconds: soakNumber(flags, 'page-seconds', SOAK_PAGE_TURN_INTERVAL_S),
+    churnMinutes: soakNumber(flags, 'churn-minutes', SOAK_CHURN_INTERVAL_MINUTES, {
+      allowZero: true,
+    }),
+    meterHz: soakNumber(flags, 'meter-hz', SOAK_METER_HZ),
+    browser: soakString(flags, 'browser'),
+    browserArgs: parseBrowserArgs(argv),
+    out: soakString(flags, 'out'),
+    url: soakString(flags, 'url'),
+    dump: soakString(flags, 'dump'),
+  };
 }
