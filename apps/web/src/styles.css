@@ -39,9 +39,26 @@ body,
   margin: 0;
 }
 
+/*
+ * The browser's own touch gestures are all hazards on a mixing desk: a pull-to-refresh in the
+ * middle of a show, a double-tap zoom while reaching for a fader, a long-press menu over a
+ * channel name, a word of a label selected by a finger that rested a moment too long. They are
+ * turned off for the whole document rather than element by element, because the desk is the
+ * document. Pinch zoom is deliberately left alone, and so is panning: the mixer pages scroll
+ * themselves when the viewport is too short for a strip.
+ */
+html,
 body {
-  min-height: 100vh;
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100dvh;
   overflow-x: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   background:
     radial-gradient(circle at 76% -18%, rgb(239 169 40 / 8%), transparent 34rem),
     repeating-linear-gradient(90deg, rgb(255 255 255 / 1.1%) 0 1px, transparent 1px 7rem),
@@ -59,8 +76,56 @@ button:focus-visible,
   outline-offset: 3px;
 }
 
-button {
+button,
+[role='slider'],
+label,
+select,
+input,
+a {
   -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Selection comes back wherever text is typed, and wherever it is worth copying: an operator
+ * reporting a fault has to be able to lift the message off the screen and send it on.
+ */
+input,
+textarea,
+[contenteditable],
+.connection-dialog__error,
+.connection-dialog__field-error,
+.empty-console__error,
+.panel-empty__error,
+.missing-warning {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * The wake lock's video fallback, and the geometry is the whole trick.
+ *
+ * Chrome for Android grants a muted video a screen lock only once enough of it is on screen.
+ * Measured on the target tablet: a one-pixel clip does nothing, a visible 160px square does
+ * nothing either, and a clip filling the viewport holds the screen awake. What it does not look
+ * at is `opacity` — visibility here is decided from geometry the way an IntersectionObserver
+ * decides it — so this fills the viewport and is completely transparent. It cannot be
+ * `display: none`, `visibility: hidden` or a few pixels across; any of those and the screen goes
+ * dark mid-show.
+ *
+ * `pointer-events: none` is what keeps a sheet stretched over the whole desk from swallowing
+ * every touch on it.
+ *
+ * This threshold is Chrome's, undocumented, and free to change in any release. The reliable road
+ * is a secure context and the real Wake Lock API; this is what there is until then.
+ */
+.wake-media {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .mixer-shell {
@@ -155,9 +220,11 @@ button {
     box-shadow var(--motion-medium) ease;
 }
 
-.connection-status:hover {
-  color: var(--amber-pale);
-  background: rgb(239 169 40 / 6%);
+@media (hover: hover) {
+  .connection-status:hover {
+    color: var(--amber-pale);
+    background: rgb(239 169 40 / 6%);
+  }
 }
 
 .connection-status:focus-visible {
@@ -169,9 +236,11 @@ button {
   background: rgb(102 201 135 / 4%);
 }
 
-.connection-status.is-online:hover {
-  color: var(--amber-pale);
-  background: rgb(239 169 40 / 6%);
+@media (hover: hover) {
+  .connection-status.is-online:hover {
+    color: var(--amber-pale);
+    background: rgb(239 169 40 / 6%);
+  }
 }
 
 .connection-status.is-online .connection-status__lamp {
@@ -331,11 +400,18 @@ button {
   border-left: 0;
 }
 
-.control-lock__options button:hover,
 .control-lock__options button.is-selected {
   border-color: #9b742d;
   background: #292318;
   color: var(--amber-pale);
+}
+
+@media (hover: hover) {
+  .control-lock__options button:hover {
+    border-color: #9b742d;
+    background: #292318;
+    color: var(--amber-pale);
+  }
 }
 
 .notice {
@@ -387,7 +463,7 @@ body.is-modal-open {
 
 .connection-dialog {
   width: min(27rem, 100%);
-  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow: auto;
   margin: 0;
   border: 1px solid var(--line-strong);
@@ -614,9 +690,11 @@ body.is-modal-open {
     transform var(--motion-fast) ease;
 }
 
-.reset-button:hover:not(:disabled) {
-  border-color: var(--amber);
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .reset-button:hover:not(:disabled) {
+    border-color: var(--amber);
+    color: var(--amber-pale);
+  }
 }
 
 .reset-button:active:not(:disabled) {
@@ -803,9 +881,11 @@ body.is-modal-open {
   height: 1.15rem;
 }
 
-.page-rail__step:hover:not(:disabled) {
-  border-color: #686e7b;
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .page-rail__step:hover:not(:disabled) {
+    border-color: #686e7b;
+    color: var(--amber-pale);
+  }
 }
 
 .page-rail__step:active:not(:disabled) {
@@ -845,9 +925,11 @@ body.is-modal-open {
     border-color var(--motion-fast) ease;
 }
 
-.page-rail__jump:hover:not(:disabled) {
-  border-color: #686e7b;
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .page-rail__jump:hover:not(:disabled) {
+    border-color: #686e7b;
+    color: var(--amber-pale);
+  }
 }
 
 .page-rail__jump:disabled {
@@ -1142,12 +1224,20 @@ input.page-rail__jump {
   box-shadow: 0 1px #0a0b0e;
 }
 
-.fader__cap:hover,
 .fader.is-dragging .fader__cap {
   border-color: #9b8357;
   box-shadow:
     0 0.55rem 0.8rem rgb(0 0 0 / 62%),
     0 0 0 1px rgb(239 169 40 / 18%);
+}
+
+@media (hover: hover) {
+  .fader__cap:hover {
+    border-color: #9b8357;
+    box-shadow:
+      0 0.55rem 0.8rem rgb(0 0 0 / 62%),
+      0 0 0 1px rgb(239 169 40 / 18%);
+  }
 }
 
 .fader.is-dragging,
@@ -1251,9 +1341,11 @@ html.fader-cap-dragging * {
     border-color var(--motion-fast) ease;
 }
 
-.fader__readout button:hover:not(:disabled) {
-  border-color: #686e7b;
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .fader__readout button:hover:not(:disabled) {
+    border-color: #686e7b;
+    color: var(--amber-pale);
+  }
 }
 
 /* A locked or disconnected fader must not go on advertising a field that will not open. */
@@ -1432,9 +1524,11 @@ html.fader-cap-dragging * {
     transform 90ms ease;
 }
 
-.on-button:hover:not(:disabled) {
-  border-color: #686e7b;
-  color: #b7bac1;
+@media (hover: hover) {
+  .on-button:hover:not(:disabled) {
+    border-color: #686e7b;
+    color: #b7bac1;
+  }
 }
 
 .on-button:active:not(:disabled) {
@@ -1564,8 +1658,10 @@ html.fader-cap-dragging * {
   cursor: pointer;
 }
 
-.console-brand__action:hover {
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .console-brand__action:hover {
+    color: var(--amber-pale);
+  }
 }
 
 .settings-header {
@@ -1605,13 +1701,17 @@ html.fader-cap-dragging * {
   transition: transform var(--motion-fast) ease;
 }
 
-.console-back:hover {
-  background: var(--surface-2);
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .console-back:hover {
+    background: var(--surface-2);
+    color: var(--amber-pale);
+  }
 }
 
-.console-back:hover svg {
-  transform: translateX(-0.15rem);
+@media (hover: hover) {
+  .console-back:hover svg {
+    transform: translateX(-0.15rem);
+  }
 }
 
 .console-back:active svg {
@@ -1624,7 +1724,7 @@ html.fader-cap-dragging * {
 
 /* The configuration page is a viewport-bound workbench: the two columns scroll on their own. */
 .settings-shell {
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -1890,11 +1990,13 @@ html.fader-cap-dragging * {
   padding: 0.5rem 0.65rem;
 }
 
-.new-view-form button:hover:not(:disabled),
-.utility-button:hover:not(:disabled),
-.missing-warning button:hover:not(:disabled) {
-  border-color: var(--amber);
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .new-view-form button:hover:not(:disabled),
+  .utility-button:hover:not(:disabled),
+  .missing-warning button:hover:not(:disabled) {
+    border-color: var(--amber);
+    color: var(--amber-pale);
+  }
 }
 
 .primary-button {
@@ -1903,9 +2005,11 @@ html.fader-cap-dragging * {
   color: var(--amber-pale);
 }
 
-.primary-button:hover:not(:disabled) {
-  border-color: var(--amber);
-  background: #332919;
+@media (hover: hover) {
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--amber);
+    background: #332919;
+  }
 }
 
 .new-view-form button:disabled,
@@ -1974,11 +2078,18 @@ html.fader-cap-dragging * {
     color var(--motion-fast) ease;
 }
 
-.view-list > button:hover,
 .view-list > button.is-selected {
   border-color: #8e6b2b;
   background: #242016;
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .view-list > button:hover {
+    border-color: #8e6b2b;
+    background: #242016;
+    color: var(--text);
+  }
 }
 
 .view-list > button > span,
@@ -2004,7 +2115,7 @@ html.fader-cap-dragging * {
 
 .settings-empty {
   max-width: 38rem;
-  margin: 12vh auto;
+  margin: 12dvh auto;
   padding: 2.2rem;
   border-top: 2px solid var(--amber);
   border-bottom: 1px solid var(--line);
@@ -2181,7 +2292,6 @@ html.fader-cap-dragging * {
   box-shadow: 0 0 0.45rem color-mix(in srgb, var(--channel-row-accent) 42%, transparent);
 }
 
-.channel-checklist label:hover,
 .channel-checklist label.is-checked {
   background:
     linear-gradient(
@@ -2191,6 +2301,19 @@ html.fader-cap-dragging * {
     ),
     rgb(239 169 40 / 2%);
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .channel-checklist label:hover {
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--channel-row-accent) 8%, transparent),
+        transparent 42%
+      ),
+      rgb(239 169 40 / 2%);
+    color: var(--text);
+  }
 }
 
 .channel-checklist input {
@@ -2369,9 +2492,11 @@ html.fader-cap-dragging * {
     color var(--motion-fast) ease;
 }
 
-.group-toolbar button:hover:not(:disabled) {
-  border-color: var(--amber);
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .group-toolbar button:hover:not(:disabled) {
+    border-color: var(--amber);
+    color: var(--amber-pale);
+  }
 }
 
 .group-toolbar button:disabled {
@@ -2535,10 +2660,16 @@ html.fader-cap-dragging * {
   height: 0.8rem;
 }
 
-.drag-handle:hover:not(:disabled),
 .drag-handle[aria-pressed='true'] {
   border-color: #9b742d;
   color: var(--amber-pale);
+}
+
+@media (hover: hover) {
+  .drag-handle:hover:not(:disabled) {
+    border-color: #9b742d;
+    color: var(--amber-pale);
+  }
 }
 
 .drag-handle[aria-pressed='true'] {
@@ -2577,9 +2708,11 @@ html.fader-cap-dragging * {
   height: 0.8rem;
 }
 
-.delete-button:hover:not(:disabled) {
-  border-color: var(--red);
-  color: #ff8c85;
+@media (hover: hover) {
+  .delete-button:hover:not(:disabled) {
+    border-color: var(--red);
+    color: #ff8c85;
+  }
 }
 
 .delete-button:disabled {
@@ -2616,10 +2749,16 @@ html.fader-cap-dragging * {
   cursor: pointer;
 }
 
-.row-menu:hover:has(select:enabled),
 .row-menu:focus-within {
   border-color: #9b742d;
   color: var(--amber-pale);
+}
+
+@media (hover: hover) {
+  .row-menu:hover:has(select:enabled) {
+    border-color: #9b742d;
+    color: var(--amber-pale);
+  }
 }
 
 .row-menu:has(select:disabled) {
@@ -2653,8 +2792,10 @@ html.fader-cap-dragging * {
   height: 0.72rem;
 }
 
-.group-collapse:hover:not(:disabled) {
-  color: var(--amber-pale);
+@media (hover: hover) {
+  .group-collapse:hover:not(:disabled) {
+    color: var(--amber-pale);
+  }
 }
 
 .group-collapse:focus-visible {
@@ -2870,12 +3011,19 @@ html.fader-cap-dragging * {
   border-left: 0;
 }
 
-.order-buttons button:hover:not(:disabled),
-.palette-control button:hover,
 .palette-control button.is-selected {
   z-index: 1;
   border-color: #9b742d;
   color: var(--amber-pale);
+}
+
+@media (hover: hover) {
+  .order-buttons button:hover:not(:disabled),
+  .palette-control button:hover {
+    z-index: 1;
+    border-color: #9b742d;
+    color: var(--amber-pale);
+  }
 }
 
 .order-buttons button:disabled {
@@ -3007,7 +3155,7 @@ html.fader-cap-dragging * {
 
   .settings-shell {
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
     overflow: visible;
   }
 
@@ -3018,7 +3166,7 @@ html.fader-cap-dragging * {
 
   .channel-checklist,
   .view-channel-list {
-    max-height: 60vh;
+    max-height: 60dvh;
     flex: none;
   }
 

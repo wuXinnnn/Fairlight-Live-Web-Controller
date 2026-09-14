@@ -1,5 +1,5 @@
 import { SOCKET_EVENTS, type MixerSnapshot } from '@flwc/shared';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
 import { CHANNEL_PALETTE } from '../src/features/mixer/channel-colors.js';
@@ -333,5 +333,111 @@ describe('mixer socket integration', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'UNLOCKED' }));
     expect(slider).toHaveAttribute('aria-disabled', 'false');
     expect(onButton).toBeEnabled();
+  });
+
+  it('keeps the screen awake through the video fallback and takes it away on the way out', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    // jsdom has no `navigator.wakeLock`, which is exactly the tablet's situation over plain http
+    // on the local network: the muted video is the only road to a lit screen. It needs no
+    // gesture, so the desk is holding the screen from the moment the mixer is on screen.
+    const video = document.querySelector<HTMLVideoElement>('video.wake-media');
+    expect(video).not.toBeNull();
+    expect(video?.muted).toBe(true);
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    await screen.findByRole('heading', { name: 'VIEW CONFIGURATION' });
+    expect(document.querySelector('video.wake-media')).toBeNull();
+  });
+
+  it('lets the tablet sleep once the mixer is gone, and takes the screen back with it', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
+
+    // The machine the tablet is charging from is shut down: Ember goes first.
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'disconnected' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'idle');
+    });
+    // Nothing is left playing, so the tablet is free to go to sleep on its own timeout.
+    expect(document.querySelector('video.wake-media')).toBeNull();
+
+    // It boots again. Nobody touches the tablet — it woke up on the charger by itself.
+    socket.serverEmit(SOCKET_EVENTS.SYSTEM_STATUS, { ember: 'connected' });
+    await waitFor(() => {
+      expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+    });
+    expect(document.querySelector('video.wake-media')).not.toBeNull();
+  });
+
+  it('offers full screen only where the browser has it', async () => {
+    const socket = new FakeSocket();
+    const { unmount } = render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    // jsdom has no element full screen, and neither does iPhone Safari: no key at all rather
+    // than one that does nothing.
+    expect(screen.queryByRole('button', { name: 'Enter full screen' })).not.toBeInTheDocument();
+    unmount();
+
+    let element: Element | null = null;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => element,
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: () => {
+        element = null;
+        fireEvent(document, new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: () => {
+        element = document.documentElement;
+        fireEvent(document, new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      const second = new FakeSocket();
+      render(<App socket={second} />);
+      second.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+      await screen.findByRole('heading', { name: 'BASS' });
+
+      // It sits at the foot of the rail, the size of a page key, where a thumb can reach it.
+      const rail = screen.getByRole('complementary', { name: 'Pages' });
+      const enter = within(rail).getByRole('button', { name: 'Enter full screen' });
+
+      fireEvent.click(enter);
+      const exit = within(rail).getByRole('button', { name: 'Exit full screen' });
+      // The state is in the label, not in aria-pressed: a pressed state in this rail would be a
+      // channel control, and the rail holds none.
+      expect(exit).not.toHaveAttribute('aria-pressed');
+
+      fireEvent.click(exit);
+      expect(within(rail).getByRole('button', { name: 'Enter full screen' })).toBeInTheDocument();
+    } finally {
+      for (const key of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
+        Reflect.deleteProperty(document, key);
+      }
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    }
   });
 });

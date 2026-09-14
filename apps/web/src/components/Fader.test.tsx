@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { levelDbToRatio, ratioToLevelDb } from '../lib/fader-scale.js';
@@ -8,8 +8,10 @@ import { Fader } from './Fader.js';
 /** The gesture tracker reads `performance.now`, so that has to be faked alongside the timers. */
 const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'performance'] as const;
 
-function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
-  const props: ComponentProps<typeof Fader> = {
+function faderProps(
+  overrides: Partial<ComponentProps<typeof Fader>> = {},
+): ComponentProps<typeof Fader> {
+  return {
     label: 'BASS',
     wheelId: 'channel/1',
     value: -20,
@@ -18,6 +20,10 @@ function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
     onCommit: vi.fn(),
     ...overrides,
   };
+}
+
+function renderFader(overrides: Partial<ComponentProps<typeof Fader>> = {}) {
+  const props = faderProps(overrides);
   render(<Fader {...props} />);
   return props;
 }
@@ -373,5 +379,147 @@ describe('Fader', () => {
     expect(props.onCommit).toHaveBeenCalledWith(expected);
     expect(props.onCommit).not.toHaveBeenCalledWith(-5);
     expect(props.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a cap to the finger that took it when a second one lands on it', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    mockTrackBounds(slider);
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 30 });
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 40 });
+    const firstFinger = relativeLevel(-20, 30, 40);
+    expect(props.onValueChange).toHaveBeenLastCalledWith(firstFinger);
+
+    // A second finger lands on the same cap and drags a long way. It moves nothing.
+    fireEvent.pointerDown(cap as Element, { pointerId: 2, clientY: 90 });
+    fireEvent.pointerMove(slider, { pointerId: 2, clientY: 10 });
+    expect(props.onValueChange).toHaveBeenLastCalledWith(firstFinger);
+    // The fader is controlled, so the reading only moves when the value comes back down. What
+    // the second finger must not do is push a value of its own out of the component.
+    expect(slider).toHaveAttribute('aria-valuenow', '-20');
+
+    // Nor does it end the drag when it lifts.
+    fireEvent.pointerUp(slider, { pointerId: 2, clientY: 10 });
+    expect(props.onCommit).not.toHaveBeenCalled();
+
+    // The first finger is still dragging, and is the only one that commits.
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 50 });
+    const settled = relativeLevel(-20, 30, 50);
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 50 });
+    expect(props.onCommit).toHaveBeenCalledExactlyOnceWith(settled);
+  });
+
+  it('does not let a second finger on a held cap read as a double tap', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    mockTrackBounds(slider);
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 30 });
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 40 });
+
+    // Both shapes of the double tap: a native click count, and a second press close by inside
+    // the 500 ms window. Either one sends the channel to unity if it is taken at face value.
+    fireEvent.pointerDown(cap as Element, { pointerId: 2, clientY: 32, detail: 2 });
+    fireEvent.pointerDown(cap as Element, { pointerId: 2, clientY: 34 });
+    expect(props.onCommit).not.toHaveBeenCalled();
+    expect(props.onValueChange).not.toHaveBeenCalledWith(0);
+
+    fireEvent.pointerUp(slider, { pointerId: 1, clientY: 40 });
+    expect(props.onCommit).toHaveBeenCalledExactlyOnceWith(relativeLevel(-20, 30, 40));
+  });
+
+  it('takes two fingers on two faders at once and keeps the drag cursor until both are done', () => {
+    const bass = { ...faderProps(), label: 'BASS', wheelId: 'channel/1' };
+    const reverb = {
+      ...faderProps(),
+      label: 'MIC-REVERB',
+      wheelId: 'channel/2',
+      value: -10,
+    };
+    render(
+      <>
+        <Fader {...bass} />
+        <Fader {...reverb} />
+      </>,
+    );
+    const bassTrack = screen.getByRole('slider', { name: 'BASS level' });
+    const reverbTrack = screen.getByRole('slider', { name: 'MIC-REVERB level' });
+    mockTrackBounds(bassTrack);
+    mockTrackBounds(reverbTrack);
+
+    fireEvent.pointerDown(bassTrack.querySelector('.fader__cap') as Element, {
+      pointerId: 1,
+      clientY: 30,
+    });
+    fireEvent.pointerDown(reverbTrack.querySelector('.fader__cap') as Element, {
+      pointerId: 2,
+      clientY: 60,
+    });
+    expect(document.documentElement).toHaveClass('fader-cap-dragging');
+
+    // Interleaved, the way two hands actually move.
+    fireEvent.pointerMove(bassTrack, { pointerId: 1, clientY: 40 });
+    fireEvent.pointerMove(reverbTrack, { pointerId: 2, clientY: 50 });
+    fireEvent.pointerMove(bassTrack, { pointerId: 1, clientY: 45 });
+    const bassValue = relativeLevel(-20, 30, 45);
+    const reverbValue = relativeLevel(-10, 60, 50);
+    expect(bass.onValueChange).toHaveBeenLastCalledWith(bassValue);
+    expect(reverb.onValueChange).toHaveBeenLastCalledWith(reverbValue);
+    expect(bass.onValueChange).not.toHaveBeenCalledWith(reverbValue);
+    expect(reverb.onValueChange).not.toHaveBeenCalledWith(bassValue);
+
+    // The first hand to finish must not take the cursor off the other one's drag.
+    fireEvent.pointerUp(bassTrack, { pointerId: 1, clientY: 45 });
+    expect(bass.onCommit).toHaveBeenCalledExactlyOnceWith(bassValue);
+    expect(reverb.onCommit).not.toHaveBeenCalled();
+    expect(document.documentElement).toHaveClass('fader-cap-dragging');
+
+    fireEvent.pointerUp(reverbTrack, { pointerId: 2, clientY: 50 });
+    expect(reverb.onCommit).toHaveBeenCalledExactlyOnceWith(reverbValue);
+    expect(document.documentElement).not.toHaveClass('fader-cap-dragging');
+  });
+
+  it('gives up the drag cursor when a fader is unmounted mid-drag', () => {
+    const { unmount } = render(<Fader {...faderProps()} />);
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    mockTrackBounds(slider);
+
+    fireEvent.pointerDown(slider.querySelector('.fader__cap') as Element, {
+      pointerId: 1,
+      clientY: 30,
+    });
+    fireEvent.pointerMove(slider, { pointerId: 1, clientY: 40 });
+    expect(document.documentElement).toHaveClass('fader-cap-dragging');
+
+    // A strip can go while a finger is still on it: the view changes, or the page turns.
+    unmount();
+    expect(document.documentElement).not.toHaveClass('fader-cap-dragging');
+  });
+
+  it('starts a new drag after a press and release too quick for React to have rendered', () => {
+    const props = renderFader();
+    const slider = screen.getByRole('slider', { name: 'BASS level' });
+    const cap = slider.querySelector('.fader__cap');
+    expect(cap).not.toBeNull();
+    mockTrackBounds(slider);
+
+    // Down and up inside one batch, so `dragging` is never true for the release to see. The cap
+    // still has to be free afterwards, or the fader is dead for the rest of the show.
+    act(() => {
+      fireEvent.pointerDown(cap as Element, { pointerId: 1, clientY: 30 });
+      fireEvent.pointerUp(slider, { pointerId: 1, clientY: 30 });
+    });
+
+    fireEvent.pointerDown(cap as Element, { pointerId: 2, clientY: 50 });
+    fireEvent.pointerMove(slider, { pointerId: 2, clientY: 60 });
+    const expected = relativeLevel(-20, 50, 60);
+    expect(props.onValueChange).toHaveBeenLastCalledWith(expected);
+    fireEvent.pointerUp(slider, { pointerId: 2, clientY: 60 });
+    expect(props.onCommit).toHaveBeenLastCalledWith(expected);
   });
 });

@@ -46,7 +46,9 @@ import { useChannelPresence, type PresenceChannel } from './use-channel-presence
 import { useControlLockPreference } from './use-control-lock-preference.js';
 import { usePager } from './use-pager.js';
 import { usePagerViewport } from './use-pager-viewport.js';
+import { useFullscreen } from '../../lib/use-fullscreen.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
+import { useWakeLock } from './use-wake-lock.js';
 import {
   resolveViewChannels,
   segmentViewChannels,
@@ -167,6 +169,16 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const liveIds = new Set(channels.map((channel) => channel.id));
   const [typePages, toggleTypePages] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
+  /*
+   * The screen is held awake only while there is a desk on the other end. The tablet is charged
+   * from the machine running the server, so when that machine is shut down the mixer goes away
+   * and the tablet should be allowed to sleep rather than sit there lit all night. When the
+   * machine comes back the tablet wakes on its own (charging), the socket reconnects, and this
+   * turns back on by itself. The settings page never holds the screen at all.
+   */
+  const deskOnline = socketConnected && emberStatus === 'connected';
+  const wakeLockStatus = useWakeLock(deskOnline);
+  const fullscreen = useFullscreen();
   const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
     socketConnected,
@@ -440,9 +452,11 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
       const touch = event.touches.length === 1 ? event.touches[0] : undefined;
       if (
         touch === undefined ||
-        (target instanceof Element && target.closest('[data-wheel="level"]') !== null)
+        (target instanceof Element &&
+          target.closest('[data-wheel="level"], [data-swipe="none"]') !== null)
       ) {
-        // A fader owns the finger that lands on it, and a second finger is not a page turn.
+        // A fader owns the finger that lands on it, a surface marked `data-swipe="none"` is one
+        // a gesture may not begin on, and a second finger is not a page turn.
         touchRef.current = null;
         return;
       }
@@ -515,7 +529,12 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   }, [deckNode]);
 
   return (
-    <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
+    <main
+      className="mixer-shell"
+      data-theme="dark"
+      data-wake-lock={wakeLockStatus}
+      style={LAYOUT_VARIABLES}
+    >
       <header className="console-header">
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
@@ -559,12 +578,18 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
               pageIndex={pager.pageIndex}
             />
           </div>
+          {/*
+           * Full screen lives at the foot of the rail, the size of a page key: the header row is
+           * a line of small type meant for a mouse, and this is reached with a thumb. It changes
+           * nothing but the browser's own chrome, so it does not breach what the rail is for.
+           */}
           <PageRail
             pageIndex={pager.pageIndex}
             pageCount={pageCount}
             onPrevious={previousPage}
             onNext={nextPage}
             onGoTo={pager.goTo}
+            fullscreen={fullscreen}
           />
         </div>
       )}

@@ -281,6 +281,46 @@ describe('mixer pagination', () => {
     expect(rail.querySelector('[data-swipe-surface]')).not.toBeNull();
   });
 
+  it('keeps the full screen key to the browser chrome and out of the sound', async () => {
+    let element: Element | null = null;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => element,
+    });
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: () => {
+        element = document.documentElement;
+        fireEvent(document, new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      await renderDesk();
+      const rail = screen.getByRole('complementary', { name: 'Pages' });
+
+      // It joins the rail, so it has to answer for the rail: nothing that reaches a channel,
+      // and no pressed state, which is what a channel control would carry.
+      const buttons = within(rail).getAllByRole('button');
+      expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+        'Previous page',
+        'Jump to page',
+        'Next page',
+        'Enter full screen',
+      ]);
+      expect(buttons.filter((button) => button.hasAttribute('aria-pressed'))).toHaveLength(0);
+      expect(within(rail).queryByRole('slider')).toBeNull();
+      expect(within(rail).queryAllByRole('switch')).toHaveLength(0);
+    } finally {
+      for (const key of ['fullscreenEnabled', 'fullscreenElement']) {
+        Reflect.deleteProperty(document, key);
+      }
+      Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    }
+  });
+
   it('opens the counter on the page it is showing, ready to be typed over', async () => {
     await renderDesk();
     resizePager(widthFor(6));

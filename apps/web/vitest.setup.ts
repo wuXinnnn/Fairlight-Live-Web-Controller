@@ -16,6 +16,16 @@ Element.prototype.animate = vi.fn(() => {
   return animation as unknown as Animation;
 });
 
+// Nor HTMLMediaElement.play/pause, which the wake lock's video fallback calls on every mixer
+// mount. Plain functions rather than vi.fn(): a shared mock would carry one test's queued
+// behaviour into the next. A test that needs to watch or reject these spies on them itself.
+HTMLMediaElement.prototype.play = function play() {
+  return Promise.resolve();
+};
+HTMLMediaElement.prototype.pause = function pause() {
+  // Nothing to do: jsdom has no playback to stop.
+};
+
 // jsdom implements neither ResizeObserver nor layout, and the mixer pages itself from both.
 stubResizeObserver();
 stubMixerLayout();
