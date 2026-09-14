@@ -1,6 +1,11 @@
 name: Soak
 
 on:
+  # Temporary, to prove the runner can do this before the workflow reaches the default branch.
+  # Removed in the commit that follows.
+  push:
+    paths:
+      - '.github/workflows/soak.yml'
   workflow_dispatch:
     inputs:
       minutes:
@@ -36,7 +41,7 @@ jobs:
       - name: Soak
         run: >
           pnpm --filter @flwc/server run soak
-          --minutes ${{ inputs.minutes }}
+          --minutes ${{ inputs.minutes || '3' }}
           --browser "$CHROME_BIN"
           --browser-args "--no-sandbox"
           --out soak-reports/ci
