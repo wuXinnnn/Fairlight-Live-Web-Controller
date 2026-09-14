@@ -73,6 +73,33 @@ export function emitAck(socket: Socket, event: string, payload: unknown): Promis
 }
 
 /**
+ * Pulls a provider's network out from under whoever is talking to it, then stops it listening.
+ *
+ * `MockEmberProvider.close()` on its own is not enough to play a desk going away: it reaches
+ * `S101Server.discard()`, which closes the listening socket and nothing else, and by Node's rules
+ * an established connection survives that untouched. A service on the other end would go on
+ * holding a live socket to a provider that is no longer there and would never reconnect. Losing
+ * power drops the connections first, so that is the order here.
+ *
+ * Reaching for `_clients` is how the mock already talks to its connected clients (see
+ * `notifyInserted`), so this is the same private door rather than a new one.
+ */
+export function unplugProvider(provider: MockEmberProvider): number {
+  const clients = (
+    provider as unknown as {
+      server?: { _clients?: Iterable<{ socket?: { destroy(): void } }> };
+    }
+  ).server?._clients;
+  let dropped = 0;
+  for (const client of clients ?? []) {
+    client.socket?.destroy();
+    dropped += 1;
+  }
+  provider.close();
+  return dropped;
+}
+
+/**
  * Discards the transport of every connected socket. The client sees `transport close` and dials
  * again by itself, which is what a machine going down looks like from the browser. Calling
  * `socket.disconnect()` instead would send `io server disconnect`, and the client would never
