@@ -229,18 +229,24 @@ Fader 滚轮与翻页滚轮共存规则:
 
 ### 6.5 健壮性
 
+详细执行提示词见 `docs/prompts/phase-6-5.md`。重连链路本身在 Phase 3 与 6.1 已就位(Ember 退避重连、重连后即使树没变也补发 connected 快照、每个新 socket 连接补发快照与状态),本批次补齐它的端到端用例、修一处离线命令的缺陷,并交付 soak 工具。
+
 交付物:
 
-- 断线重连端到端:socket 重连后自动恢复快照与电平,增加 Mock Provider 集成用例(socket 断线重连、Ember 断线重连、两者叠加)
-- soak 脚本:Mock Provider 持续推送电平帧不少于 1 小时,定时采样前端堆内存并输出报告,用于本地与 CI 手动触发
-- 本地真机长时间运行验收
+- 后端重连集成用例(Mock Provider + 真 socket.io-client):Ember Provider 掉线后在同一端口回来,服务端自行重连、补发 connected 快照、电平帧与写入恢复、`lastError` 清空;socket 传输层断开(`conn.close(true)`,客户端会自动重连的那种断法)后客户端收到新快照;两者叠加的两种先后顺序终态一致;服务端整体重启后客户端连上新实例并最终拿到 connected 快照;连续多轮断连后一次参数变化只产生一条 patch、监听器数不变;Ember 断线期间的控制命令以 `PROTOCOL` 回执失败
+- 前端重连集成用例(FakeSocket):socket 重连后当前页、view、CONTROL LOCK 保持,条带 DOM 节点不重挂,电平帧与常亮恢复;拖动中掉线时松手不发命令、电平回到基线;Ember 掉线时条带不重挂;叠加两种顺序;服务端重启形态的 `connecting` 空快照不清掉已加载的清单
+- 离线命令不排队:socket.io-client 会把断线期间的 emit 缓冲到重连后补发,推子拖动中掉线、松手时的 `set-level` 会在 UI 已回滚之后发到台子。`emitWithAck` 在 socket 未连接时立即以 `OFFLINE` 回执失败、不 emit;浏览器包装层用 `socket.timeout(ACK_TIMEOUT_MS)` 发控制命令,超时即从发送缓冲里移除、重连后不补发。不做「重连后重放」
+- soak 工具(`apps/server/src/tools/soak.ts`,`pnpm --filter @flwc/server soak`,零依赖):按最新树 dump 起 Mock Provider 与真实 server 托管生产构建,以 20 Hz 给全部通道喂电平,自写极简 CDP 客户端(Node 22 的 `WebSocket`)驱动 headless Chrome,每 30 s 先 `collectGarbage` 再采 JS 堆、DOM 节点数、事件监听数、布局次数与服务端内存、句柄数、监听器数,每 5 s 翻一页,每 10 min 交替做一次 Ember 断连与 socket 断连并要求 30 s 内回到 `MIXER ONLINE`;输出 `samples.json` 与 `report.md`,判定(热身 10 min 后首个 10 min 窗口对末尾 10 min 窗口:JS 堆增长 ≤ 10 MiB 且 ≤ 20%、DOM 节点与监听数漂移 ≤ 5%、服务端堆增长 ≤ 20 MiB、每次断连都恢复)失败即非零退出;样本不足两个窗口时为 `inconclusive`。另有附着模式 `--url`:不起任何服务、只开浏览器采样与翻页、永不发控制命令,供用户对真实台子做一小时验收。阈值与节奏全部是导出常量与命令行参数,初值由本地实测后调
+- `.github/workflows/soak.yml`:`workflow_dispatch` 手动触发,输入分钟数,用 runner 自带的 Chrome,报告上传为 artifact;`ci.yml` 不改
+- 本地真机长时间运行验收(附着模式一小时 + 平板照常使用一小时并拔一次线)
 
 验收标准:
 
-- [ ] 集成测试覆盖三种重连场景,UI 恢复到断线前的状态
+- [ ] 后端 7 条与前端 6 条重连用例全绿,UI 恢复到断线前的状态(页码、view、锁定、条带节点);离线命令单测锁住不排队
+- [ ] 60 分钟 soak 实跑判定 `pass`,结果表在执行报告里;`soak.yml` 短跑成功一次
 - [ ] 本地对真实 Fairlight 长时间运行(≥1 小时)无内存泄漏、无断连不恢复
 - [ ] 触屏与鼠标操作均流畅(本地)
-- [ ] 覆盖率达标
+- [ ] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/soak.ts` 一项
 
 ## Phase 7 — 打包交付
 

@@ -137,9 +137,14 @@ Fullscreen 页头按钮、web app manifest。不放大命中区、不加 user-sc
 ### 6.5 健壮性
 
 ```
-按 docs/development-plan.md 的 Phase 6.5:socket 断线重连 / Ember 断线重连 / 两者叠加的
-Mock Provider 集成用例,验证 UI 恢复到断线前状态;soak 脚本让 Mock Provider 持续推电平帧
-不少于 1 小时并采样前端堆内存输出报告。真机 1 小时运行验收由本地执行。覆盖率达标。
+按 docs/development-plan.md 的 Phase 6.5:后端(Mock Provider + 真 socket.io-client)与前端(FakeSocket)
+的重连集成用例——Ember 同端口回来、socket 传输层断开、两者叠加两种顺序、服务端重启、多轮断连不重复订阅——
+验证 UI 恢复到断线前状态(页码、view、锁定、条带节点);修掉 socket.io-client 把离线期间的控制命令缓冲到
+重连后补发的缺陷(未连接即 OFFLINE 回执,浏览器层用 socket.timeout() 发命令);零依赖的 soak 工具
+(Mock Provider + 真实 server + 自写 CDP 客户端驱动 headless Chrome,20 Hz 电平、翻页、周期性断连,
+采内存与恢复时间出报告并判定,附着模式对真实台子只读)与 workflow_dispatch 的 soak.yml。
+本地会话执行,60 分钟实跑结果进报告;真机 1 小时验收由用户执行。不新增依赖,覆盖率达标。
+详细执行提示词见 docs/prompts/phase-6-5.md。
 ```
 
 ## Phase 7 — 打包交付
