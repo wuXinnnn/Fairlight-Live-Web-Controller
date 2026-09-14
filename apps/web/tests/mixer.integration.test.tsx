@@ -334,4 +334,27 @@ describe('mixer socket integration', () => {
     expect(slider).toHaveAttribute('aria-disabled', 'false');
     expect(onButton).toBeEnabled();
   });
+
+  it('keeps the screen awake through the video fallback and takes it away on the way out', async () => {
+    const socket = new FakeSocket();
+    render(<App socket={socket} />);
+    socket.serverEmit(SOCKET_EVENTS.MIXER_SNAPSHOT, snapshot);
+    await screen.findByRole('heading', { name: 'BASS' });
+
+    // jsdom has no `navigator.wakeLock`, which is exactly the tablet's situation over plain http
+    // on the local network: the muted video is the only road to a lit screen.
+    const shell = document.querySelector('.mixer-shell');
+    expect(shell).toHaveAttribute('data-wake-lock', 'idle');
+    const video = document.querySelector<HTMLVideoElement>('video.wake-media');
+    expect(video).not.toBeNull();
+    expect(video?.muted).toBe(true);
+
+    // Autoplay policy: the clip cannot start until a finger has touched something.
+    fireEvent.pointerDown(document.body);
+    expect(document.querySelector('.mixer-shell')).toHaveAttribute('data-wake-lock', 'active');
+
+    fireEvent.click(screen.getByRole('button', { name: 'CONFIGURE VIEWS' }));
+    await screen.findByRole('heading', { name: 'VIEW CONFIGURATION' });
+    expect(document.querySelector('video.wake-media')).toBeNull();
+  });
 });

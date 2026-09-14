@@ -47,6 +47,7 @@ import { useControlLockPreference } from './use-control-lock-preference.js';
 import { usePager } from './use-pager.js';
 import { usePagerViewport } from './use-pager-viewport.js';
 import { useTypeRowsPreference } from './use-type-row-preference.js';
+import { useWakeLock } from './use-wake-lock.js';
 import {
   resolveViewChannels,
   segmentViewChannels,
@@ -167,6 +168,8 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   const liveIds = new Set(channels.map((channel) => channel.id));
   const [typePages, toggleTypePages] = useTypeRowsPreference();
   const [lockMode, setLockMode] = useControlLockPreference();
+  // The mixer holds the screen awake; the settings page has no reason to.
+  const wakeLockStatus = useWakeLock(true);
   const viewHasGroups = activeView !== null && viewGroups(activeView).length > 0;
   const emptyState = resolveMixerEmptyState({
     socketConnected,
@@ -517,7 +520,12 @@ export function MixerPage({ controlClient, onOpenSettings, onOpenConnection }: M
   }, [deckNode]);
 
   return (
-    <main className="mixer-shell" data-theme="dark" style={LAYOUT_VARIABLES}>
+    <main
+      className="mixer-shell"
+      data-theme="dark"
+      data-wake-lock={wakeLockStatus}
+      style={LAYOUT_VARIABLES}
+    >
       <header className="console-header">
         <div className="console-brand">
           <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>

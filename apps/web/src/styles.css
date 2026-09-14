@@ -101,6 +101,21 @@ textarea,
   -webkit-user-select: text;
 }
 
+/*
+ * The wake lock's video fallback. Chrome for Android only keeps a screen on for a video that is
+ * playing, has a video track and is visible in the document, so `display: none` is not an option
+ * here: it has to be laid out and it has to have geometry. One pixel is geometry.
+ */
+.wake-media {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .mixer-shell {
   height: 100dvh;
   display: grid;
