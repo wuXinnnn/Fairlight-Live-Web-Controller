@@ -85,6 +85,42 @@ describe('Meter', () => {
     expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0.5');
   });
 
+  it('brings the peak down after a rise that silence arrived on top of', () => {
+    const { container } = render(<Meter id="channel/1" label="BASS" active />);
+    const peak = container.querySelector<HTMLElement>('.meter__peak');
+    const fill = container.querySelector<HTMLElement>('.meter__fill');
+
+    act(() => {
+      applyMetersFrame({ meters: [['channel/1', -3]] });
+    });
+    // A turn of the loop, so a peak that is committed late has had its chance to be committed.
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0.95');
+
+    /*
+     * A rise, and then the source stops before the next turn of the loop — a paused video rather
+     * than a microphone walking down its noise floor. Taking the rise cancels the hold that was
+     * running, so deferring it left a window with no hold set and no rise committed; the frame
+     * carrying silence closed that window and the line was stranded above a bar that had already
+     * fallen. The two frames are dispatched separately on purpose: batching them into one render
+     * would collapse the very gap this is about.
+     */
+    act(() => {
+      applyMetersFrame({ meters: [['channel/1', -1]] });
+    });
+    act(() => {
+      applyMetersFrame({ meters: [['channel/1', -60]] });
+    });
+    act(() => {
+      vi.advanceTimersByTime(PEAK_HOLD_MS * 2);
+    });
+
+    expect(fill?.style.getPropertyValue('--meter-ratio')).toBe('0');
+    expect(peak?.style.getPropertyValue('--meter-peak')).toBe('0');
+  });
+
   it('visually freezes when the control surface is inactive', () => {
     render(<Meter id="channel/1" label="BASS" active={false} />);
     expect(screen.getByLabelText('BASS meter')).toHaveClass('is-frozen');
