@@ -250,15 +250,46 @@ Fader 滚轮与翻页滚轮共存规则:
 
 ## Phase 7 — 打包交付
 
+最终发布形态是三态:**控制台脚本直接启动**、**Docker 部署**、**桌面安装包**(先 Windows,macOS / Linux 待有设备后另开批次)。拆成两个 PR:7.1 交付前两态并为桌面壳铺好服务端合同;7.2 交付桌面壳。每个 PR 独立可合并、独立满足覆盖率门槛。
+
+### 7.1 服务端收尾、控制台启动与 Docker
+
+详细执行提示词见 `docs/prompts/phase-7-1.md`。
+
 交付物:
 
-- 多阶段 Dockerfile(server 托管 web 产物,`data/` 挂卷),`docker-compose.yml` 示例
-- 环境变量 `EMBER_HOST`/`EMBER_PORT`:仅在首次启动且 `data/` 无配置文件时作为种子值写入配置文件,之后以配置文件为准,UI 始终可改
-- Windows 直接运行方式:`pnpm build` 后 `node apps/server/dist`,提供启动脚本
-- README 快速开始补全,文档全面核对与收尾
+- 进程生命周期:`SIGINT` / `SIGTERM` 走 `app.close()` 优雅退出(超时 `SHUTDOWN_TIMEOUT_MS` 后强制退出);`FLWC_EXIT_ON_STDIN_CLOSE=1` 时 stdin 关闭即退出,供桌面壳与进程管理器做进程边界
+- 环境变量:`EMBER_HOST` / `EMBER_PORT` 仅在配置文件不存在时作为种子写入配置文件,之后以文件为准,UI 始终可改;`FLWC_DATA_DIR` / `FLWC_WEB_ROOT` 覆盖数据目录与 web 产物目录,默认值不变;`HOST` / `PORT` 维持现状
+- Mock Provider 命令行工具(`pnpm --filter @flwc/server mock-provider --port <p> [--meters]`),供本地验证与无台子演示
+- 控制台启动脚本 `start.cmd` / `start.sh`:检查 Node 版本与构建产物,默认 `HOST=0.0.0.0`,前台运行
+- 多阶段 `Dockerfile`(`node:22-alpine`,运行阶段只含生产依赖,非 root,`HEALTHCHECK`,`/app/data` 挂卷)、`.dockerignore`、`docker-compose.yml`(拉取 GHCR 镜像,命名卷)、`scripts/docker-smoke.sh`(健康、种子写入、PUT 后重启仍保留、`docker stop` 时长)
+- `.github/workflows/docker.yml`:PR 构建 + 冒烟;`main` 推 `:main`;标签 `v*` 推 `:vX.Y.Z` / `:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release;`ci.yml` 不改
+- README 按三态重写快速开始与配置表;`AGENTS.md`、`architecture.md`、`conventions.md` 全面核对与实际行为一致
 
 验收标准:
 
-- [ ] Docker 镜像在 Linux 下运行正常,配置可持久化
-- [ ] Windows 本机直接运行正常
-- [ ] 文档与实际行为一致
+- [ ] 单测与集成用例覆盖:优雅退出与 stdin 守护、种子值(缺失 / 存在 / 损坏 / 只读)、路径环境变量、种子写入后 PUT 覆盖并跨重启保留
+- [ ] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次
+- [ ] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实台子、Ctrl+C 退出;`docker compose` 指向真实台子并跨 `restart` / `down && up` 保留配置
+- [ ] 文档与实际行为一致(报告附逐行核对清单)
+- [ ] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/mock-provider.ts` 一项
+
+### 7.2 桌面启动器(Tauri,Windows)
+
+详细执行提示词见 `docs/prompts/phase-7-2.md`。桌面壳是 Bitfocus Companion 式的「小设置窗口 + 托盘」启动器:后端跑在它的子进程里,混音页仍在浏览器里打开。选 Tauri 而不是 Electron 是为了体积与将来的 macOS 适配;窗口 UI 不嵌混音页。**本批次只交付 Windows 安装包**,代码保持可移植(平台差异走 `#[cfg]` 或 Tauri 插件);macOS / Linux 的构建与验证待有设备后另开批次。
+
+交付物:
+
+- `apps/desktop/`(`@flwc/desktop`):Tauri 2 壳(`src-tauri/`)+ React 窗口前端(与 `apps/web` 同一套工具链);安装包**自带 Node 运行时**(官方二进制作为 sidecar,构建时下载校验、不入库)与铺平的服务端及 web 产物(资源目录),目标机器不需要 Node 与 pnpm
+- 窗口:状态与地址(含局域网地址,可复制)、端口、是否允许局域网访问、Apply 重启、`Start with Windows` / `Start at login`、`Start hidden in the tray`、`Open in browser` / `Hide to tray` / `Exit`、后端日志尾部;关闭按钮 = 隐藏到托盘;托盘菜单 `Open in browser` / `Show window` / `Exit`;单实例
+- 进程模型:子进程环境按 7.1 合同(`HOST` / `PORT` / `FLWC_WEB_ROOT` / `FLWC_DATA_DIR` / `FLWC_EXIT_ON_STDIN_CLOSE`),数据在系统应用数据目录;就绪由健康检查判定;启动器以任何方式消失时子进程经 stdin 守护自行退出,不写平台专属保活
+- `.github/workflows/desktop.yml`:`windows-latest` 构建 NSIS 安装包(按用户安装),PR 上传 artifact,标签挂到与 `docker.yml` 共用的 Release;矩阵结构预留其它平台;`ci.yml` 不改,`apps/desktop` 的根脚本部分只涉及窗口前端
+- README「Desktop app」一节、`architecture.md` 部署一节、`conventions.md` 与 `AGENTS.md` 目录结构
+
+验收标准:
+
+- [ ] Rust 单测(设置、局域网地址选择、子进程状态机)、clippy、fmt 全绿;窗口前端(view-model 与组件)覆盖率达标;`ci.yml` 在 ubuntu 上继续全绿
+- [ ] Windows 安装包在开发机实装:无控制台窗口、托盘与窗口全部控件可用、改端口重启、关闭即隐藏、单实例、结束启动器后后端自行退出、`Exit` 干净、卸载无残留
+- [ ] `desktop.yml` 在 PR 上全绿且 artifact 可下载
+- [ ] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实台子、`Start with Windows` 注销重登生效、关机重启不残留
+- [ ] 合并后打第一个标签,Release 上同时出现镜像包与 Windows 安装包,GHCR 包为 public

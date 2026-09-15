@@ -149,9 +149,28 @@ Fullscreen 页头按钮、web app manifest。不放大命中区、不加 user-sc
 
 ## Phase 7 — 打包交付
 
+最终发布形态三态:控制台脚本直接启动、Docker 部署、Tauri 桌面安装包。拆成 7.1 与 7.2 两个 PR。
+
+### 7.1 服务端收尾、控制台启动与 Docker
+
 ```
-按 docs/development-plan.md 的 Phase 7:多阶段 Dockerfile(node:22-alpine,data/ 挂卷)、
-docker-compose 示例、Windows 启动脚本、EMBER_HOST/EMBER_PORT 环境变量仅在首次启动且无配置文件时作为种子值,补全 README 快速开始,全量核对文档与实际行为一致。
+按 docs/development-plan.md 的 Phase 7.1:SIGINT/SIGTERM 优雅退出与 FLWC_EXIT_ON_STDIN_CLOSE 的 stdin 守护;
+EMBER_HOST/EMBER_PORT 仅在配置文件不存在时作为种子写入文件、之后文件优先;FLWC_DATA_DIR/FLWC_WEB_ROOT 路径覆盖;
+mock-provider 命令行工具;start.cmd/start.sh 控制台启动脚本;多阶段 Dockerfile(node:22-alpine,非 root,
+HEALTHCHECK,/app/data 挂卷)、docker-compose.yml、scripts/docker-smoke.sh、docker.yml(PR 冒烟,main 与 v* 标签推 GHCR,
+标签时离线镜像包挂 Release);README 按三态重写并全面核对文档。本地会话执行,不碰真实台子,不新增 npm 依赖,覆盖率排除只多
+mock-provider.ts 一项。详细执行提示词见 docs/prompts/phase-7-1.md。
+```
+
+### 7.2 桌面启动器(Tauri,Windows)
+
+```
+按 docs/development-plan.md 的 Phase 7.2:apps/desktop 的 Tauri 2 壳 + React 窗口前端;安装包自带官方 Node 二进制
+(sidecar,构建时下载校验、不入库)与铺平的服务端及 web 产物;窗口提供状态与地址、端口、局域网访问开关、Apply 重启、
+Start with Windows、Start hidden、Open in browser/Hide to tray/Exit 与日志尾部;关闭即隐藏到托盘,单实例;
+子进程按 7.1 合同设环境变量,进程边界靠 stdin 守护,不写平台专属保活;desktop.yml 在 windows-latest 构建 NSIS 安装包,
+标签时挂到与 docker.yml 共用的 Release;ci.yml 不改。本批次只做 Windows,代码保持可移植。
+详细执行提示词见 docs/prompts/phase-7-2.md。
 ```
 
 ## 缺陷修复(通用)
