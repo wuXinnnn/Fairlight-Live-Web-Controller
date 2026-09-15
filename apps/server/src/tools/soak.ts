@@ -180,29 +180,42 @@ async function buildStack(dumpPath: string): Promise<LocalStack> {
   const dump = loadDumpTree(dumpPath);
   const provider = MockEmberProvider.fromDump(dump);
   const { host, port } = await provider.listen();
-  const configDir = await mkdtemp(path.join(tmpdir(), 'flwc-soak-'));
-  await writeFile(
-    path.join(configDir, 'config.json'),
-    `${JSON.stringify({ version: 1, ember: { host, port }, views: [] }, null, 2)}\n`,
-    'utf8',
-  );
-  const httpPort = await findFreePort('127.0.0.1');
-  // Default Ember timings on purpose, the two second bus directory poll included: building and
-  // tearing down that probe client every two seconds is one of the things worth soaking.
-  const server = await start({
-    host: '127.0.0.1',
-    port: httpPort,
-    staticRoot,
-    configDir,
-    silent: true,
-  });
-  return {
-    server,
-    provider,
-    url: `http://127.0.0.1:${httpPort}/`,
-    configDir,
-    meterPaths: collectMeterPaths(dump),
-  };
+  let configDir: string | undefined;
+  try {
+    configDir = await mkdtemp(path.join(tmpdir(), 'flwc-soak-'));
+    await writeFile(
+      path.join(configDir, 'config.json'),
+      `${JSON.stringify({ version: 1, ember: { host, port }, views: [] }, null, 2)}\n`,
+      'utf8',
+    );
+    const httpPort = await findFreePort('127.0.0.1');
+    // Default Ember timings on purpose, the two second bus directory poll included: building and
+    // tearing down that probe client every two seconds is one of the things worth soaking.
+    const server = await start({
+      host: '127.0.0.1',
+      port: httpPort,
+      staticRoot,
+      configDir,
+      silent: true,
+    });
+    return {
+      server,
+      provider,
+      url: `http://127.0.0.1:${httpPort}/`,
+      configDir,
+      meterPaths: collectMeterPaths(dump),
+    };
+  } catch (error) {
+    /*
+     * The caller has nothing to close until this returns. A provider left listening here would
+     * keep the process alive after the error had been printed, with no run behind it to report.
+     */
+    provider.close();
+    if (configDir !== undefined) {
+      await rm(configDir, { recursive: true, force: true });
+    }
+    throw error;
+  }
 }
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -223,7 +236,20 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
   let loudnessTimer: NodeJS.Timeout | undefined;
   let userDataDir: string | undefined;
   let torndown = false;
-  let visitedPages: string[] = [];
+  /*
+   * Which pages the operator has actually been on. A sample only sees where the desk is at that
+   * instant, and with a sample interval that is a multiple of the page interval every sample
+   * lands on the same phase and reports the same page forever. That is aliasing, not a stuck
+   * pager, so what the pager did between samples is recorded here and reported separately.
+   */
+  const pagesVisited = new Set<string>();
+  /*
+   * What cut the run short, if anything did. A browser that crashes at minute fifty-nine has
+   * still left fifty-nine minutes of samples on disk, and they deserve the same report a run
+   * stopped with Ctrl+C gets; the error is printed after it and the exit code says the run was
+   * not a clean one.
+   */
+  let runError: unknown;
 
   const persist = async (): Promise<void> => {
     // Written whole to a temporary name and moved into place, so a run killed mid-write leaves a
@@ -334,13 +360,6 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     let pendingChurn: SoakSample['churn'];
     let churnIndex = 0;
     let goingForward = true;
-    /*
-     * Which pages the operator has actually been on. A sample only sees where the desk is at that
-     * instant, and with a sample interval that is a multiple of the page interval every sample
-     * lands on the same phase and reports the same page forever. That is aliasing, not a stuck
-     * pager, so what the pager did between samples is recorded here and reported separately.
-     */
-    const pagesVisited = new Set<string>();
 
     const turnPage = async (): Promise<void> => {
       // Page keys move a focused fader by ten decibels, so the desk is only paged while nothing
@@ -479,18 +498,24 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       await delay(SOAK_TICK_MS);
     }
 
-    visitedPages = [...pagesVisited];
-
     // One last reading, so a run always has an end to compare against.
     if (samples.length === 0 || Date.now() - runStartedAt - (samples.at(-1)?.atMs ?? 0) > 1000) {
       await takeSample();
     }
+  } catch (error) {
+    runError = error;
   } finally {
     await teardown();
     process.off('SIGINT', stop);
     process.off('SIGTERM', stop);
   }
 
+  if (samples.length === 0) {
+    // Nothing was measured, so there is nothing to report: the error is the whole outcome.
+    throw runError ?? new Error('the run ended before a single sample was taken');
+  }
+
+  const visitedPages = [...pagesVisited];
   const summary = summarize(samples, { mode });
   const result = verdict(summary);
   const markdown = renderMarkdown(summary, result, {
@@ -518,7 +543,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     console.error(`  note: ${note}`);
   }
   console.error(`soak: report written to ${outDir}`);
-  process.exitCode = result.status === 'fail' ? 1 : 0;
+  if (runError !== undefined) {
+    console.error(
+      `soak: the run was cut short: ${runError instanceof Error ? runError.message : runError}`,
+    );
+  }
+  process.exitCode = result.status === 'fail' || runError !== undefined ? 1 : 0;
 
   /*
    * Everything this run owns has been closed by now, but a browser that has just been killed can
