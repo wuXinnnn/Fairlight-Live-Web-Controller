@@ -49,23 +49,32 @@ export function Meter({ id, label, active }: MeterProps) {
   const timerRef = useRef<number | undefined>(undefined);
   const [peak, setPeak] = useState(value);
 
+  /*
+   * The peak is taken as soon as it is read, not on a later turn of the event loop.
+   *
+   * Deferring it used to cost the line its way down. Taking a new peak cancels the hold that is
+   * running, so a deferred rise leaves a window in which the old hold is already gone and the new
+   * one has not been set; a frame arriving inside that window cancels the deferred rise along with
+   * it, and nothing is left to bring the line back down. It stays where it is for the rest of the
+   * session while the bar below it falls to silence.
+   *
+   * That window is narrow but it is exactly where a stopping signal lands: a paused video ends on
+   * a rise followed immediately by silence, and the two frames reach the page in the same task. A
+   * microphone never triggers it, because its noise floor walks the level down over many frames
+   * and any one of them would have closed the window.
+   */
   useEffect(() => {
     currentRef.current = value;
     if (value <= peakRef.current) {
       return;
     }
+    peakRef.current = value;
+    setPeak(value);
     window.clearTimeout(timerRef.current);
-    const riseTimer = window.setTimeout(() => {
-      peakRef.current = value;
-      setPeak(value);
-      timerRef.current = window.setTimeout(() => {
-        peakRef.current = currentRef.current;
-        setPeak(currentRef.current);
-      }, PEAK_HOLD_MS);
-    }, 0);
-    return () => {
-      window.clearTimeout(riseTimer);
-    };
+    timerRef.current = window.setTimeout(() => {
+      peakRef.current = currentRef.current;
+      setPeak(currentRef.current);
+    }, PEAK_HOLD_MS);
   }, [value]);
 
   useEffect(
