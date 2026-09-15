@@ -438,10 +438,6 @@ export class EmberService extends EventEmitter {
          * Captured before anything is closed, because `discard()` drops the client's own reference
          * to it and retiring it afterwards would then reach nothing.
          */
-        /*
-         * Captured before anything is closed, because `discard()` drops the client's own reference
-         * to it and retiring it afterwards would then reach nothing.
-         */
         const transport = captureEmberTransport(probe);
         try {
           await withTimeout(probe.disconnect(), this.disconnectTimeoutMs, 'probe disconnect');
