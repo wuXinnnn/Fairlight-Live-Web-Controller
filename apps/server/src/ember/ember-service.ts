@@ -434,15 +434,33 @@ export class EmberService extends EventEmitter {
       this.logger.warn({ err: errorMessage(error), layer: 'protocol' }, 'mixer strip probe failed');
     } finally {
       if (probe !== primary) {
+        /*
+         * Captured before anything is closed, because `discard()` drops the client's own reference
+         * to it and retiring it afterwards would then reach nothing.
+         */
+        /*
+         * Captured before anything is closed, because `discard()` drops the client's own reference
+         * to it and retiring it afterwards would then reach nothing.
+         */
+        const transport = captureEmberTransport(probe);
         try {
           await withTimeout(probe.disconnect(), this.disconnectTimeoutMs, 'probe disconnect');
         } catch {
-          try {
-            probe.discard();
-          } catch {
-            // The probe is discarded after a hung disconnect; nothing else to clean up.
-          }
+          // A probe that will not hang up is discarded below like any other.
         }
+        try {
+          /*
+           * Always, not only after a failed disconnect. An EmberClient starts a resend interval in
+           * its constructor and only `discard()` clears it, so a probe that hung up cleanly still
+           * leaves a live timer behind for the rest of the process — one per poll, which at the
+           * production two second interval is eighteen hundred an hour. A soak run found this by
+           * watching the server's handle count climb by five every ten seconds.
+           */
+          probe.discard();
+        } catch {
+          // Nothing else to clean up if the client objects to being discarded.
+        }
+        retireEmberTransport(transport);
       }
       this.mixerProbeInFlight = false;
     }
