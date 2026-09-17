@@ -129,6 +129,38 @@ export function installShutdownHandlers(
   return shutdown;
 }
 
+export interface DeferredShutdownTarget extends ShutdownTarget {
+  /** Hand over the real target once there is one. */
+  attach(target: ShutdownTarget): void;
+}
+
+/**
+ * A stand-in for a target that does not exist yet.
+ *
+ * The handlers have to be installed *before* the server is awaited, not after. `start()` opens
+ * the listening socket and then waits on the Ember connection, and that wait does not end while
+ * the desk is unreachable -- it keeps retrying the tree expand. Installing the handlers on the
+ * result of `start()` would therefore leave the whole startup, and on an unreachable desk the
+ * entire run, with no handler at all: as PID 1 the kernel discards the SIGTERM, `docker stop`
+ * burns its full grace period and ends in SIGKILL. Measured before this existed: a container
+ * pointed at an address that does not answer ignored a stop issued 300ms after launch and was
+ * killed 30 seconds later.
+ *
+ * A signal arriving before `attach` finds nothing to close, which is right: no configuration has
+ * been written yet, and exiting releases the listening socket just as closing it would.
+ */
+export function deferredShutdownTarget(): DeferredShutdownTarget {
+  let target: ShutdownTarget | undefined;
+  return {
+    attach(next) {
+      target = next;
+    },
+    async close() {
+      await target?.close();
+    },
+  };
+}
+
 /**
  * The slice of `process.stdin` this module touches. `resume` is optional so that a plain
  * `EventEmitter` can stand in for it in a test.

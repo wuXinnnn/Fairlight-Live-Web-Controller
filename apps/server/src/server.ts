@@ -16,6 +16,9 @@ export interface StartOptions {
   staticRoot?: string;
   configDir?: string;
   silent?: boolean;
+  /** The logger to use. Left out, one is made here; `main.ts` passes its own so that the
+   *  shutdown handlers it installs before calling this write to the same stream. */
+  logger?: AppLogger;
   runtime?: MixerRuntime;
   timeoutMs?: number;
   disconnectTimeoutMs?: number;
@@ -76,7 +79,8 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
   const staticRoot = options.staticRoot ?? paths.webRoot;
   const configPath =
     options.configDir === undefined ? paths.configPath : resolveConfigPath(options.configDir);
-  const logger: AppLogger = options.silent === true ? silentLogger() : pino({ name: 'flwc' });
+  const logger: AppLogger =
+    options.logger ?? (options.silent === true ? silentLogger() : pino({ name: 'flwc' }));
   const runtime =
     options.runtime ??
     new MixerRuntime({

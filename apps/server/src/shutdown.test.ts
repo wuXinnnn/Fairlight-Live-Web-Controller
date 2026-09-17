@@ -4,6 +4,7 @@ import type { AppLogger } from './logger.js';
 import type { ShutdownProcess, ShutdownTarget, TimerHandle } from './shutdown.js';
 import {
   EXIT_ON_STDIN_CLOSE_ENV,
+  deferredShutdownTarget,
   SHUTDOWN_FORCED_EXIT_CODE,
   SHUTDOWN_SIGNALS,
   SHUTDOWN_TIMEOUT_MS,
@@ -245,6 +246,72 @@ describe('installShutdownHandlers', () => {
       { logger: recordingLogger(), process: custom, signals: ['SIGHUP'] },
     );
     expect(custom.signals()).toEqual(['SIGHUP']);
+  });
+});
+
+describe('deferredShutdownTarget', () => {
+  it('closes nothing, and exits zero, before anything is attached', async () => {
+    const proc = fakeProcess();
+    const clock = fakeClock();
+    const target = deferredShutdownTarget();
+
+    installShutdownHandlers(target, {
+      logger: recordingLogger(),
+      process: proc,
+      setTimeout: clock.setTimeout,
+      clearTimeout: clock.clearTimeout,
+    });
+
+    // The signal arrives while the server is still starting. There is nothing to close yet, and
+    // nothing has been written, so leaving immediately is the right answer.
+    proc.emit('SIGTERM');
+    await flush();
+
+    expect(proc.exits).toEqual([0]);
+  });
+
+  it('closes what was attached', async () => {
+    const proc = fakeProcess();
+    const clock = fakeClock();
+    const target = deferredShutdownTarget();
+    let closed = 0;
+
+    installShutdownHandlers(target, {
+      logger: recordingLogger(),
+      process: proc,
+      setTimeout: clock.setTimeout,
+      clearTimeout: clock.clearTimeout,
+    });
+
+    target.attach(
+      targetThat(async () => {
+        closed += 1;
+      }),
+    );
+    proc.emit('SIGTERM');
+    await flush();
+
+    expect(closed).toBe(1);
+    expect(proc.exits).toEqual([0]);
+  });
+
+  it('passes a failure from the attached target through', async () => {
+    const proc = fakeProcess();
+    const clock = fakeClock();
+    const target = deferredShutdownTarget();
+
+    installShutdownHandlers(target, {
+      logger: recordingLogger(),
+      process: proc,
+      setTimeout: clock.setTimeout,
+      clearTimeout: clock.clearTimeout,
+    });
+
+    target.attach(targetThat(() => Promise.reject(new Error('still busy'))));
+    proc.emit('SIGINT');
+    await flush();
+
+    expect(proc.exits).toEqual([1]);
   });
 });
 
