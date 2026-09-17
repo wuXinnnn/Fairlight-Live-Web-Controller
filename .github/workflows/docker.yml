@@ -3,7 +3,7 @@ name: Docker
 on:
   pull_request:
   push:
-    branches: [main, claude/phase-7-1-c310cdff]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -37,7 +37,7 @@ jobs:
           flavor: |
             latest=${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: |
-            type=raw,value=pr-23
+            type=ref,event=branch
             type=semver,pattern=v{{version}}
           labels: |
             org.opencontainers.image.description=Web remote controller for Blackmagic Design Fairlight Live
