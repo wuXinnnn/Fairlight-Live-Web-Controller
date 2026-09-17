@@ -28,6 +28,8 @@ export interface StartedServer {
   app: Awaited<ReturnType<typeof createApp>>;
   runtime: MixerRuntime;
   io: Server;
+  /** The logger the runtime and the gateway write to, so a caller logs onto the same stream. */
+  logger: AppLogger;
 }
 
 export function resolveBindAddress(
@@ -70,5 +72,5 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
   });
   await app.listen({ host, port });
   await runtime.start();
-  return { app, runtime, io };
+  return { app, runtime, io, logger };
 }
