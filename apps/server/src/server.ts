@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { Server } from 'socket.io';
 import pino from 'pino';
 import { createApp } from './app.js';
+import type { EmberSeed } from './config/env-seed.js';
+import { readEmberSeed } from './config/env-seed.js';
 import type { AppLogger } from './logger.js';
 import { silentLogger } from './logger.js';
 import { resolveConfigPath, resolveRuntimePaths } from './paths.js';
@@ -22,6 +24,12 @@ export interface StartOptions {
   treeRefreshDebounceMs?: number;
   incompleteStripRetryMs?: number;
   busDirectoryPollMs?: number;
+  /**
+   * The Ember endpoint to seed a missing config file with. Left out, the environment is read.
+   * `null` means "do not read the environment", which is what the test fixtures and the soak
+   * driver pass so that a variable set on the machine cannot reach them.
+   */
+  emberSeed?: EmberSeed | null;
 }
 
 export interface StartedServer {
@@ -42,6 +50,23 @@ export function resolveBindAddress(
   };
 }
 
+/**
+ * The seed `start()` hands the runtime: an explicit one, or the environment, or none.
+ *
+ * `??` will not do here. It treats `null` as absent and would read the environment for exactly
+ * the callers that passed `null` to stop it doing so.
+ */
+export function resolveEmberSeed(
+  options: Pick<StartOptions, 'emberSeed'>,
+  logger: AppLogger,
+  env: NodeJS.ProcessEnv = process.env,
+): EmberSeed | undefined {
+  if (options.emberSeed === null) {
+    return undefined;
+  }
+  return options.emberSeed ?? readEmberSeed(env, logger);
+}
+
 export async function start(options: StartOptions = {}): Promise<StartedServer> {
   const { host, port } = resolveBindAddress(options);
   // Explicit option first, then the environment, then the repository-relative default. The
@@ -57,6 +82,8 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
     new MixerRuntime({
       configPath,
       logger,
+      // Inside the `??`, so a caller that supplies its own runtime never reads the environment.
+      emberSeed: resolveEmberSeed(options, logger),
       timeoutMs: options.timeoutMs,
       disconnectTimeoutMs: options.disconnectTimeoutMs,
       reconnectInitialMs: options.reconnectInitialMs,

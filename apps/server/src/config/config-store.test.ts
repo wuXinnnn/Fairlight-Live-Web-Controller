@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { defaultAppConfig } from '@flwc/shared';
@@ -133,5 +133,60 @@ describe('ConfigStore', () => {
     const reloaded = new ConfigStore(filePath, silentLogger());
     await reloaded.load();
     expect(reloaded.snapshot.ember.port).toBe(store.snapshot.ember.port);
+  });
+});
+
+describe('ConfigStore seeded from the environment', () => {
+  const seed = { host: '10.0.0.8', port: 9001 };
+
+  it('writes the seed on a first start, and reads it back without one', async () => {
+    const filePath = await tempConfigPath();
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+
+    const written: unknown = JSON.parse(await readFile(filePath, 'utf8'));
+    expect(written).toEqual({ ...defaultAppConfig(), ember: seed });
+
+    // The point of writing it: the next start no longer needs the environment.
+    const reloaded = new ConfigStore(filePath, silentLogger());
+    await expect(reloaded.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+  });
+
+  it('leaves an existing file alone', async () => {
+    const filePath = await tempConfigPath();
+    const onDisk = { version: 2, ember: { host: '192.168.1.5', port: 9100 }, views: [] };
+    await writeFile(filePath, JSON.stringify(onDisk), 'utf8');
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual(onDisk);
+    expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(onDisk);
+  });
+
+  it('does not seed a file that is there but corrupt', async () => {
+    const filePath = await tempConfigPath();
+    await writeFile(filePath, '{not json', 'utf8');
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    // A file that exists means this has run before, so the environment does not speak for it.
+    await expect(store.load()).resolves.toEqual(defaultAppConfig());
+    expect(await readFile(filePath, 'utf8')).toBe('{not json');
+  });
+
+  it('keeps the seed in memory when the file cannot be written', async () => {
+    // A regular file where the parent directory should be: `mkdir` then fails the same way on
+    // Windows and on Linux, with no directory permissions to chase.
+    const dir = await mkdtemp(path.join(tmpdir(), 'flwc-config-'));
+    const blocker = path.join(dir, 'blocker');
+    await writeFile(blocker, 'not a directory', 'utf8');
+    const filePath = path.join(blocker, 'config.json');
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+    expect(store.snapshot.ember).toEqual(seed);
+    await expect(access(filePath)).rejects.toThrow();
   });
 });

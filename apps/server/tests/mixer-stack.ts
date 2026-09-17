@@ -173,6 +173,7 @@ export function createStackHarness(): StackHarness {
       port: httpPort,
       configDir,
       silent: true,
+      emberSeed: null,
       timeoutMs: extra.timeoutMs ?? 3000,
       disconnectTimeoutMs: 500,
       reconnectInitialMs: 50,
