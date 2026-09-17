@@ -10,7 +10,8 @@
     "test": "vitest run --coverage",
     "dump-tree": "tsx src/tools/dump-tree.ts",
     "verify-ember": "tsx src/tools/verify-ember.ts",
-    "soak": "tsx src/tools/soak.ts"
+    "soak": "tsx src/tools/soak.ts",
+    "mock-provider": "tsx src/tools/mock-provider.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.2.0",

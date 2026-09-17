@@ -63,6 +63,18 @@ describe('MockEmberProvider unit hooks', () => {
     }
   });
 
+  it('binds the host it was given', async () => {
+    // The mock-provider CLI binds 0.0.0.0 so a container can reach it. Loopback here, because a
+    // test has no business opening a listener on every interface of a CI runner.
+    const provider = MockEmberProvider.fromDump(createRequiredDump(), { host: '127.0.0.1' });
+    expect(provider.host).toBe('127.0.0.1');
+    try {
+      await expect(provider.listen()).resolves.toMatchObject({ host: '127.0.0.1' });
+    } finally {
+      provider.close();
+    }
+  });
+
   it('rejects a second listen', async () => {
     const provider = MockEmberProvider.fromDump(createRequiredDump());
     await provider.listen();
