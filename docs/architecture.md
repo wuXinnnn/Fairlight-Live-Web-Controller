@@ -41,7 +41,7 @@ flowchart LR
 | `MixerStateStore` | 规范化业务状态:通道清单(id、类型、名称、level、mute)、响度、连接状态与最近连接失败原因(`connectionError`)。事件驱动,是 WS 网关的唯一数据源 |
 | `MeterHub` | 电平/响度更新的聚合与 50ms 节流,批量成帧后交给 WS 网关广播,与状态增量通道分离 |
 | WS 网关 | socket.io:下行快照/增量/电平帧,上行控制命令(zod 校验 + ack 回执) |
-| REST API | Ember 连接配置、views CRUD、健康检查;JSON 持久化到 `data/` |
+| REST API | Ember 连接配置、views CRUD、健康检查;JSON 持久化到数据目录(默认仓库 `data/`,见「部署」) |
 
 **关键原则:除 TreeMapper 外,任何代码不接触原始 Ember 路径。** 上层(Store、API、前端)只使用逻辑通道模型;Ember+ 是自描述协议,路径结构只能在运行时确认(见 `fairlight-ember.md`)。
 
@@ -159,7 +159,8 @@ interface View {
 
 ## 持久化
 
-`data/config.json`,zod 校验,写入原子化(临时文件 + rename):
+配置文件默认是仓库根的 `data/config.json`,可由 `FLWC_DATA_DIR` 改到别处(容器里是 `/app/data`);zod 校验,
+写入原子化(临时文件 + rename):
 
 ```jsonc
 {
@@ -189,6 +190,10 @@ interface View {
 ```
 
 版本 1 的文件在**读取时**迁移为版本 2(见「View 与失配处理」),下一次写入即以版本 2 落盘;其它版本号一律当作无法识别。文件损坏或缺失时回退默认配置并告警,不崩溃。
+
+文件**缺失**是唯一的例外:此时若有环境变量种子值(见「部署」),`ConfigStore.load()` 会把「默认配置 + 种子
+ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目录只读)只告警,仍返回带种子的内存配置,下一次
+`update()` 再试。种子写入与其它写入排在同一条 `writeTail` 上,以免启动期间到达的 PUT 与它交错。
 
 ## 前端结构
 
@@ -229,5 +234,72 @@ interface View {
 
 ## 部署
 
-- **Docker**:多阶段构建(install → build → runtime,node:22-alpine);server 托管 web 产物;`data/` 挂卷
-- **Windows**:`pnpm build` 后 `node apps/server/dist/main.js`,提供启动脚本;无原生依赖,跨平台无需特殊处理
+发布形态是三态:控制台脚本、Docker、桌面安装包(Windows,Phase 7.2)。三者跑的是同一个
+`apps/server/dist/main.js`,差别只在它被谁拉起、环境变量怎么设。
+
+### 进程生命周期(`apps/server/src/shutdown.ts`)
+
+- `main.ts` 只做接线:`start()` → `installShutdownHandlers(app, { logger })` → 按环境变量决定要不要看 stdin。
+- `SIGINT` / `SIGTERM` 走 `app.close()`(既有的 `onClose` 钩子会关 socket.io 并断开 Ember),完成后 `exit(0)`;
+  超过 `SHUTDOWN_TIMEOUT_MS`(5000)未完成 `exit(1)`;关闭中再收到信号直接 `exit(130)`。信号用 `on` 注册,
+  不用 `once`——否则第二个信号到不了处理器。
+- 没有这套处理时,Node 作容器 PID 1 会被内核忽略信号,`docker stop` 要等满 10 秒宽限期;装上之后实测 0.5 秒。
+- `FLWC_EXIT_ON_STDIN_CLOSE=1` 时把 `process.stdin` 交给 `watchStdinForExit`:`end` / `close` / `error` 任一到达
+  即走同一条关闭路径。桌面壳把子进程 stdin 接成管道,壳以任何方式消失管道都会断,子进程随之退出,Windows 与
+  macOS 同一套,不写平台专属保活。不设该变量时完全不碰 stdin(控制台启动的用户还要 Ctrl+C,且 `resume` 后的
+  stdin 会拖住事件循环)。
+
+### 环境变量与优先级
+
+| 变量 | 默认 | 作用 |
+| --- | --- | --- |
+| `HOST` / `PORT` | `127.0.0.1` / `3000` | Web 服务器监听地址,`resolveBindAddress()` |
+| `EMBER_HOST` / `EMBER_PORT` | `127.0.0.1` / `9000` | **种子值**,见下 |
+| `FLWC_DATA_DIR` | 仓库 `data/` | `config.json` 所在目录 |
+| `FLWC_WEB_ROOT` | `apps/web/dist` | 静态托管根目录 |
+| `FLWC_EXIT_ON_STDIN_CLOSE` | 未设 | `1` 时 stdin 关闭即退出 |
+
+- 路径解析在 `paths.ts` 的 `resolveRuntimePaths(env, moduleUrl)`:两个 `FLWC_*` 非空则用它们(空串当未设),
+  否则回落到既有的、相对 `dist/paths.js` 位置的默认值。容器保持仓库布局,用不上它们;桌面壳用得上
+  (web 产物在安装包资源目录、数据在系统应用数据目录)。
+- **种子值一刀切**:`EMBER_HOST` / `EMBER_PORT` 只在**配置文件不存在**时由 `readEmberSeed()` 读出、过一遍
+  `connectionPutBodySchema`,再由 `ConfigStore.load()` 写到磁盘;此后一律以文件为准,UI 的 CONNECTION 面板
+  始终可改,环境变量再怎么变都不覆盖。文件存在但损坏或不合 schema 时**不**用种子(文件在就说明不是首次启动),
+  照旧回退默认值并告警。非法的环境变量只告警、不抛错——一个打错的变量不该让服务起不来。
+- `start()` 的优先级统一为:显式选项 > 环境变量 > 仓库相对默认值。夹具与 soak 传 `emberSeed: null` 表示
+  「不要读环境变量」,以免 CI runner 上的变量污染既有用例。
+
+### 控制台脚本
+
+`start.cmd`(Windows,CRLF)与 `start.sh`(macOS / Linux,可执行位)行为对称:检查 Node ≥ 22、检查
+`apps/server/dist/main.js` 与 `apps/web/dist/index.html`、`HOST` 默认 `0.0.0.0`、`PORT` 默认 `3000`、前台运行。
+**只做启动**:不装依赖、不构建、不改配置,缺什么就提示该跑哪条命令再退出 1。`start.cmd` 末尾 `pause`
+(双击打开的窗口不会一闪而过),`FLWC_NO_PAUSE=1` 可关掉。两者都不打印局域网地址——跨平台取网卡差异太大,
+由桌面壳去做。
+
+### Docker
+
+- `Dockerfile` 四个阶段:`base`(node:22-alpine + git + corepack pnpm)、`build`、`deps`、`runtime`。
+- **依赖装法**:`pnpm fetch`(只要 lockfile)填虚拟store → `COPY . .` → `pnpm install --frozen-lockfile --offline`
+  → `pnpm build`。不能按常规「先复制各 `package.json` 再 install」分层:workspace 安装会跑每个项目的 `prepare`,
+  而 `packages/shared` 与 `packages/test-utils` 的 `prepare` 是 `tsc`,那时源码还没复制进来。
+- **生产依赖单独一个 `deps` 阶段**,用 `pnpm fetch --prod`。不能靠剪 `build` 阶段:`pnpm install --prod` 只解掉各
+  项目 `node_modules` 里的 devDependency 链接,`node_modules/.pnpm` 里的包还在(`pnpm fetch` 已按整份 lockfile
+  填过),vite / vitest / eslint / typescript 会一起进镜像;`pnpm prune --prod` 更不行,它不递归 workspace。
+- **`runtime` 阶段**只复制运行所需,且**目录布局与仓库一致**——这同时保住两套相对查找:pnpm 写进 `node_modules`
+  的相对符号链接,以及 `paths.ts` 从自身位置解析的 `../../web/dist` 与 `../../../data`。必须复制
+  `packages/shared/node_modules`:`@flwc/shared` 要的 `zod` 是从那里解析的。`apps/server/dist/tools` 整个保留——
+  它不全是开发工具,`ember-service.js` 会 import 其中的 `expand-ember-tree.js`。
+- 非 root(`node`,uid 1000)、`HEALTHCHECK` 打 `/api/v1/health`、`/app/data` 挂卷。`chown` 必须在 `VOLUME` 之前:
+  Docker 用镜像里该目录的内容**与属主**初始化新命名卷。镜像约 206 MB。
+- `docker-compose.yml` 拉 GHCR 镜像、用命名卷(容器以 uid 1000 跑,bind mount 到宿主机目录权限常对不上;
+  README 给了想用 bind mount 时的 `chown` 说明)。
+- `scripts/docker-smoke.sh` 用同一个卷起两次容器,验证健康、种子写入、PUT 后换环境变量重启仍是文件值、
+  深链接、`docker stop` 时长、非 root、无 devDependency。CI 与本地(Git Bash)共用。
+
+### CI 与发布
+
+`.github/workflows/docker.yml`:PR 构建 amd64 并跑冒烟(不推送);`main` 推 `:main`;标签 `v*` 推 `:vX.Y.Z` 与
+`:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release(存在就复用,7.2 的桌面工作流往同一个
+Release 传安装包)。离线包是把冒烟用的 amd64 镜像重打标签再 save——多平台构建直接推 registry,本地 daemon
+里没有东西可 save。`ci.yml` 与 `soak.yml` 不变。
