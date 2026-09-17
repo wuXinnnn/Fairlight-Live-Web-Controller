@@ -80,6 +80,22 @@ machine itself, or `http://<that machine's address>:3000` from a tablet on the s
 The first time it listens on every interface, Windows asks whether to allow Node.js through the
 firewall. Allow it on your private network, or the tablet will not be able to reach the page.
 
+To change the port, the bind address or where the configuration is kept, copy `.env.example` to
+`.env` and edit it. The start scripts read it; it is not committed:
+
+```bash
+cp .env.example .env    # copy .env.example .env  on Windows
+```
+
+```dotenv
+PORT=8080
+HOST=0.0.0.0
+```
+
+A variable already set in the shell still wins over the file, so `PORT=3100 ./start.sh` (or
+`set PORT=3100 && start.cmd`) overrides it for one run. The full list of variables is in
+[Configuration](#configuration) below, and every one of them is in `.env.example` with a comment.
+
 ## Run with Docker
 
 Edit `EMBER_HOST` in `docker-compose.yml` to your desk's address, then:
@@ -134,6 +150,13 @@ two options above.
 | `FLWC_DATA_DIR`            | `data/`         | Where `config.json` is kept. `/app/data` in the container.                                                                          |
 | `FLWC_WEB_ROOT`            | `apps/web/dist` | Where the web build is served from.                                                                                                 |
 | `FLWC_EXIT_ON_STDIN_CLOSE` | unset           | Set to `1` to exit when stdin closes, for process supervisors and the desktop launcher.                                             |
+
+All of them can be set in a `.env` file in this directory, which the start scripts read. Copy
+`.env.example` to `.env` to get a commented template. Docker does not read it -- use the
+`environment:` block in `docker-compose.yml` -- and neither does `pnpm dev`.
+
+Precedence, highest first: a variable set in the shell, then `.env`, then the start script's own
+default (`HOST=0.0.0.0`, so a tablet can reach it), then the server's default.
 
 `EMBER_HOST` and `EMBER_PORT` seed; they do not override. Once `config.json` exists, it and the
 CONNECTION panel in the UI decide where the desk is, however the variables are set. Changing the

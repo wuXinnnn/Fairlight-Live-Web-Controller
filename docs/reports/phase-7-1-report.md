@@ -153,9 +153,35 @@ README 的命令逐条敲过(唯一例外见第 11 节),文档核对清单见第
 `new EmberServer`。这里的交付物只有 **1 条单测**(非默认 host),测试里绑 `127.0.0.1` 而不是 `0.0.0.0`,
 不在 CI runner 上开全网卡监听。
 
-### 3.5 控制台启动脚本
+### 3.5 控制台启动脚本与 `.env`
 
-对称,只做「检查 → 设默认环境 → 前台运行」。`start.cmd` 末尾 `pause`(`FLWC_NO_PAUSE=1` 可关),
+对称,只做「检查 → 读 `.env` → 补默认 → 前台运行」。
+
+**`.env` 支持是用户在批次末尾追加的需求**:「桌面壳归桌面壳,我需要有一个非桌面应用状态下能改配置的文件」。
+实现用 Node 22 自带的 `--env-file`,**不新增依赖、不改一行服务端代码**;模板是入库的 `.env.example`,
+`.env` 本身已经在 `.gitignore` 与 `.dockerignore` 里。
+
+这里有一个照直加会**静默失效**的坑,实测确认过:
+
+```
+PORT 未设时:   node --env-file=probe.env show.mjs  →  {"PORT":"8080"}   (文件生效)
+PORT=3000 时:  node --env-file=probe.env show.mjs  →  {"PORT":"3000"}   (文件被忽略)
+```
+
+**Node 的 `--env-file` 不覆盖环境里已有的值**。而原来的脚本是先 `set HOST=0.0.0.0` / `set PORT=3000`
+再起 node,所以只要照直加 `--env-file`,`.env` 里的 `HOST` 与 `PORT` **永远不会生效**——而这两个恰恰是
+用户最想改的。
+
+改法是把脚本的默认值从「先设进环境」改成「问过之后再补」:脚本带着同一个 `--env-file` 问一次 node
+「你实际会看到什么 HOST / PORT」,只有两边都没给时才补 `0.0.0.0`,并用问到的端口去印横幅。
+于是优先级是 **shell 里设的 > `.env` > 脚本默认(`0.0.0.0`)> 服务端默认(`127.0.0.1:3000`)**,
+而且横幅印的地址**一定是真的**——原来的写法在 `.env` 改了端口之后会印错。
+
+顺带删掉了脚本里的 `PORT=3000` 默认:它与服务端默认完全相同,是多余的。
+
+其余不变:`start.cmd` 末尾 `pause`(`FLWC_NO_PAUSE=1` 可关),`start.sh` 用 `exec`。
+`start.sh` 里那个 `--env-file` 参数是**故意不加引号**展开的(值里没有空格,而空值必须展开成「没有参数」
+而不是一个空参数);同时避开了数组,好让 macOS 自带的 bash 3.2 在 `set -u` 下也不炸。`start.cmd` 末尾 `pause`(`FLWC_NO_PAUSE=1` 可关),
 `start.sh` 用 `exec`。`.gitattributes` 加了 `*.cmd` / `*.bat` 为 CRLF——原先 `* text=auto eol=lf` 会让
 `start.cmd` 以 LF 入库,而 cmd.exe 对 LF 文件里的 `goto` 与括号块处理不可靠,版本检查正要用 `goto`。
 `start.sh` 与 `scripts/docker-smoke.sh` 带可执行位入库。
@@ -334,6 +360,22 @@ committed 的 `docker-compose.yml` 里写的是 `EMBER_PORT: '9000'`——那是
 **没有在真实 macOS 上跑过 `start.sh`**——手上没有那台机器。它在 Git Bash 下跑通,并且 CI 的 Docker 冒烟
 (ubuntu,`bash scripts/docker-smoke.sh`)间接覆盖了同一套 bash 语法;macOS 留待有设备时验证。
 
+### 5.1.5 `.env` 的优先级与生效范围(两个脚本 × 四种组合,全部实跑)
+
+| 组合 | `start.sh`(Git Bash) | `start.cmd`(cmd.exe) |
+| --- | --- | --- |
+| 没有 `.env`,什么都没设 | 横幅 3000,绑全部网卡 | 横幅 3000,绑全部网卡 |
+| `.env` 里 `PORT=8080` | 横幅 **8080**,绑全部网卡 8080 | 横幅 **8080**,绑全部网卡 8080 |
+| shell `PORT=3100` + `.env` `PORT=8080` | 横幅 **3100**(shell 赢) | 横幅 **3100**(shell 赢) |
+| `.env` 里 `HOST=127.0.0.1` + `PORT=8081` | 横幅 8081,**只绑 `127.0.0.1:8081`** | 横幅 8081,**只绑 `127.0.0.1:8081`** |
+
+最后一行是关键:脚本没有拿 `0.0.0.0` 去盖掉文件里的 `HOST`。同一次实跑里 `.env` 的
+`EMBER_HOST=203.0.113.9` / `EMBER_PORT=9001` 也被采纳了(日志里有 `config seeded from the environment`),
+说明 `.env` 对全部变量都有效,不只是这两个。
+
+`start.cmd` 在 PowerShell 下也试过(`.env` `PORT=8082` → 横幅 8082);缺 Node / 缺构建产物两条路径在**带着
+`.env`** 的情况下重新各跑了一次,仍然是原来的提示与退出码 1。
+
 ### 5.2 正常启动(`PORT=3100`,`FLWC_DATA_DIR` 指临时目录,`EMBER_HOST=127.0.0.1 EMBER_PORT=9100` 指向 mock)
 
 ```
@@ -418,8 +460,9 @@ exit code: 0 after 9 ms
 | 名称 | 值 | 含义 |
 | --- | --- | --- |
 | Node 主版本下限 | `22` | 与根 `package.json` 的 `engines` 一致 |
-| `HOST` 默认 | `0.0.0.0` | 平板要从局域网访问 |
-| `PORT` 默认 | `3000` | 与 `resolveBindAddress` 的默认一致 |
+| host 兜底 | `0.0.0.0` | 平板要从局域网访问。只在 shell 与 `.env` 都没给 host 时才补 |
+| 横幅端口兜底 | `3000` | 只用来印横幅;与服务端默认一致,所以脚本不再往环境里设 `PORT` |
+| `.env` 文件名 | `.env`(仓库根) | 由 Node 的 `--env-file` 读取,模板 `.env.example` |
 
 ### `Dockerfile`
 
@@ -534,6 +577,9 @@ stdio:    ['pipe', 'pipe', 'pipe']   ← stdin 必须是管道,这是进程边�
 | 18 | `README.md` | Features 没提前端的平板特性 | 加一行(分页、大命中区、常亮、全屏) | Phase 6.3 / 6.4 的成果,README 一直没写 |
 | 19 | `README.md` | Features 写「Ember+ host/port configurable through the REST API」 | 「through the UI and the REST API」 | CONNECTION 面板(Phase 5) |
 | 20 | `README.md` | Repository Layout 没有 `scripts/` | 补 | 本批次新增 |
+| 21 | `README.md` | 「Run from a terminal」与 Configuration 都没提 `.env` | 加 `.env` 一段与优先级说明,并写明 Docker 与 `pnpm dev` 不读它 | 用户追加的需求,见第 3.5 节 |
+| 22 | `docs/architecture.md` | 「环境变量与优先级」没有 `.env` | 补 `.env` 的读取方、Node 的「环境优先」语义,以及脚本为此改了默认值施加方式的原因 | 同上 |
+| 23 | `docs/conventions.md` | 目录结构树没有 `.env.example` | 补 | 同上 |
 
 未改动(按提示词要求):`docs/development-plan.md`、`docs/prompts.md`、`docs/prompts/*`、
 `docs/reports/*`(本报告除外)、`docs/fairlight-ember.md`。
@@ -601,7 +647,8 @@ stdio:    ['pipe', 'pipe', 'pipe']   ← stdin 必须是管道,这是进程边�
 | `apps/server/package.json` | `mock-provider` 脚本 |
 | `apps/server/vitest.config.ts` | 一项新排除 |
 | `packages/test-utils/src/mock-ember-provider.test.ts` | 一条新单测(源码零改动) |
-| `start.cmd` / `start.sh` | 新增 |
+| `start.cmd` / `start.sh` | 新增(含 `.env` 读取与「问过再补默认」) |
+| `.env.example` | 新增(`.env` 的模板,`.env` 不入库) |
 | `.gitattributes` | `*.cmd` / `*.bat` 为 CRLF |
 | `.gitignore` | `docker-compose.override.yml` |
 | `Dockerfile` / `.dockerignore` / `docker-compose.yml` | 新增 |

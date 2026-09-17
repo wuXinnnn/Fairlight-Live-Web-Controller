@@ -24,9 +24,37 @@ if [ ! -f apps/server/dist/main.js ] || [ ! -f apps/web/dist/index.html ]; then
   exit 1
 fi
 
-# Every interface, so a tablet on the same network can reach it. Both stay overridable.
-export HOST="${HOST:-0.0.0.0}"
-export PORT="${PORT:-3000}"
+# A .env beside this script, if there is one, is where HOST, PORT and the FLWC_* paths can be
+# kept. Node reads it itself; see .env.example. A variable already set in the environment still
+# wins over the file, so `PORT=3100 ./start.sh` overrides it for one run.
+#
+# Deliberately unquoted below: the value never contains a space, and an empty one has to expand
+# to no argument at all rather than to an empty one.
+env_arg=''
+if [ -f .env ]; then
+  env_arg='--env-file=.env'
+fi
 
-echo "Fairlight Live Web Controller - http://localhost:${PORT}  (Ctrl+C to stop)"
-exec node apps/server/dist/main.js
+# Ask node what it will really see. The default further down must not shadow the file, and the
+# address printed has to be the one it will actually listen on.
+# shellcheck disable=SC2086
+if ! probe="$(node $env_arg -e "const e=process.env,v=k=>e[k]?e[k]:'-';console.log('HOST='+v('HOST'));console.log('PORT='+v('PORT'))" 2>&1)"; then
+  echo "Could not read .env: $probe" >&2
+  exit 1
+fi
+eff_host="${probe#HOST=}"
+eff_host="${eff_host%%$'\n'*}"
+eff_port="${probe##*PORT=}"
+
+# Every interface, so a tablet on the same network can reach it, unless something already said
+# otherwise.
+if [ "$eff_host" = '-' ]; then
+  export HOST='0.0.0.0'
+fi
+if [ "$eff_port" = '-' ]; then
+  eff_port='3000'
+fi
+
+echo "Fairlight Live Web Controller - http://localhost:${eff_port}  (Ctrl+C to stop)"
+# shellcheck disable=SC2086
+exec node $env_arg apps/server/dist/main.js

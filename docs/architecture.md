@@ -259,6 +259,12 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 | `FLWC_WEB_ROOT` | `apps/web/dist` | 静态托管根目录 |
 | `FLWC_EXIT_ON_STDIN_CLOSE` | 未设 | `1` 时 stdin 关闭即退出 |
 
+- **`.env` 文件**:仓库根的 `.env`(不入库,模板是 `.env.example`)由**启动脚本**交给 Node 的 `--env-file`
+  读取,上面这些变量都能写在里面。Node 的语义是**环境里已有的值优先**,文件只填空缺,所以完整的优先级是
+  「shell 里设的 > `.env` > 启动脚本自己的默认(`HOST=0.0.0.0`)> 服务端默认」。正因为文件填不进已有的值,
+  启动脚本**不能**再像原来那样先 `set HOST`/`set PORT` 再起 node——那会让 `.env` 里的这两个静默失效;
+  脚本改成先问一次 node(带同一个 `--env-file`)「你实际会看到什么」,据此决定要不要补 `0.0.0.0`,
+  顺便让横幅里印的地址是真的。Docker 不读它(compose 用 `environment:`),`pnpm dev` 也不读。
 - 路径解析在 `paths.ts` 的 `resolveRuntimePaths(env, moduleUrl)`:两个 `FLWC_*` 非空则用它们(空串当未设),
   否则回落到既有的、相对 `dist/paths.js` 位置的默认值。容器保持仓库布局,用不上它们;桌面壳用得上
   (web 产物在安装包资源目录、数据在系统应用数据目录)。
@@ -272,7 +278,7 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 ### 控制台脚本
 
 `start.cmd`(Windows,CRLF)与 `start.sh`(macOS / Linux,可执行位)行为对称:检查 Node ≥ 22、检查
-`apps/server/dist/main.js` 与 `apps/web/dist/index.html`、`HOST` 默认 `0.0.0.0`、`PORT` 默认 `3000`、前台运行。
+`apps/server/dist/main.js` 与 `apps/web/dist/index.html`、读 `.env`(若有)、没人指定 host 时补 `0.0.0.0`、前台运行。
 **只做启动**:不装依赖、不构建、不改配置,缺什么就提示该跑哪条命令再退出 1。`start.cmd` 末尾 `pause`
 (双击打开的窗口不会一闪而过),`FLWC_NO_PAUSE=1` 可关掉。两者都不打印局域网地址——跨平台取网卡差异太大,
 由桌面壳去做。

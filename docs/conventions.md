@@ -28,6 +28,7 @@ docs/                项目文档(中文)
 data/                运行时配置(JSON,不入库)
 start.cmd            控制台启动脚本(Windows,CRLF)
 start.sh             控制台启动脚本(macOS / Linux,可执行位)
+.env.example         `.env` 的模板(`.env` 本身不入库,由启动脚本经 Node `--env-file` 读取)
 Dockerfile           多阶段镜像(base → build / deps → runtime)
 .dockerignore        构建上下文排除
 docker-compose.yml   拉取 GHCR 镜像、命名卷
