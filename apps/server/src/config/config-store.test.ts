@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { defaultAppConfig } from '@flwc/shared';
@@ -176,12 +176,24 @@ describe('ConfigStore seeded from the environment', () => {
   });
 
   it('keeps the seed in memory when the file cannot be written', async () => {
-    // A regular file where the parent directory should be: `mkdir` then fails the same way on
-    // Windows and on Linux, with no directory permissions to chase.
+    // The two platforms refuse a write for different reasons, and the read has to stay a plain
+    // ENOENT either way -- a broken path reads as ENOTDIR on Linux, which is not a first start.
+    // POSIX: a directory that exists and can be listed but not written to, so the read finds
+    // nothing and the temporary file cannot be created.
+    // Windows: chmod does not take on a directory there, so instead a regular file stands where
+    // the data directory should be; the read below it still reports ENOENT and mkdir fails.
     const dir = await mkdtemp(path.join(tmpdir(), 'flwc-config-'));
-    const blocker = path.join(dir, 'blocker');
-    await writeFile(blocker, 'not a directory', 'utf8');
-    const filePath = path.join(blocker, 'config.json');
+    let filePath: string;
+    if (process.platform === 'win32') {
+      const blocker = path.join(dir, 'blocker');
+      await writeFile(blocker, 'not a directory', 'utf8');
+      filePath = path.join(blocker, 'config.json');
+    } else {
+      const readOnly = path.join(dir, 'read-only');
+      await mkdir(readOnly);
+      await chmod(readOnly, 0o555);
+      filePath = path.join(readOnly, 'config.json');
+    }
 
     const store = new ConfigStore(filePath, silentLogger(), seed);
 
