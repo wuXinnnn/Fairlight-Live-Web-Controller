@@ -1,0 +1,17 @@
+services:
+  flwc:
+    image: ghcr.io/wuxinnnn/fairlight-live-web-controller:latest
+    # build: .   # uncomment to build from this checkout instead of pulling
+    container_name: flwc
+    ports:
+      - '3000:3000'
+    environment:
+      # Seed values: written to data/config.json on the very first start only.
+      # After that the file (and the CONNECTION panel in the UI) wins.
+      EMBER_HOST: 192.168.1.10
+      EMBER_PORT: '9000'
+    volumes:
+      - flwc-data:/app/data
+    restart: unless-stopped
+volumes:
+  flwc-data:
