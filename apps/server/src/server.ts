@@ -4,7 +4,7 @@ import pino from 'pino';
 import { createApp } from './app.js';
 import type { AppLogger } from './logger.js';
 import { silentLogger } from './logger.js';
-import { resolveConfigPath, resolveWebDist } from './paths.js';
+import { resolveConfigPath, resolveRuntimePaths } from './paths.js';
 import { MixerRuntime } from './runtime.js';
 import { attachGateway } from './ws/gateway.js';
 
@@ -44,12 +44,18 @@ export function resolveBindAddress(
 
 export async function start(options: StartOptions = {}): Promise<StartedServer> {
   const { host, port } = resolveBindAddress(options);
-  const staticRoot = options.staticRoot ?? resolveWebDist();
+  // Explicit option first, then the environment, then the repository-relative default. The
+  // directory and the file cannot share one `??`: `configDir` names a directory, and the
+  // resolved `configPath` names the file inside it.
+  const paths = resolveRuntimePaths();
+  const staticRoot = options.staticRoot ?? paths.webRoot;
+  const configPath =
+    options.configDir === undefined ? paths.configPath : resolveConfigPath(options.configDir);
   const logger: AppLogger = options.silent === true ? silentLogger() : pino({ name: 'flwc' });
   const runtime =
     options.runtime ??
     new MixerRuntime({
-      configPath: resolveConfigPath(options.configDir),
+      configPath,
       logger,
       timeoutMs: options.timeoutMs,
       disconnectTimeoutMs: options.disconnectTimeoutMs,
