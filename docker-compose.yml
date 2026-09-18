@@ -8,11 +8,11 @@ services:
       # has to match PORT below.
       - '3000:3000'
     environment:
-      # Where the desk is. Seed values: written to config.json on the very first start only,
-      # when there is no file yet. After that the file (and the CONNECTION panel in the UI) wins,
-      # however these are set.
-      EMBER_HOST: 192.168.1.10 # your Fairlight Live address
-      EMBER_PORT: '9000' # its Ember+ port, 9000 on a Fairlight Live
+      # Where Fairlight Live is. Seed values: written to config.json on the very first start
+      # only, when there is no file yet. After that the file (and the CONNECTION panel in the UI)
+      # wins, however these are set.
+      EMBER_HOST: 192.168.1.10 # the machine running Fairlight Live
+      EMBER_PORT: '9000' # the Ember+ port set in Fairlight Live's Show settings
 
       # Everything below is optional. The image already sets HOST and PORT; the rest fall back
       # to their defaults inside the container.

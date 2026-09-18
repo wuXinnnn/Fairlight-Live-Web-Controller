@@ -217,13 +217,13 @@ Fader 滚轮与翻页滚轮共存规则:
 - 全局防误触:`overscroll-behavior: none`(禁止下拉刷新)、`touch-action: manipulation`(禁止双击缩放,暂不禁捏合)、关闭 `user-select` 与 `-webkit-touch-callout`(禁止长按菜单,可编辑控件显式恢复);所有 `:hover` 样式包进 `@media (hover: hover)`,合写的选择器拆开;`vh` 全部改为 `dvh`;一个读取 `styles.css` 源文本的回归测试把这些规则锁住
 - Fader 按 pointerId 过滤:第二根手指落在同一推子上既不重置起点、不触发双击回 0,也不结束或 commit 第一根手指的拖动;多个推子可同时用多指操作,全局拖动光标类改为计数;命中区尺寸维持现状(用户实测无需放大)
 - 手指翻页不从 ON 按钮起手(新增 `data-swipe="none"` 约定),推子轨道照旧排除;电平表、名称头、分区标题栏、间隙与安全区照旧可以起手
-- Screen Wake Lock(混音页保持常亮):只在台子在线(socket 已连且 Ember `connected`)时持有,离线即放手,回来后自动接管;原生 API 可用时申请并在回到可见时重申请;不可用时(局域网 `http` 不是安全上下文,项目不做 HTTPS)降级为铺满视口、完全透明、`pointer-events: none` 的静音视频循环(素材摘自 nosleep.js,带一条数字静音的音频轨,`muted` 是第一道防线),静音媒体不受自动播放策略约束,因此不等用户交互即自行播放、隐藏时暂停、回到可见自行恢复,`pointerdown` / `keydown` 只作引擎拒绝自动播放时的兜底;两条路径都静默降级、绝不出声。视频必须铺满视口是真机实测得出的:Chrome for Android 对静音视频的屏幕锁有可见面积门槛,1×1 px 与 160px 方块都拿不到锁
+- Screen Wake Lock(混音页保持常亮):只在 Fairlight Live 在线(socket 已连且 Ember `connected`)时持有,离线即放手,回来后自动接管;原生 API 可用时申请并在回到可见时重申请;不可用时(局域网 `http` 不是安全上下文,项目不做 HTTPS)降级为铺满视口、完全透明、`pointer-events: none` 的静音视频循环(素材摘自 nosleep.js,带一条数字静音的音频轨,`muted` 是第一道防线),静音媒体不受自动播放策略约束,因此不等用户交互即自行播放、隐藏时暂停、回到可见自行恢复,`pointerdown` / `keydown` 只作引擎拒绝自动播放时的兜底;两条路径都静默降级、绝不出声。视频必须铺满视口是真机实测得出的:Chrome for Android 对静音视频的屏幕锁有可见面积门槛,1×1 px 与 160px 方块都拿不到锁
 - Fullscreen API 入口:安全区底部与翻页键同尺寸的图标键(`Enter full screen` / `Exit full screen`),不支持的浏览器不渲染;它只动浏览器边框,安全区「不放影响声音的控件」的底线不变,从它上面滑动翻页不会进入全屏
 - Web app manifest(`display: fullscreen`、192/512 图标)与 Apple web app meta;viewport 不加 `user-scalable=no`。`http` 下不会真正安装,留着无害。平板顶部状态栏的进一步隐藏方案另行考虑
 
 验收标准:
 
-- [x] 单测覆盖:样式回归(`:hover` 全在媒体查询内、无 `vh`、全局规则在场、`.wake-media` 几何)、多指 pointerId 过滤与两个推子并行、ON 上起手不翻页、Wake Lock 原生/媒体两条路径的申请、释放、重申请、拒绝与在途播放被暂停追上、台子离线放手与回来自动恢复、Fullscreen 支持/不支持/拒绝、从全屏键上滑动翻页不进全屏
+- [x] 单测覆盖:样式回归(`:hover` 全在媒体查询内、无 `vh`、全局规则在场、`.wake-media` 几何)、多指 pointerId 过滤与两个推子并行、ON 上起手不翻页、Wake Lock 原生/媒体两条路径的申请、释放、重申请、拒绝与在途播放被暂停追上、Fairlight Live 离线放手与回来自动恢复、Fullscreen 支持/不支持/拒绝、从全屏键上滑动翻页不进全屏
 - [x] 本地(平板 + 手机):无下拉刷新、无双击缩放、无长按菜单、无文字选中;双手同时推两路推子,第二根手指落在同一推子上无效;从安全区滑动翻页,从 ON 上滑动不翻页,在推子上滑动只动推子;不碰屏幕也保持常亮,关掉电脑后放手,开机后自行接管;全屏键生效,iPhone Safari 上不渲染
 - [x] 覆盖率达标;`pnpm-lock.yaml` 无改动
 
@@ -235,8 +235,8 @@ Fader 滚轮与翻页滚轮共存规则:
 
 - 后端重连集成用例(Mock Provider + 真 socket.io-client):Ember Provider 掉线后在同一端口回来,服务端自行重连、补发 connected 快照、电平帧与写入恢复、`lastError` 清空;socket 传输层断开(`conn.close(true)`,客户端会自动重连的那种断法)后客户端收到新快照;两者叠加的两种先后顺序终态一致;服务端整体重启后客户端连上新实例并最终拿到 connected 快照;连续多轮断连后一次参数变化只产生一条 patch、监听器数不变;Ember 断线期间的控制命令以 `PROTOCOL` 回执失败
 - 前端重连集成用例(FakeSocket):socket 重连后当前页、view、CONTROL LOCK 保持,条带 DOM 节点不重挂,电平帧与常亮恢复;拖动中掉线时松手不发命令、电平回到基线;Ember 掉线时条带不重挂;叠加两种顺序;服务端重启形态的 `connecting` 空快照不清掉已加载的清单
-- 离线命令不排队:socket.io-client 会把断线期间的 emit 缓冲到重连后补发,推子拖动中掉线、松手时的 `set-level` 会在 UI 已回滚之后发到台子。`emitWithAck` 在 socket 未连接时立即以 `OFFLINE` 回执失败、不 emit;浏览器包装层用 `socket.timeout(ACK_TIMEOUT_MS)` 发控制命令,超时即从发送缓冲里移除、重连后不补发。不做「重连后重放」
-- soak 工具(`apps/server/src/tools/soak.ts`,`pnpm --filter @flwc/server soak`,零依赖):按最新树 dump 起 Mock Provider 与真实 server 托管生产构建,以 20 Hz 给全部通道喂电平,自写极简 CDP 客户端(Node 22 的 `WebSocket`)驱动 headless Chrome,每 30 s 先 `collectGarbage` 再采 JS 堆、DOM 节点数、事件监听数、布局次数与服务端内存、句柄数、监听器数,每 5 s 翻一页,每 10 min 交替做一次 Ember 断连与 socket 断连并要求 30 s 内回到 `MIXER ONLINE`;输出 `samples.json` 与 `report.md`,判定(热身 10 min 后首个 10 min 窗口对末尾 10 min 窗口:JS 堆增长 ≤ 10 MiB 且 ≤ 20%、DOM 节点与监听数漂移 ≤ 5%、服务端堆增长 ≤ 20 MiB、每次断连都恢复)失败即非零退出;样本不足两个窗口时为 `inconclusive`。另有附着模式 `--url`:不起任何服务、只开浏览器采样与翻页、永不发控制命令,供用户对真实台子做一小时验收。阈值与节奏全部是导出常量与命令行参数,初值由本地实测后调
+- 离线命令不排队:socket.io-client 会把断线期间的 emit 缓冲到重连后补发,推子拖动中掉线、松手时的 `set-level` 会在 UI 已回滚之后发到 Fairlight Live。`emitWithAck` 在 socket 未连接时立即以 `OFFLINE` 回执失败、不 emit;浏览器包装层用 `socket.timeout(ACK_TIMEOUT_MS)` 发控制命令,超时即从发送缓冲里移除、重连后不补发。不做「重连后重放」
+- soak 工具(`apps/server/src/tools/soak.ts`,`pnpm --filter @flwc/server soak`,零依赖):按最新树 dump 起 Mock Provider 与真实 server 托管生产构建,以 20 Hz 给全部通道喂电平,自写极简 CDP 客户端(Node 22 的 `WebSocket`)驱动 headless Chrome,每 30 s 先 `collectGarbage` 再采 JS 堆、DOM 节点数、事件监听数、布局次数与服务端内存、句柄数、监听器数,每 5 s 翻一页,每 10 min 交替做一次 Ember 断连与 socket 断连并要求 30 s 内回到 `MIXER ONLINE`;输出 `samples.json` 与 `report.md`,判定(热身 10 min 后首个 10 min 窗口对末尾 10 min 窗口:JS 堆增长 ≤ 10 MiB 且 ≤ 20%、DOM 节点与监听数漂移 ≤ 5%、服务端堆增长 ≤ 20 MiB、每次断连都恢复)失败即非零退出;样本不足两个窗口时为 `inconclusive`。另有附着模式 `--url`:不起任何服务、只开浏览器采样与翻页、永不发控制命令,供用户对真实 Fairlight Live做一小时验收。阈值与节奏全部是导出常量与命令行参数,初值由本地实测后调
 - `.github/workflows/soak.yml`:`workflow_dispatch` 手动触发,输入分钟数,用 runner 自带的 Chrome,报告上传为 artifact;`ci.yml` 不改
 - 本地真机长时间运行验收(附着模式一小时 + 平板照常使用一小时并拔一次线)
 
@@ -260,7 +260,7 @@ Fader 滚轮与翻页滚轮共存规则:
 
 - 进程生命周期:`SIGINT` / `SIGTERM` 走 `app.close()` 优雅退出(超时 `SHUTDOWN_TIMEOUT_MS` 后强制退出);`FLWC_EXIT_ON_STDIN_CLOSE=1` 时 stdin 关闭即退出,供桌面壳与进程管理器做进程边界
 - 环境变量:`EMBER_HOST` / `EMBER_PORT` 仅在配置文件不存在时作为种子写入配置文件,之后以文件为准,UI 始终可改;`FLWC_DATA_DIR` / `FLWC_WEB_ROOT` 覆盖数据目录与 web 产物目录,默认值不变;`HOST` / `PORT` 维持现状
-- Mock Provider 命令行工具(`pnpm --filter @flwc/server mock-provider --port <p> [--meters]`),供本地验证与无台子演示
+- Mock Provider 命令行工具(`pnpm --filter @flwc/server mock-provider --port <p> [--meters]`),供本地验证与没有 Fairlight Live 时演示
 - 控制台启动脚本 `start.cmd` / `start.sh`:检查 Node 版本与构建产物,读仓库根的 `.env`(Node `--env-file`,模板 `.env.example`,shell 变量优先于文件),没人指定 host 时补 `0.0.0.0`,前台运行
 - 多阶段 `Dockerfile`(`node:22-alpine`,运行阶段只含生产依赖,非 root,`HEALTHCHECK`,`/app/data` 挂卷)、`.dockerignore`、`docker-compose.yml`(拉取 GHCR 镜像,命名卷)、`scripts/docker-smoke.sh`(健康、种子写入、PUT 后重启仍保留、`docker stop` 时长)
 - `.github/workflows/docker.yml`:PR 构建 + 冒烟;`main` 推 `:main`;标签 `v*` 推 `:vX.Y.Z` / `:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release;`ci.yml` 不改
@@ -270,7 +270,7 @@ Fader 滚轮与翻页滚轮共存规则:
 
 - [x] 单测与集成用例覆盖:优雅退出与 stdin 守护、种子值(缺失 / 存在 / 损坏 / 只读)、路径环境变量、种子写入后 PUT 覆盖并跨重启保留
 - [x] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次(合并后 `main` 首次推送成功,包自动为 public)
-- [x] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实台子、Ctrl+C 退出;`docker compose` 指向真实台子并跨 `restart` / `down && up` 保留配置
+- [x] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实 Fairlight Live、Ctrl+C 退出;`docker compose` 指向真实 Fairlight Live并跨 `restart` / `down && up` 保留配置
 - [x] 文档与实际行为一致(报告附逐行核对清单)
 - [x] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/mock-provider.ts` 一项
 
@@ -291,5 +291,5 @@ Fader 滚轮与翻页滚轮共存规则:
 - [ ] Rust 单测(设置、局域网地址选择、子进程状态机)、clippy、fmt 全绿;窗口前端(view-model 与组件)覆盖率达标;`ci.yml` 在 ubuntu 上继续全绿
 - [ ] Windows 安装包在开发机实装:无控制台窗口、托盘与窗口全部控件可用、改端口重启、关闭即隐藏、单实例、结束启动器后后端自行退出、`Exit` 干净、卸载无残留
 - [ ] `desktop.yml` 在 PR 上全绿且 artifact 可下载
-- [ ] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实台子、`Start with Windows` 注销重登生效、关机重启不残留
+- [ ] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实 Fairlight Live、`Start with Windows` 注销重登生效、关机重启不残留
 - [ ] 合并后打第一个标签,Release 上同时出现镜像包与 Windows 安装包,GHCR 包为 public

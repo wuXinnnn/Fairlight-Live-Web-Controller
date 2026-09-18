@@ -6,6 +6,9 @@ A web-based remote controller for Blackmagic Design **Fairlight Live**, built on
 It provides a clean, mixer-style web UI for fader control, channel ON switches,
 level metering and loudness readouts, backed by an extensible Web API.
 
+Fairlight Live is software: it runs on a computer, and this controller talks to that
+application over Ember+. No hardware console is involved.
+
 ## Features
 
 - Fader control for input/output channels (channels, mains, subs, auxes, mix-minus, matrix)
@@ -14,7 +17,7 @@ level metering and loudness readouts, backed by an extensible Web API.
 - Loudness section: integrated loudness (LUFS) and true-peak (dBTP) readouts with reset
 - Configurable views: pick which channels appear in each view, order and color them, group
   them under named sections, and switch views on the main page
-- Views reference channels by type and name, so inserting or reordering strips on the desk
+- Views reference channels by type and name, so inserting or reordering strips in Fairlight Live
   does not break them (Fairlight Live exposes no stable channel id)
 - Ember+ host/port configurable through the UI and the REST API
 - Real-time updates over WebSocket (socket.io), meters at up to 50 ms resolution
@@ -43,8 +46,9 @@ docs/                Project documentation (in Simplified Chinese)
 
 ## Requirements
 
-The desk's Ember+ port (TCP 9000 by default) must be reachable from wherever you run this.
-Everything else depends on how you run it:
+Ember+ must be enabled in Fairlight Live (Show settings; the port is set there, 9000 by
+default), and that port must be reachable from wherever you run this. Everything else depends
+on how you run it:
 
 | How you run it  | What the machine needs           |
 | --------------- | -------------------------------- |
@@ -98,7 +102,8 @@ A variable already set in the shell still wins over the file, so `PORT=3100 ./st
 
 ## Run with Docker
 
-Edit `EMBER_HOST` in `docker-compose.yml` to your desk's address, then:
+Edit `EMBER_HOST` in `docker-compose.yml` to the address of the machine running Fairlight Live,
+then:
 
 ```bash
 docker compose up -d
@@ -159,14 +164,14 @@ Precedence, highest first: a variable set in the shell, then `.env`, then the st
 default (`HOST=0.0.0.0`, so a tablet can reach it), then the server's default.
 
 `EMBER_HOST` and `EMBER_PORT` seed; they do not override. Once `config.json` exists, it and the
-CONNECTION panel in the UI decide where the desk is, however the variables are set. Changing the
+CONNECTION panel in the UI decide where Fairlight Live is, however the variables are set. Changing the
 address in the UI is the normal way to do it; the variables exist so that a container has
 somewhere to point on its very first start.
 
 `config.json` holds the Ember+ endpoint and your views. It lives in `data/` in a checkout and in
 `/app/data` in the container, which is the directory the compose file mounts a volume on.
 
-## Try it without a desk
+## Try it without Fairlight Live
 
 A mock Ember+ provider serves the archived tree dump, with meters that move:
 
