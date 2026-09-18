@@ -4,12 +4,38 @@ services:
     # build: .   # uncomment to build from this checkout instead of pulling
     container_name: flwc
     ports:
+      # host:container. Change the left side to serve on another host port; the right side
+      # has to match PORT below.
       - '3000:3000'
     environment:
-      # Seed values: written to data/config.json on the very first start only.
-      # After that the file (and the CONNECTION panel in the UI) wins.
-      EMBER_HOST: 192.168.1.10
-      EMBER_PORT: '9000'
+      # Where the desk is. Seed values: written to config.json on the very first start only,
+      # when there is no file yet. After that the file (and the CONNECTION panel in the UI) wins,
+      # however these are set.
+      EMBER_HOST: 192.168.1.10 # your Fairlight Live address
+      EMBER_PORT: '9000' # its Ember+ port, 9000 on a Fairlight Live
+
+      # Everything below is optional. The image already sets HOST and PORT; the rest fall back
+      # to their defaults inside the container.
+
+      # The address the web server binds inside the container. Leave it on 0.0.0.0, or the
+      # published port above stops answering.
+      # HOST: 0.0.0.0
+
+      # The port the web server binds inside the container. If you change it, change the right
+      # side of the port mapping above to match; the health check follows it automatically.
+      # PORT: '3000'
+
+      # Where config.json is kept. /app/data is what the volume below mounts, so change both
+      # or neither.
+      # FLWC_DATA_DIR: /app/data
+
+      # Where the web build is served from. The image ships it at the default; there is no
+      # reason to change this in a container.
+      # FLWC_WEB_ROOT: /app/apps/web/dist
+
+      # Exit when stdin closes. For process supervisors and the desktop launcher; Docker stops
+      # the container with a signal instead, so leave it unset here.
+      # FLWC_EXIT_ON_STDIN_CLOSE: '1'
     volumes:
       - flwc-data:/app/data
     restart: unless-stopped
