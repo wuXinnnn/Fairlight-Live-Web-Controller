@@ -9,13 +9,16 @@
 - Windows NSIS 安装包(按用户安装,不需要管理员权限),自带官方 Node 运行时与铺好的服务端、web 产物,
   目标机器不需要装任何东西。
 - 进程边界只有一条:子进程的 stdin 是启动器持有的管道。没有 Job Object,没有保活代码。
-- Rust 单测 63 条,窗口前端 49 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
+- Rust 单测 63 条,窗口前端 50 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
   窗口覆盖率远超 80% 门槛。
 - `ci.yml` / `soak.yml` / `docker.yml` 一字未动;Rust 全部在新增的 `desktop.yml` 里。
 - **实测中发现并修复了四个真实缺陷**(见第 11.1 节),其中一个会让整个进程模型不成立;
   Cursor Bugbot 另报 4 条,全部成立并已修复(见第 11.2.5 节,其中一条与实测发现的是同一个问题,
   另一条是修那一条带出来的)。
 - 全程没有改动真实 Fairlight Live 的任何参数,没有碰过任何推子。
+- **随后又做了一轮窗口视觉改版**(第 15 节):窗口原本是一套通用暗色表单,与混音页不像同一个产品;
+  现在与它同源——同两款字体、同色板、同一套三行外壳与指示灯语言,窗口也改成了可缩放。
+  第 3.7 / 4 / 5 节记的是改版之前那几次运行的数字与链接,保持原样;改版自己的测量在第 15 节。
 
 ## 2. 验收标准逐条核对
 
@@ -461,12 +464,14 @@ connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
 | `DEFAULT_BIND_LAN` | `true` | 默认允许局域网访问——平板要用 | `src-tauri/src/settings.rs` |
 | `DEFAULT_START_HIDDEN` | `false` | 默认显示窗口 | `src-tauri/src/settings.rs` |
 | `LOG_LINES` | 500 | 窗口日志缓冲上限,与 Rust 环形缓冲对齐 | `src/view-model.ts` |
-| 窗口尺寸 | `560 × 440`,`resizable: false` | | `src-tauri/tauri.conf.json` |
+| 日志面板高度地板 | 行 `minmax(8.5rem, 1fr)`,面板 `min-height: 3.2rem` | 窗口拉到最小时日志不被压没 | `src/styles.css` |
+| 内容区高度地板 | `minmax(4rem, 1fr)` | 高显示缩放下中间区不被 header 与 footer 挤成 0 | `src/styles.css` |
+| 窗口尺寸 | `640 × 600`,最小 `560 × 440`,`resizable: true` | 见第 15 节 | `src-tauri/tauri.conf.json` |
 | `version` | `0.2.0` | 与 `apps/desktop/package.json` 一致,`desktop.yml` 校验标签 | `src-tauri/tauri.conf.json` |
 | `identifier` | `io.github.wuxinnnn.flwc` | 决定三个应用数据目录的位置 | `src-tauri/tauri.conf.json` |
 | vite dev 端口 | 1420 | 只给 `tauri dev` 的窗口前端用 | `vite.config.ts` |
 
-没有自行调整任何初值。
+除第 15 节记的窗口尺寸外,没有自行调整任何初值;那三行几何值是本次改版引入的。
 
 ## 7. 依赖清单
 
@@ -474,6 +479,8 @@ connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
 
 | 包 | 版本 | 许可 |
 | --- | --- | --- |
+| `@fontsource/barlow-condensed` | ^5.3.0 | **OFL-1.1** |
+| `@fontsource/ibm-plex-mono` | ^5.3.0 | **OFL-1.1** |
 | `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT |
 | `@tauri-apps/cli` | 2.11.4 | Apache-2.0 OR MIT |
 | `react` / `react-dom` | ^19.2.8 | MIT |
@@ -488,6 +495,12 @@ connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
 除 Tauri 的两个之外,全部与 `apps/web` 同版本。没有引入 `@testing-library/user-event`:`apps/web` 用的是
 `fireEvent`,窗口测试跟着用同一套。也没有用任何 `@tauri-apps/plugin-*` 的 JS 端——窗口只通过 `invoke`
 与 `listen` 说话,插件都在 Rust 侧用。
+
+两个 `@fontsource` 包是第 15 节的改版引入的,也正是 `apps/web` 在用的那两个同版本包。字体随 Vite 构建打进
+`apps/desktop/dist/assets`(5 个 woff2 + 5 个 woff),离线可用,不连任何 CDN。**它们是全仓第一批不是
+MIT / Apache-2.0 的依赖**:包本身与字体本体都声明 OFL-1.1。OFL 允许随软件一同分发,但要求许可文本跟着走,
+所以 `scripts/prepare.mjs` 把两份 `LICENSE` 铺成 `resources/FONT_LICENSE_BARLOW_CONDENSED` 与
+`resources/FONT_LICENSE_IBM_PLEX_MONO`,由 `bundle.resources` 装进安装包,做法与 `NODE_LICENSE` 一致。
 
 **crate**
 
@@ -543,11 +556,11 @@ connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
 | 文件 | 作用 |
 | --- | --- |
 | `package.json` / `tsconfig.json` / `vite.config.ts` / `vitest.config.ts` / `vitest.setup.ts` | 包与工具链,版本与 `apps/web` 对齐 |
-| `index.html` / `src/main.tsx` | 窗口的挂载点 |
-| `src/App.tsx` | 一页 UI:状态、地址、Server、Startup、按钮行、日志 |
+| `index.html` / `src/main.tsx` | 窗口的挂载点;`index.html` 带与混音页同一个内联 SVG favicon |
+| `src/App.tsx` | 一页 UI,控制台三段式外壳:分格 header(品牌、状态灯、地址)、可滚动内容区(01 Server / 02 Startup / 03 Server log)、底部动作条 |
 | `src/view-model.ts` | 窗口的全部判断:文案、按钮可用性、端口校验、日志裁剪 |
 | `src/launcher-api.ts` / `src/tauri-api.ts` | 可注入的接口与真实 Tauri 适配器 |
-| `src/styles.css` | 深色配色,token 从 `apps/web/src/styles.css` 抄值并注明来源 |
+| `src/styles.css` | 与混音页同源的「工业控制台」语言:两款 `@fontsource` 字体、色板与排印按值抄自 `apps/web/src/styles.css` 并注明来源 |
 | `src/view-model.test.ts` / `src/App.test.tsx` / `tests/fake-launcher-api.ts` | 前端测试与假实现 |
 | `scripts/fetch-node.mjs` | 下载并校验 Node 运行时 |
 | `scripts/stage-server.mjs` | 铺服务端与 web 产物,断言无链接 |
@@ -664,10 +677,14 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
    如果希望「卸载即清空配置」,那要改 NSIS 模板,本批次没做。
 6. **`--port` 会被 Apply 固化**。它只覆盖内存里的设置,但用户随后点 Apply 就会写进 `launcher.json`。
    这是开发用的旗标,README 写明了,不打算再加一层区分。
-7. **窗口日志面板的横向滚动**。pino 的单行 JSON 很长,560px 宽的窗口里要横向拖。没有换行是有意的
-   (换行会让一条日志占满整个面板),但如果实际用起来嫌难读,值得在后续批次里考虑做一个精简显示。
-8. **GHCR 包的可见性**是 7.1 的遗留项,与本批次无关,顺带列在第 13 节 ④。
-9. **`apps/web` 的一条既有集成测试在 CI 上偶发超时**。最后一轮里
+7. **窗口日志面板的横向滚动**。pino 的单行 JSON 很长,面板里要横向拖。没有换行是有意的(换行会让一条
+   日志占满整个面板)。第 15 节把窗口改成可缩放之后这条缓解了不少——拉宽窗口就行,日志面板会吃掉多出来的
+   宽高——但「要不要做一个精简显示」仍然是个开着的议题。
+8. **`apps/web` 也欠着同一份字体许可**。第 15 节给桌面安装包补上了 OFL-1.1 要求的许可文本,但 `apps/web`
+   今天就在通过 HTTP 把这两款字体发给平板,同样没有附许可。`apps/web` 不在本批次范围内,只修了桌面这一半;
+   web 那一半留给后续批次(在 `apps/web/public/` 放两份许可,或在页面某处给出出处即可)。
+9. **GHCR 包的可见性**是 7.1 的遗留项,与本批次无关,顺带列在第 13 节 ④。
+10. **`apps/web` 的一条既有集成测试在 CI 上偶发超时**。最后一轮里
    `tests/views.integration.test.tsx > groups channels in the configuration page and renders group sections`
    在 5 秒的默认超时上红了一次(那一次整个 `apps/web` 套件跑了 85.68 秒,runner 明显偏慢);**同一个提交的
    另一个 `ci` run 是绿的**,重跑也直接通过,本地 497/497 从未失败。`apps/web` 本批次一行未改
@@ -746,5 +763,161 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
 | `9744bfa` | docs: document the desktop launcher |
 | `6baeef4` | fix: let Apply bring a failed backend back, and keep the address honest |
 | `969797c` | fix: Apply has to restart a backend that is not running |
-| _(待补)_ | 报告与评审后的修订 |
+| `a6f1bd1` | docs: add the Phase 7.2 execution report |
+| `a72b27f` | test: drop two jsdom stubs the window tests never reach |
+| `dd69fd0` | ci: let a superseded desktop build be cancelled |
+| `dc80412` | fix: two races Bugbot found in applying settings |
+| `8b79340` | docs: record the review fixes and the final build's re-verification |
+| `04405fe` | docs: fill in the CI record and the artifact install |
+| `a89e725` | fix: give Start hidden its own command so it cannot restart the backend |
+| `71fd497` | docs: point the fourth review finding at the commit that fixed it |
+| `67e257f` | docs: cite the CI round that validated the final code |
+| `c76da9f` | docs: record the flaky `apps/web` integration test seen on CI |
 
+窗口视觉改版(第 15 节)这一轮:
+
+| 提交 | 说明 |
+| --- | --- |
+| `7e0ffab` | build: give the launcher the console typefaces |
+| `0ddcba6` | feat: let the launcher window be resized |
+| `7a096d1` | feat: dress the launcher window like the mixer console |
+| `703bddc` | chore: give the launcher's dev page a favicon |
+| `54d697f` | test: pin the launcher's fourth server state |
+| `49b9d26` | docs: record the launcher window's console restyle |
+| `9369543` | fix: size the launcher window from what it actually renders |
+
+
+## 15. 窗口视觉改版
+
+上面十四节记的是 7.2 交付时的状态。之后又做了一轮改版,只动窗口前端的外观与布局——业务逻辑、
+`view-model.ts` 的纯函数、`launcher-api.ts` 的契约、`src-tauri/src/**` 全部一行未改。
+
+### 15.1 为什么
+
+窗口功能是完整的,但它和混音页不像同一个产品。混音页是一整套「工业控制台」语言(`apps/web/src/styles.css`,
+3221 行):Barlow Condensed 做标题、IBM Plex Mono 做全部小标签与读数、几乎零圆角、琥珀强调色、状态用指示灯、
+hover 一律包在 `@media (hover: hover)` 里。而启动器是一套通用暗色表单:系统字体、2–3px 圆角、单一按钮样式、
+`border-left: 3px` 的提示条、**完全没有 focus 环**、没有过渡动效。
+
+### 15.2 四条决策
+
+1. **布局照搬 web 的三行外壳**。顶部分格 header(品牌 / 状态灯 / 地址 + Copy)、中间可滚动内容区
+   (`01 SERVER` / `02 STARTUP` / `03 SERVER LOG` 编号小节)、底部动作条。单列,不分双栏——560px 宽下双栏太挤。
+2. **窗口改为可缩放**,默认 `640 × 600`,最小 `560 × 440`。日志面板是最吃高度的部分,固定尺寸下它只能拿到
+   四行;可缩放之后拉高就行。
+3. **保留 Windows 原生标题栏**。无边框自绘的统一度更高,但要加窗口控制的 ACL 权限、自己处理拖动与双击最大化,
+   还会失去 Windows 的贴靠手势。Companion 一类的启动器也都是原生标题栏。
+4. **换成 web 那两款字体**(见 15.5)。不换字体的话「风格统一」无从谈起——web 的排版语言几乎全靠它们。
+
+### 15.3 状态词的取舍
+
+原来窗口顶部是一个 26px 的状态大字。照搬 web 的 header 之后它变成 header 里的一格:指示灯 + 状态词。
+但**这里的状态词比 web 的对应格子大得多**——web 的 `.connection-status` 是 0.68rem,因为它只是整页 header
+里的一格;在启动器里它是打开这个窗口的理由,所以给到 **0.95rem / 600 / ls 0.12em,灯 0.7rem**。
+语法(mono、大写、字距、指示灯与辉光)与 web 同源,只是尺寸更重。
+
+四个状态到灯的映射:`STOPPED` 灭灯(`#30343d`,内阴影)——**没在跑不等于出错**;`STARTING` 琥珀灯 +
+`waiting-pulse` 脉动;`RUNNING` 绿灯 + 辉光;`FAILED` 红灯 + 辉光。四个状态**全部由 CSS 选择器处理**
+(`is-${status.toLowerCase()}`),JS 里没有任何 tone 映射——见 15.4。
+
+### 15.4 为什么不把 `App.tsx` 拆成组件
+
+`vitest.config.ts` 的 `include` 是 `src/**/*.{ts,tsx}`,新建的 `.tsx` 会自动进覆盖率(新 `.css` 不会),
+门槛 80/80/80/80。改版前聚合分支率 89.47%,门槛允许漏 11 个分支、当时已漏 6 个——**只剩 5 个余量**,
+而那 5 个都是 `api ?? createTauriLauncherApi()` 这类测试打不到的防御分支。
+
+这次拆出来的会全是无逻辑的纯 JSX 叶子,收益为零、风险为正。`apps/web` 的先例也是单文件
+(`MixerPage.tsx` 603 行、`SettingsPage.tsx` 660 行),改完 `App.tsx` 337 行,远在先例之内。
+**`vitest.config.ts` 一个字没改,「本批次仅有的两项覆盖率排除」这句话至今成立。**
+
+同理也刻意避开了在 JS 里写 `switch (status)` 映射灯色:`App.test.tsx` 的 fixture 从来没有用过
+`kind: 'stopped'`,那会造出一个死分支。改成 CSS 选择器之后,没被用到的规则根本不进覆盖率。
+
+新增的三元分支(三个 `is-checked` 加一个 `is-confirmed`)两臂都被现有用例打到,所以**分支率不降反升**。
+
+### 15.5 字体
+
+加了 `@fontsource/barlow-condensed` 与 `@fontsource/ibm-plex-mono`(都是 `^5.3.0`,正是 `apps/web` 在用的
+同版本包)。只引 5 个字重:Barlow 500 / 600,Plex Mono 400 / 500 / 600——窗口里最大的字是 `h1` 的 0.8rem,
+没有 Barlow 700 的位置。`font-synthesis: none` 一并抄过来:没引的字重回落到最近的真字重,而不是被合成糊掉。
+
+字体随 Vite 构建打进 `apps/desktop/dist/assets`(5 个 woff2 + 5 个 woff,合计约 166 KB),**离线可用,不连
+任何 CDN**。两条 CSP 都显式补了 `font-src 'self'`——本来靠 `default-src 'self'` 回落就是对的,写明是为了
+以后谁收紧 `default-src` 时不会静默掉字体。
+
+**这是全仓第一批不是 MIT / Apache-2.0 的依赖:两个包与字体本体都是 OFL-1.1。** OFL 允许随软件一同分发,
+但要求许可文本跟着走,而安装包会把 woff2 装到用户机器上。所以 `scripts/prepare.mjs` 把两份 `LICENSE`
+铺成 `resources/FONT_LICENSE_BARLOW_CONDENSED` 与 `resources/FONT_LICENSE_IBM_PLEX_MONO`,
+由 `bundle.resources` 装进安装包,做法与 `NODE_LICENSE` 完全一致。
+`apps/web` 今天也在分发这两款字体且同样没附许可,但它不在本批次范围内——记在第 12 节遗留 8。
+
+### 15.6 可缩放之后的滚动策略
+
+`.shell` 是 `grid-template-rows: auto minmax(4rem, 1fr) auto`,高 `100dvh`;中间那一行是唯一会滚的东西,
+header 与动作条钉住不动。中间区自己又是 `grid-template-rows: auto minmax(8.5rem, 1fr)`:`1fr` 让日志面板
+吃掉窗口多出来的每一个像素,地板保证它在最小窗口下不被挤没。
+
+两处地板是实测加上去的,不是预防性的:
+
+- **默认尺寸原本会溢出几个像素**导致出滚动条,日志只剩四行。窗口高度从 560 提到 600、两处 gap 各收
+  0.15rem 之后不再溢出,日志可见行数大约翻倍。
+- **低于约 300 CSS px 高度时中间区会被压成 0**,header 加动作条就把视口填满了,所有控件都够不着。
+  这不是臆想的极端:**最小窗口 560 × 440 在 150% 显示缩放下就是这个量级**。现在中间行有 `4rem` 地板,
+  并且 `body` 允许滚动兜底——这时 header 不再钉住,但每个控件都还能够到。
+
+### 15.7 本机实测
+
+`pnpm desktop:dev`,后端跑在 3100,Ember 指向 `127.0.0.1:9100` 的 mock provider
+(`pnpm --filter @flwc/server mock-provider --port 9100 --meters`)。**全程没有连过真实 Fairlight Live,
+没有碰过任何推子;3000 / 5173 没有被占用或结束过。**
+
+| 场景 | 怎么造 | 结果 |
+| --- | --- | --- |
+| `RUNNING` | 正常启动 | 绿灯 + 辉光,文字 `#ccebd5`;地址栏与 Copy 正常 |
+| `STARTING` | 从 FAILED 点 Apply | 琥珀灯按 `waiting-pulse` 脉动(抓到了淡出相位),Apply 变 `Restarting…` |
+| `FAILED` | 外部结束后端进程 | 红灯、整框描边的 FAILURE 横幅、`The backend stopped while it was running (exit code -1).`;Apply 恢复可用并成功拉起 |
+| `NOTICE` | 把 `launcher.json` 写成 `{` | 琥珀描边横幅 + `notice-in` 滑入;设置回落到默认(端口 3000) |
+| 默认尺寸 | 640 × 600 | 不出滚动条,日志约 8 行 |
+| 拉高 | 700 × 900 | 日志面板吃掉全部多余高度,无空白 |
+| 最小尺寸 | 560 × 440 | header 不折行,URL 省略号,中间区出细滚动条,动作条完整 |
+| 极端小 | 300 × 200(程序化 `MoveWindow` 绕过最小值) | 中间区仍在且可滚动,控件都够得着 |
+| 焦点环 | Tab 走一遍 | 日志面板 2px `--amber-pale` 内环;端口框琥珀边框 + 左侧 3px 内投影 |
+| hover | 鼠标扫过 | `Open in browser` 边框转琥珀、字转 `--amber-pale`;`Exit` 转红 |
+| 字体 | 构建产物 | 5 个 woff2 + 5 个 woff 进 `dist/assets`,页面无 faux bold |
+| CSP | dev DevTools | 没有 `Refused to load the font` |
+| 强杀启动器 | `Stop-Process -Force` | 后端随之退出,3000 / 3100 都释放,**stdin 守护不受本次改动影响** |
+
+**没做的一项**:`prefers-reduced-motion` 没有真去改系统的「动画效果」开关——那要动用户的系统设置。
+那段覆写是从 `apps/web/src/styles.css:3204-3221` 原样抄来的,没有自己的逻辑,但确实没在这台机器上验证过。
+
+### 15.8 质量门与体积
+
+| 项 | 结果 |
+| --- | --- |
+| `pnpm lint`(eslint + `prettier --check .`) | 绿 |
+| `pnpm typecheck` | 绿 |
+| `@flwc/desktop` vitest | **50 passed**(原 49,新增一条 `STOPPED`);语句 99.13% / **分支 90.47%**(原 89.47%)/ 函数 100% / 行 99.09% |
+| 既有包 | 一行未改 |
+| `git ls-files \| grep -E 'binaries\|icons\|resources'` | 空 |
+
+安装包与安装体积(`pnpm desktop:build`,同一台机器,与第 4.1 / 4.10 节可比):
+
+| | 改版前 | 改版后 | 差 |
+| --- | --- | --- | --- |
+| 安装包 | 27,980,384 字节 = 26.68 MiB | **28,148,567 字节 = 26.84 MiB** | +168,183 字节 ≈ +164 KiB |
+| 安装后 | 4,526 个文件,116.0 MiB | **4,528 个文件,116.2 MiB** | +2 个文件(两份字体许可) |
+
+多出来的 164 KiB 基本就是字体本身(5 个 woff2 + 5 个 woff 约 166 KB,被 NSIS 压了一点)。
+
+实装复验(`/S` 静默安装到 `%LOCALAPPDATA%\Fairlight Live Web Controller`):
+
+- release 构建的窗口目视与 dev 下一致(未做逐像素比对),字体正常,**node 子进程没有控制台窗口**。
+- 安装根目录下三份许可都在:`NODE_LICENSE`、`FONT_LICENSE_BARLOW_CONDENSED`、`FONT_LICENSE_IBM_PLEX_MONO`。
+- 磁盘上能看到 6 个 woff2 + 6 个 woff,那是 `resources/web` 里混音页的字体;**启动器窗口自己的 5 个字重是
+  编进 `flwc-launcher.exe` 的**(`frontendDist` 被 Tauri 嵌进二进制,不是散文件)。
+- 后端 `/api/v1/health` 200、`/` 200、`/api/v1/connection` 报 `{"host":"127.0.0.1","port":9100,"status":"connected"}`
+  ——连的是 mock,不是真台子。
+- 点窗口的 `Exit`:启动器与后端都退出,3100 释放,`server.log` 末尾是
+  `reason: "stdin closed"` → `shutdown complete`。**进程模型不受本次改动影响。**
+- `/S` 卸载后安装目录已删;两个应用数据目录卸载程序不删(与第 4.9 节记的一致,是已知行为),手工删除后
+  机器上无任何残留,`HKCU\...\Run` 无值,3000 / 3100 / 5173 均空闲。
