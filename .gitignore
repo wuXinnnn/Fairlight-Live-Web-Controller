@@ -9,3 +9,4 @@ data/
 *.log
 .specstory/
 soak-reports/
+docker-compose.override.yml

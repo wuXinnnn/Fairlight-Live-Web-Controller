@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FakeEmberClient } from './ember/fake-ember-client.js';
 import { silentLogger } from './logger.js';
 import { MixerRuntime } from './runtime.js';
-import { resolveBindAddress, start } from './server.js';
+import { resolveBindAddress, resolveEmberSeed, start } from './server.js';
 
 describe('resolveBindAddress', () => {
   it('prefers explicit options over environment values', () => {
@@ -30,6 +30,26 @@ describe('resolveBindAddress', () => {
       host: '127.0.0.1',
       port: 3000,
     });
+  });
+});
+
+describe('resolveEmberSeed', () => {
+  const env = { EMBER_HOST: '10.0.0.8', EMBER_PORT: '9001' };
+
+  it('reads the environment when no seed was given', () => {
+    expect(resolveEmberSeed({}, silentLogger(), env)).toEqual({ host: '10.0.0.8', port: 9001 });
+  });
+
+  it('prefers an explicit seed over the environment', () => {
+    expect(
+      resolveEmberSeed({ emberSeed: { host: '10.0.0.9', port: 9002 } }, silentLogger(), env),
+    ).toEqual({ host: '10.0.0.9', port: 9002 });
+  });
+
+  it('reads nothing at all for null, even with the environment set', () => {
+    // `??` would treat null as absent and read the environment anyway, which is the pollution
+    // the test fixtures and the soak driver pass null to prevent.
+    expect(resolveEmberSeed({ emberSeed: null }, silentLogger(), env)).toBeUndefined();
   });
 });
 

@@ -1,0 +1,24 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+data
+soak-reports
+.git
+.github
+.vscode
+.cursor
+.claude
+docs
+scripts
+start.cmd
+start.sh
+Dockerfile
+.dockerignore
+docker-compose.yml
+.env
+.env.*
+*.md
+# Kept: the image carries its own readme, and the negation has to come after the pattern.
+!README.md

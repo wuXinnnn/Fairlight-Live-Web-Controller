@@ -225,6 +225,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       port: httpPort,
       configDir: dir,
       silent: true,
+      emberSeed: null,
       timeoutMs: 3000,
       disconnectTimeoutMs: 500,
       reconnectInitialMs: 40,
@@ -262,6 +263,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
       port: httpPort,
       configDir: dir,
       silent: true,
+      emberSeed: null,
       timeoutMs: 3000,
       busDirectoryPollMs: 0,
     });

@@ -26,6 +26,13 @@ export interface VerifyEmberArgs {
   confirmWrite: boolean;
 }
 
+export interface MockProviderArgs {
+  host: string;
+  port: number;
+  dump?: string;
+  meters: boolean;
+}
+
 export interface SoakArgs {
   minutes: number;
   sampleSeconds: number;
@@ -116,6 +123,20 @@ export function parseVerifyEmberArgs(argv: string[]): VerifyEmberArgs {
     channel: typeof channel === 'string' ? channel : undefined,
     deltaDb: parseDeltaDb(flags['delta-db']),
     confirmWrite: flags['i-confirm'] === true,
+  };
+}
+
+export function parseMockProviderArgs(argv: string[]): MockProviderArgs {
+  const flags = parseFlagArgs(argv);
+  const dump = flags.dump;
+  const host = flags.host;
+  return {
+    // Every interface by default, so a container can reach it through host.docker.internal.
+    // `assertNotLiveFairlightPort` still refuses 9000 whatever is passed here.
+    host: typeof host === 'string' && host !== '' ? host : '0.0.0.0',
+    port: parsePort(requireString(flags, 'port')),
+    dump: typeof dump === 'string' ? dump : undefined,
+    meters: flags.meters === true,
   };
 }
 

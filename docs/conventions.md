@@ -10,7 +10,8 @@ apps/
       state/         MixerStateStore、MeterHub
       api/           REST 路由
       ws/            socket.io 网关
-      config/        配置加载与持久化
+      config/        配置加载与持久化、环境变量种子值
+      tools/         命令行工具(树 dump、Ember 校验、soak、Mock Provider)与它们的纯函数
     tests/           集成测试
   web/               React 前端
     src/
@@ -22,8 +23,15 @@ apps/
 packages/
   shared/            前后端共享类型与 zod 消息契约
   test-utils/        Mock Ember+ Provider 等测试夹具
+scripts/             Shell 脚本(`docker-smoke.sh`)
 docs/                项目文档(中文)
 data/                运行时配置(JSON,不入库)
+start.cmd            控制台启动脚本(Windows,CRLF)
+start.sh             控制台启动脚本(macOS / Linux,可执行位)
+.env.example         `.env` 的模板(`.env` 本身不入库,由启动脚本经 Node `--env-file` 读取)
+Dockerfile           多阶段镜像(base → build / deps → runtime)
+.dockerignore        构建上下文排除
+docker-compose.yml   拉取 GHCR 镜像、命名卷
 ```
 
 ## 语言与许可
@@ -68,7 +76,9 @@ data/                运行时配置(JSON,不入库)
 
 - 提交信息:Conventional Commits(`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`),英文
 - PR 标题与正文:英文
-- 不提交 `data/`、构建产物、覆盖率报告、`soak-reports/`
+- 不提交 `data/`、`node_modules/`、构建产物(`dist/`、`*.tsbuildinfo`)、覆盖率报告、`soak-reports/`、`.env*`、`docker-compose.override.yml`
+- 换行符由 `.gitattributes` 统一:默认与 `*.sh` 为 LF,`*.cmd` / `*.bat` 为 CRLF(cmd.exe 对 LF 文件里的 `goto` 与括号块处理不可靠)
+- `start.sh` 与 `scripts/*.sh` 带可执行位入库(`git update-index --chmod=+x`)
 
 ## 文档维护
 

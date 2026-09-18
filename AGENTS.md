@@ -13,11 +13,15 @@ Fairlight Live Web Controller:通过 Ember+ 协议远程控制 Blackmagic Design
 ## 目录结构
 
 ```
-apps/server      后端:REST、socket.io 网关、Ember+ 客户端(TreeMapper 树发现)
-apps/web         前端:混音页、配置页
-packages/shared  共享类型与 zod 消息契约
-docs/            详细文档(中文)
-data/            运行时配置持久化(不入库)
+apps/server         后端:REST、socket.io 网关、Ember+ 客户端(TreeMapper 树发现)、命令行工具
+apps/web            前端:混音页、配置页
+packages/shared     共享类型与 zod 消息契约
+packages/test-utils Mock Ember+ Provider 等测试夹具
+scripts/            Shell 脚本(Docker 冒烟测试)
+docs/               详细文档(中文)
+data/               运行时配置持久化(不入库)
+start.cmd / start.sh  控制台启动脚本
+Dockerfile / docker-compose.yml / .dockerignore  容器交付
 ```
 
 ## 关键约束
@@ -39,6 +43,7 @@ data/            运行时配置持久化(不入库)
 ## Cursor Cloud specific instructions
 
 - 标准命令见 `package.json` 根 scripts:`pnpm dev`(server 3000 + web 5173,web 通过 `/api` 代理到 3000)、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`。
-- Vite 开发服务器只监听 IPv6 的 `localhost`(`::1`)。用 `http://localhost:5173` 访问前端;`http://127.0.0.1:5173` 会连接失败。后端 Fastify 监听 `127.0.0.1:3000`,两种写法均可。
+- Vite 开发服务器监听 `0.0.0.0:5173`,`localhost` 与 `127.0.0.1` 都可以访问,平板也能从局域网打开。后端 Fastify 默认监听 `127.0.0.1:3000`(`HOST` / `PORT` 可覆盖;启动脚本与容器把 `HOST` 设为 `0.0.0.0`)。
 - 云端 Agent 无法连接真实 Fairlight。当前后端启动不需要设备(仅 `/api/v1/health` 与静态托管);Ember+ host/port 为运行时配置。自动化测试一律用 Mock Provider(见 `packages/test-utils`)。
+- 手上没有台子时用 `pnpm --filter @flwc/server mock-provider --port 9100 --meters` 起一个常驻 Mock Provider(按最新树 dump 建树,可选合成电平),再把 `EMBER_HOST` / `EMBER_PORT` 指向它。
 - `pnpm dev` 会先 build `@flwc/shared` 再并行起 server/web;若改了 `packages/shared` 需重跑该构建(或 `pnpm --filter @flwc/shared build`)其它包才能拿到最新类型。

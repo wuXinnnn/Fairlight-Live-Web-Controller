@@ -1,0 +1,106 @@
+name: Docker
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/wuxinnnn/fairlight-live-web-controller
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    # The arm64 leg is emulated and runs its own pnpm install, which is slow.
+    timeout-minutes: 60
+    permissions:
+      # packages for GHCR, contents for the release a tag build attaches its bundle to.
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern=v{{version}}
+          labels: |
+            org.opencontainers.image.description=Web remote controller for Blackmagic Design Fairlight Live
+            org.opencontainers.image.licenses=MIT
+
+      # amd64 only and loaded into the local daemon, because the smoke test has to run it.
+      # `load` and a multi-platform build are mutually exclusive.
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: flwc:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: bash scripts/docker-smoke.sh flwc:smoke
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only reached once the smoke test has passed. The amd64 leg comes straight out of the
+      # cache; arm64 is the one actually being built here.
+      - name: Build and push
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A multi-platform build pushes straight to the registry and loads nothing locally, so
+      # there is nothing for `docker save` to read. The amd64 image the smoke test ran is the
+      # same content; tagging it with both release names is what lets someone who runs
+      # `docker load -i` then start the shipped compose file, which names :latest.
+      - name: Package the offline image
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          docker tag flwc:smoke "$IMAGE_NAME:$GITHUB_REF_NAME"
+          docker tag flwc:smoke "$IMAGE_NAME:latest"
+          docker save "$IMAGE_NAME:$GITHUB_REF_NAME" "$IMAGE_NAME:latest" \
+            | gzip > "flwc-$GITHUB_REF_NAME-linux-amd64.tar.gz"
+
+      # view || create, because the desktop workflow uploads its installers to this same release
+      # and whichever of the two runs first has to be the one that creates it.
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "flwc-$GITHUB_REF_NAME-linux-amd64.tar.gz" --clobber

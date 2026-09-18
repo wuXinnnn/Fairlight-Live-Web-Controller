@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { defaultAppConfig } from '@flwc/shared';
@@ -133,5 +133,72 @@ describe('ConfigStore', () => {
     const reloaded = new ConfigStore(filePath, silentLogger());
     await reloaded.load();
     expect(reloaded.snapshot.ember.port).toBe(store.snapshot.ember.port);
+  });
+});
+
+describe('ConfigStore seeded from the environment', () => {
+  const seed = { host: '10.0.0.8', port: 9001 };
+
+  it('writes the seed on a first start, and reads it back without one', async () => {
+    const filePath = await tempConfigPath();
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+
+    const written: unknown = JSON.parse(await readFile(filePath, 'utf8'));
+    expect(written).toEqual({ ...defaultAppConfig(), ember: seed });
+
+    // The point of writing it: the next start no longer needs the environment.
+    const reloaded = new ConfigStore(filePath, silentLogger());
+    await expect(reloaded.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+  });
+
+  it('leaves an existing file alone', async () => {
+    const filePath = await tempConfigPath();
+    const onDisk = { version: 2, ember: { host: '192.168.1.5', port: 9100 }, views: [] };
+    await writeFile(filePath, JSON.stringify(onDisk), 'utf8');
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual(onDisk);
+    expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(onDisk);
+  });
+
+  it('does not seed a file that is there but corrupt', async () => {
+    const filePath = await tempConfigPath();
+    await writeFile(filePath, '{not json', 'utf8');
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    // A file that exists means this has run before, so the environment does not speak for it.
+    await expect(store.load()).resolves.toEqual(defaultAppConfig());
+    expect(await readFile(filePath, 'utf8')).toBe('{not json');
+  });
+
+  it('keeps the seed in memory when the file cannot be written', async () => {
+    // The two platforms refuse a write for different reasons, and the read has to stay a plain
+    // ENOENT either way -- a broken path reads as ENOTDIR on Linux, which is not a first start.
+    // POSIX: a directory that exists and can be listed but not written to, so the read finds
+    // nothing and the temporary file cannot be created.
+    // Windows: chmod does not take on a directory there, so instead a regular file stands where
+    // the data directory should be; the read below it still reports ENOENT and mkdir fails.
+    const dir = await mkdtemp(path.join(tmpdir(), 'flwc-config-'));
+    let filePath: string;
+    if (process.platform === 'win32') {
+      const blocker = path.join(dir, 'blocker');
+      await writeFile(blocker, 'not a directory', 'utf8');
+      filePath = path.join(blocker, 'config.json');
+    } else {
+      const readOnly = path.join(dir, 'read-only');
+      await mkdir(readOnly);
+      await chmod(readOnly, 0o555);
+      filePath = path.join(readOnly, 'config.json');
+    }
+
+    const store = new ConfigStore(filePath, silentLogger(), seed);
+
+    await expect(store.load()).resolves.toEqual({ ...defaultAppConfig(), ember: seed });
+    expect(store.snapshot.ember).toEqual(seed);
+    await expect(access(filePath)).rejects.toThrow();
   });
 });

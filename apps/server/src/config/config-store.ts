@@ -3,6 +3,7 @@ import path from 'node:path';
 import { appConfigSchema, defaultAppConfig, type AppConfig } from '@flwc/shared';
 import type { AppLogger } from '../logger.js';
 import { errorMessage } from '../logger.js';
+import type { EmberSeed } from './env-seed.js';
 
 export class ConfigStore {
   private current: AppConfig = defaultAppConfig();
@@ -11,6 +12,8 @@ export class ConfigStore {
   constructor(
     private readonly filePath: string,
     private readonly logger: AppLogger,
+    /** Written to disk on a first start only. See {@link ConfigStore.seedFile}. */
+    private readonly seed?: EmberSeed,
   ) {}
 
   get snapshot(): AppConfig {
@@ -34,6 +37,12 @@ export class ConfigStore {
       return this.current;
     } catch (error) {
       const code = error instanceof Error && 'code' in error ? String(error.code) : undefined;
+      // A file that is not there is a first start, and the only moment the environment gets to
+      // speak for the endpoint. A file that is there but broken means this has run before, so it
+      // falls through to the defaults below however the environment is set.
+      if (code === 'ENOENT' && this.seed !== undefined) {
+        return this.seedFile(this.seed);
+      }
       this.logger.warn(
         { err: errorMessage(error), path: this.filePath, code, layer: 'validation' },
         code === 'ENOENT' ? 'config missing, using defaults' : 'config unreadable, using defaults',
@@ -41,6 +50,40 @@ export class ConfigStore {
       this.current = defaultAppConfig();
       return this.current;
     }
+  }
+
+  /**
+   * Writes the seeded defaults on a first start, so that the file the UI edits from then on
+   * exists and the endpoint survives the next restart.
+   *
+   * The write joins `writeTail` like every other write, which keeps a PUT that arrives while the
+   * server is still starting from interleaving with it. A directory that cannot be written is
+   * not fatal: the process runs on the seeded endpoint, it just has nowhere to remember it, and
+   * the next update tries again.
+   */
+  private async seedFile(seed: EmberSeed): Promise<AppConfig> {
+    const seeded = appConfigSchema.parse({ ...defaultAppConfig(), ember: { ...seed } });
+    const run = this.writeTail.then(() => this.writeAtomic(seeded));
+    this.writeTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    // Assigned before the await, not after: both outcomes leave the seeded config in memory, and
+    // a `snapshot` read that interleaves with the write sees the seed rather than bare defaults.
+    this.current = seeded;
+    try {
+      await run;
+      this.logger.info(
+        { path: this.filePath, host: seed.host, port: seed.port, layer: 'validation' },
+        'config seeded from the environment',
+      );
+    } catch (error) {
+      this.logger.warn(
+        { err: errorMessage(error), path: this.filePath, layer: 'validation' },
+        'config seed could not be written, continuing in memory',
+      );
+    }
+    return seeded;
   }
 
   async save(config: AppConfig): Promise<AppConfig> {

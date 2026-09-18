@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseDumpTreeArgs,
   parseFlagArgs,
+  parseMockProviderArgs,
   parseVerifyEmberArgs,
   parseBrowserArgs,
   parseSoakArgs,
@@ -156,5 +157,43 @@ describe('parseSoakArgs', () => {
   it('refuses a flag given without a value', () => {
     expect(() => parseSoakArgs(['--minutes'])).toThrow('--minutes needs a value');
     expect(() => parseSoakArgs(['--out'])).toThrow('--out needs a value');
+  });
+});
+
+describe('parseMockProviderArgs', () => {
+  it('needs a port and otherwise listens on every interface with the latest dump', () => {
+    expect(parseMockProviderArgs(['--port', '9100'])).toEqual({
+      host: '0.0.0.0',
+      port: 9100,
+      dump: undefined,
+      meters: false,
+    });
+  });
+
+  it('takes a host, a dump and the meter feed', () => {
+    expect(
+      parseMockProviderArgs([
+        '--port',
+        '9100',
+        '--host',
+        '127.0.0.1',
+        '--dump',
+        'docs/tree-dumps/fairlight-live-2026-08-31.json',
+        '--meters',
+      ]),
+    ).toEqual({
+      host: '127.0.0.1',
+      port: 9100,
+      dump: 'docs/tree-dumps/fairlight-live-2026-08-31.json',
+      meters: true,
+    });
+  });
+
+  it('refuses a missing or unusable port', () => {
+    expect(() => parseMockProviderArgs([])).toThrow('--port is required');
+    expect(() => parseMockProviderArgs(['--port'])).toThrow('--port is required');
+    expect(() => parseMockProviderArgs(['--port', '0'])).toThrow(
+      '--port must be an integer between 1 and 65535',
+    );
   });
 });

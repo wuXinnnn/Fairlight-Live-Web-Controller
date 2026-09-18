@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConnectionPutBody, ConnectionStatus, LoudnessState } from '@flwc/shared';
 import type { View, ViewWriteBody } from '@flwc/shared';
 import { ConfigStore } from './config/config-store.js';
+import type { EmberSeed } from './config/env-seed.js';
 import { EmberService } from './ember/ember-service.js';
 import {
   isParameterNode,
@@ -18,6 +19,8 @@ import { MixerStateStore } from './state/mixer-state-store.js';
 export interface MixerRuntimeOptions {
   configPath: string;
   logger: AppLogger;
+  /** The Ember endpoint to write into `configPath` when there is no file there yet. */
+  emberSeed?: EmberSeed;
   host?: string;
   port?: number;
   timeoutMs?: number;
@@ -52,7 +55,7 @@ export class MixerRuntime {
   constructor(options: MixerRuntimeOptions) {
     this.logger = options.logger;
     this.mapper = new TreeMapper(options.logger);
-    this.config = new ConfigStore(options.configPath, options.logger);
+    this.config = new ConfigStore(options.configPath, options.logger, options.emberSeed);
     this.ember = new EmberService({
       host: options.host ?? '127.0.0.1',
       port: options.port ?? 1,

@@ -11,6 +11,8 @@ export default defineConfig({
         'src/tools/verify-ember.ts',
         // Orchestration only: every decision it makes lives in cdp, soak-signal and soak-report.
         'src/tools/soak.ts',
+        // Driver only: the arguments, the tree and the signal shapes are all tested elsewhere.
+        'src/tools/mock-provider.ts',
         'src/ember/tree-helpers.ts',
         'src/ember/fake-ember-client.ts',
         'src/main.ts',

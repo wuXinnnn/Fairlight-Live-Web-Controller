@@ -197,6 +197,7 @@ async function buildStack(dumpPath: string): Promise<LocalStack> {
       staticRoot,
       configDir,
       silent: true,
+      emberSeed: null,
     });
     return {
       server,
