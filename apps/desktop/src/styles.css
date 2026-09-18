@@ -1,0 +1,600 @@
+@import '@fontsource/barlow-condensed/latin-500.css';
+@import '@fontsource/barlow-condensed/latin-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
+
+/* Tokens ------------------------------------------------------------------ */
+
+/*
+  The colour tokens below are copied by value from apps/web/src/styles.css so the launcher
+  looks like the desk it launches. They are copied rather than imported because packages do
+  not reach into each other's source; if the mixer page's palette changes, change it here too.
+  The same goes for the two typefaces: Barlow Condensed carries the headings, IBM Plex Mono
+  carries every label, button and readout. `font-synthesis: none` is part of that contract --
+  a weight this file asks for but does not @import above falls back to the nearest real one
+  instead of being faked into a blur.
+*/
+:root {
+  color-scheme: dark;
+  font-family: 'Barlow Condensed', 'Aptos Narrow', sans-serif;
+  color: #e8e4da;
+  background: #111318;
+  font-synthesis: none;
+  --surface-0: #111318;
+  --surface-1: #171a20;
+  --surface-2: #1d2027;
+  --surface-3: #272b34;
+  --line: #343945;
+  --line-strong: #4a505e;
+  --text: #e8e4da;
+  --text-dim: #969ba6;
+  --amber: #efa928;
+  --amber-pale: #ffd77c;
+  --green: #66c987;
+  --red: #ff5d55;
+  --motion-fast: 140ms;
+  --motion-medium: 200ms;
+}
+
+/* Base and reset ---------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /*
+    At any sane size the shell is exactly one viewport tall, the middle region is the only
+    thing that scrolls, and the header and the action bar stay put. This is the way out of
+    the case where even that will not fit: the window is resizable and Windows display
+    scaling shrinks the client area on top of that, and at 150% the smallest window leaves
+    under 300 CSS px of height -- little enough that the header and the footer alone can
+    fill it. When that happens the shell overflows and the document scrolls, which costs
+    the pinned header but keeps every control reachable.
+  */
+  overflow: auto;
+  user-select: none;
+  background:
+    radial-gradient(circle at 76% -18%, rgb(239 169 40 / 8%), transparent 34rem),
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 1.1%) 0 1px, transparent 1px 7rem),
+    var(--surface-0);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+/* Zero specificity, so anything below can still say something more specific. */
+:where(button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--amber-pale);
+  outline-offset: 3px;
+}
+
+/* Shell: three rows, one scrolling region --------------------------------- */
+
+/* The middle row has a floor as well as a 1fr, so it can never be squeezed out entirely. */
+.shell {
+  display: grid;
+  height: 100dvh;
+  grid-template-rows: auto minmax(4rem, 1fr) auto;
+}
+
+.shell--loading {
+  grid-template-rows: 1fr;
+  place-items: center;
+}
+
+.loading {
+  margin: 0;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/*
+  Two rows, and the second one is the trick. `1fr` lets the log take every pixel the window
+  has spare; the floor stops it from being squeezed out of existence at the smallest window
+  size. Once the settings above it plus that floor no longer fit, this element -- not the
+  document -- scrolls.
+*/
+.console-body {
+  display: grid;
+  min-height: 0;
+  padding: 1.05rem 1.15rem 1.2rem;
+  overflow-y: auto;
+  gap: 1rem;
+  grid-template-rows: auto minmax(8.5rem, 1fr);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.console-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Console header: brand, lamp, address ------------------------------------ */
+
+/* Cells divided by rules, and allowed to wrap rather than to be crushed. */
+.console-header {
+  display: flex;
+  min-height: 3rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line-strong);
+  background: rgb(17 19 24 / 94%);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 22%);
+}
+
+.console-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 1.05rem;
+  border-right: 1px solid var(--line);
+}
+
+.console-brand__eyebrow {
+  color: var(--amber);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.19em;
+  white-space: nowrap;
+}
+
+.console-brand h1 {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/*
+  Bigger than the equivalent cell on the mixer page. There the lamp is one readout among
+  many on a full console; here it is the reason the window was opened.
+*/
+.console-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  border-right: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  transition: color var(--motion-medium) ease;
+}
+
+.console-status__lamp {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid #555b67;
+  border-radius: 50%;
+  background: #30343d;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 70%);
+  transition:
+    background-color var(--motion-medium) ease,
+    box-shadow var(--motion-medium) ease;
+}
+
+/* STOPPED keeps the unlit lamp: nothing is running, but nothing is wrong either. */
+.console-status.is-starting {
+  color: var(--amber-pale);
+}
+
+.console-status.is-starting .console-status__lamp {
+  border-color: #9b7a33;
+  background: var(--amber);
+  box-shadow: 0 0 0.5rem rgb(239 169 40 / 55%);
+  animation: waiting-pulse 1.4s ease-in-out infinite;
+}
+
+.console-status.is-running {
+  color: #ccebd5;
+}
+
+.console-status.is-running .console-status__lamp {
+  border-color: #8ee0a8;
+  background: var(--green);
+  box-shadow: 0 0 0.7rem rgb(102 201 135 / 72%);
+}
+
+.console-status.is-failed {
+  color: #ffaaa5;
+}
+
+.console-status.is-failed .console-status__lamp {
+  border-color: #a34e49;
+  background: var(--red);
+  box-shadow: 0 0 0.45rem rgb(255 93 85 / 48%);
+}
+
+.console-address {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+}
+
+.console-address__url {
+  overflow: hidden;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.console-address__copy {
+  flex: none;
+  padding: 0.4rem 0.7rem;
+}
+
+.console-address__copy.is-confirmed {
+  border-color: #99732e;
+  color: var(--amber-pale);
+}
+
+/* Banners: notice and failure --------------------------------------------- */
+
+/* A full outline with a wash of its own colour, the way the mixer page marks these. */
+.console-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #8a6a2c;
+  background: rgb(239 169 40 / 7%);
+  animation: notice-in var(--motion-medium) ease both;
+}
+
+.console-banner strong {
+  color: var(--amber-pale);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.console-banner span {
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.console-banner--failure {
+  border-color: #784d36;
+  background: rgb(255 93 85 / 6%);
+}
+
+.console-banner--failure strong {
+  color: #ffaaa5;
+}
+
+/* Numbered sections and their labels -------------------------------------- */
+
+.console-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--line);
+  background: rgb(23 26 32 / 72%);
+}
+
+/* The rule under a label runs the full width of the box, not just the text. */
+.workbench-label {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 -1rem;
+  padding: 0 1rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.workbench-label > span {
+  color: var(--amber);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+}
+
+.workbench-label h2 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* Controls: buttons, the port field, the checkboxes ------------------------ */
+
+/*
+  No padding on the base: each place that uses a button sizes it. Note that none of these
+  uppercase their text. The six button labels are what the window's tests look these controls
+  up by, and whether a name computation folds in text-transform is not something to bet on --
+  the mixer page writes its shouted labels out in full for the same reason.
+*/
+.utility-button,
+.primary-button {
+  border: 1px solid var(--line-strong);
+  background: #1b1e24;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+
+.primary-button {
+  border-color: #99732e;
+  background: #292318;
+  color: var(--amber-pale);
+}
+
+.utility-button:disabled,
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.console-field > label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.53rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The field and its Apply read as one control, so the button drops its left border. */
+.console-field__control {
+  display: grid;
+  justify-content: start;
+  grid-template-columns: 8rem auto;
+}
+
+.console-field__control input {
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  outline: 0;
+  background: #0d0f13;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  transition: border-color var(--motion-fast) ease;
+}
+
+.console-field__control input:focus {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 var(--amber);
+}
+
+/* The native spinner is a rounded chip from somebody else's design language. */
+.console-field__control input::-webkit-inner-spin-button,
+.console-field__control input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.console-field__control button {
+  padding: 0.5rem 0.85rem;
+  border-left: 0;
+}
+
+/*
+  The real checkbox is still there and still does the work -- it takes focus, it answers to
+  the keyboard, it is what a test reads. It is only moved out of sight; the square below is
+  what gets drawn. `position: relative` keeps it anchored here rather than to some ancestor
+  far enough away to stretch the scrolling region.
+*/
+.console-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  line-height: 1.45;
+}
+
+.console-check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.console-check__box {
+  position: relative;
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid #5a606c;
+  background: #101217;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+
+.console-check.is-checked .console-check__box {
+  border-color: var(--amber);
+  background: #292318;
+  box-shadow: inset 0 0 0 2px #101217;
+}
+
+.console-check.is-checked .console-check__box::after {
+  position: absolute;
+  inset: 0.18rem;
+  background: var(--amber);
+  content: '';
+}
+
+/* The input that took the focus cannot show it, so the drawn square shows it instead. */
+.console-check:has(input:focus-visible) .console-check__box {
+  outline: 2px solid var(--amber-pale);
+  outline-offset: 2px;
+}
+
+/* Server log -------------------------------------------------------------- */
+
+.console-section--log {
+  min-height: 0;
+}
+
+.console-log__pane {
+  flex: 1;
+  min-height: 3.2rem;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid var(--line);
+  outline: 0;
+  background: #0d0f13;
+  color: var(--text-dim);
+  overflow: auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  line-height: 1.55;
+  white-space: pre;
+  resize: none;
+  user-select: text;
+}
+
+.console-log__pane:focus-visible {
+  outline: 2px solid var(--amber-pale);
+  outline-offset: -3px;
+}
+
+/* Never competes with the live pane for height: it is a footnote to a failure. */
+.console-log__tail {
+  flex: 0 0 auto;
+  max-height: 7rem;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #784d36;
+  background: rgb(255 93 85 / 6%);
+  color: var(--text);
+  overflow: auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  line-height: 1.5;
+  user-select: text;
+}
+
+/* Console footer ---------------------------------------------------------- */
+
+.console-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  padding: 0.6rem 1.15rem;
+  border-top: 1px solid var(--line-strong);
+  background: rgb(17 19 24 / 94%);
+}
+
+.console-footer__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.console-footer .utility-button {
+  padding: 0.5rem 0.75rem;
+}
+
+/* Hover ------------------------------------------------------------------- */
+
+/* Hover belongs to devices that have a pointer; the mixer page makes the same distinction. */
+@media (hover: hover) {
+  .utility-button:hover:not(:disabled) {
+    border-color: var(--amber);
+    color: var(--amber-pale);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--amber);
+    background: #332919;
+  }
+
+  /* Exit only reddens under the pointer. A red button sitting there all day reads as an alarm. */
+  .utility-button.is-danger:hover:not(:disabled) {
+    border-color: var(--red);
+    color: #ffaaa5;
+  }
+
+  .console-check:hover .console-check__box {
+    border-color: var(--amber);
+  }
+}
+
+/* Keyframes --------------------------------------------------------------- */
+
+@keyframes waiting-pulse {
+  50% {
+    opacity: 0.28;
+    transform: scale(0.72);
+  }
+}
+
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.4rem);
+  }
+}
+
+/* Reduced motion ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion-medium: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

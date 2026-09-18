@@ -1,0 +1,40 @@
+[package]
+name = "flwc-launcher"
+version = "0.2.0"
+description = "Desktop launcher for the Fairlight Live Web Controller"
+authors = ["wuXin"]
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+# The library holds everything; main.rs is a three-line shim so the same code can be unit
+# tested with `cargo test` without linking the Windows GUI subsystem entry point.
+[lib]
+name = "flwc_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-opener = "2.5.5"
+# Only its sidecar command builder is used, not its process handle; see server::spawn.
+tauri-plugin-shell = "2.3.6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+# Blocking HTTP, because the readiness probe runs on its own thread and has no use for an
+# async runtime.
+ureq = "3.4.2"
+if-addrs = "0.15.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2.4.4"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

@@ -159,7 +159,8 @@ interface View {
 
 ## 持久化
 
-配置文件默认是仓库根的 `data/config.json`,可由 `FLWC_DATA_DIR` 改到别处(容器里是 `/app/data`);zod 校验,
+配置文件默认是仓库根的 `data/config.json`,可由 `FLWC_DATA_DIR` 改到别处(容器里是 `/app/data`,
+桌面启动器下是 `%APPDATA%\io.github.wuxinnnn.flwc\data`);zod 校验,
 写入原子化(临时文件 + rename):
 
 ```jsonc
@@ -234,7 +235,7 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 
 ## 部署
 
-发布形态是三态:控制台脚本、Docker、桌面安装包(Windows,Phase 7.2)。三者跑的是同一个
+发布形态是三态:控制台脚本、Docker、桌面安装包(Windows)。三者跑的是同一个
 `apps/server/dist/main.js`,差别只在它被谁拉起、环境变量怎么设。
 
 ### 进程生命周期(`apps/server/src/shutdown.ts`)
@@ -283,6 +284,48 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 (双击打开的窗口不会一闪而过),`FLWC_NO_PAUSE=1` 可关掉。两者都不打印局域网地址——跨平台取网卡差异太大,
 由桌面壳去做。
 
+### 桌面启动器(`apps/desktop`)
+
+Tauri 2 的壳(Rust,`src-tauri`)加一个 React 设置窗口,定位是 Bitfocus Companion 那种「小窗口 + 托盘」的
+启动器:后端在它的子进程里跑,混音页仍然在平板的浏览器里打开,窗口本身不嵌混音页、不放任何影响声音的控件。
+本批次只出 Windows 的 NSIS 安装包(按用户安装,不要管理员权限),代码保持可移植:平台差异走 `#[cfg]` 或
+Tauri 插件,不写死 Windows 路径与注册表。
+
+- **安装包里有什么**:`externalBin` 带的官方 Node 运行时(构建时从 nodejs.org 下载并校验 SHA256,不入库)、
+  铺平的服务端(`resources/server`,含它自己的 `node_modules`)、web 产物(`resources/web`)、Node 的 LICENSE。
+  目标机器不需要 Node,也不需要 pnpm。
+- **铺放**:`scripts/stage-server.mjs` 用 `pnpm deploy --prod --legacy --ignore-scripts
+  --config.node-linker=hoisted` 产出**没有符号链接**的依赖树,再逐个 `lstat` 断言确认。这一条是硬要求:
+  Tauri 打包资源时用 `walkdir` 且不跟随链接,遇到链接既不展开也不报错,直接跳过——安装包会静默缺依赖。
+  `bundle.resources` 用「目录 → 目录」的对象写法,不用 glob:glob 源会把子树拍平。
+- **进程模型**:子进程环境按上面的合同(`HOST` / `PORT` / `FLWC_WEB_ROOT` / `FLWC_DATA_DIR` /
+  `FLWC_EXIT_ON_STDIN_CLOSE=1`),其余环境原样继承;`PORT` 由 `u16` 承载,所以永远是十进制数字
+  (服务端不校验它,非数字会让它监听随机端口而不是报错)。就绪由 `GET /api/v1/health` 轮询判定
+  (每 500 ms,最多 30 s)。**stdin 是唯一的管道**,启动器一直持有写端,这就是进程边界。
+- **stdout / stderr 落文件,不走管道**。实测:管道方案下强杀启动器,后端会关掉 HTTP 服务却**永远不退出**
+  (静止无 CPU,连它自己 5 秒的关闭超时都没救回来);改成子进程直接写 `server.log` 之后,同样的强杀
+  255 ms 内后端就没了。窗口的日志面板是启动器 tail 这个文件得到的。附带的好处是:带走启动器的那次崩溃,
+  日志反而是完整的。
+- **四种退出路径**:托盘 `Exit` 与窗口 `Exit` 走 `stop()`——关 stdin、等 5 秒、还活着才 `kill()`;
+  `RunEvent::ExitRequested` / `Exit`(注销、关机)同样走 `stop()`;关闭按钮只隐藏窗口,后端照跑;
+  启动器崩溃或被结束时没有代码会运行,管道随进程消失而断,后端自己退出。**不写 Job Object,不写保活**。
+- **不自动重启**:运行中的后端意外退出 → 窗口进入 `FAILED`,显示退出码与日志尾部,由用户决定。与 7.1
+  给控制台脚本定的口径一致。
+- **目录**:设置 `%APPDATA%\<identifier>\launcher.json`(只存端口、绑定范围、是否隐藏启动);
+  服务端配置 `%APPDATA%\<identifier>\data\config.json`;日志 `%LOCALAPPDATA%\<identifier>\logs\server.log`
+  (每次启动截断)。identifier 是 `io.github.wuxinnnn.flwc`。**Ember 地址不在启动器里**,它始终由混音页的
+  CONNECTION 面板管理。
+- **可测性**:`src-tauri/src/server/` 不引用 `tauri`,进程、探测、时钟、事件都是 trait;状态机是一个可以
+  单步调用的同步 `tick()`。真实实现集中在 `bridge.rs`。
+- **窗口的样子**:与混音页同一套「工业控制台」语言——Barlow Condensed 做标题、IBM Plex Mono 做全部小标签
+  与读数、几乎零圆角、琥珀强调色、状态用指示灯。色板按值抄自 `apps/web/src/styles.css`(跨包不能 import
+  CSS,改了一边要改另一边);字体走 `@fontsource`,随 Vite 构建打进产物,离线可用,两款都是 OFL-1.1,
+  许可文本随安装包一起分发。窗口布局是与混音页相同的 grid 三行外壳(分格 header / 可滚动内容区 /
+  动作条),可缩放,默认 640×600、最小 560×440——只有中间那一行滚动,文档本身从不滚动。
+- **两个启动复选框各管一件事**:`Start with Windows` 只注册或注销当前用户的自启项(`tauri-plugin-autostart`,
+  不带任何参数);登录后显示窗口还是只剩托盘图标,由 `Start hidden in the tray` 决定,与从开始菜单启动时
+  完全一致。命令行 `--hidden` 只对当次启动生效,自启项不用它。
+
 ### Docker
 
 - `Dockerfile` 四个阶段:`base`(node:22-alpine + git + corepack pnpm)、`build`、`deps`、`runtime`。
@@ -305,7 +348,14 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 
 ### CI 与发布
 
+`.github/workflows/desktop.yml`:`windows-latest` 单 job(`strategy.matrix` 只有一项,以后加平台只追加),
+装依赖 → `pnpm build` → `scripts/prepare.mjs` → 铺好的服务端冒烟 → `cargo fmt --check` / `clippy -D warnings` /
+`cargo test` → `tauri build` → 上传安装包 artifact。`prepare.mjs` **必须排在 cargo 之前**:`build.rs` 会把
+`externalBin` 与 `bundle.resources` 拷进 target,文件不在就直接失败。标签 `v*` 时先校验标签去掉 `v` 等于
+`tauri.conf.json` 的 `version`,再把安装包挂到 Release。`ci.yml` 在 ubuntu 上碰不到 cargo:`@flwc/desktop`
+的 `build` 只是 `vite build`。
+
 `.github/workflows/docker.yml`:PR 构建 amd64 并跑冒烟(不推送);`main` 推 `:main`;标签 `v*` 推 `:vX.Y.Z` 与
-`:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release(存在就复用,7.2 的桌面工作流往同一个
-Release 传安装包)。离线包是把冒烟用的 amd64 镜像重打标签再 save——多平台构建直接推 registry,本地 daemon
+`:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release(两个工作流共用同一个 Release,
+`view || create`,谁先跑谁建)。离线包是把冒烟用的 amd64 镜像重打标签再 save——多平台构建直接推 registry,本地 daemon
 里没有东西可 save。`ci.yml` 与 `soak.yml` 不变。

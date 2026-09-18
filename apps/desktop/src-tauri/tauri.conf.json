@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Fairlight Live Web Controller",
+  "version": "0.2.0",
+  "identifier": "io.github.wuxinnnn.flwc",
+  "build": {
+    "beforeDevCommand": "pnpm prepare-bundle && pnpm dev",
+    "beforeBuildCommand": "pnpm prepare-bundle && pnpm build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Fairlight Live Web Controller",
+        "width": 640,
+        "height": 600,
+        "minWidth": 560,
+        "minHeight": 440,
+        "resizable": true,
+        "center": true,
+        "visible": false,
+        "backgroundColor": "#111318"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "wuXin",
+    "copyright": "MIT",
+    "category": "Utility",
+    "shortDescription": "Launcher for the Fairlight Live Web Controller",
+    "longDescription": "Runs the Fairlight Live Web Controller backend and shows the address to open on a tablet.",
+    "externalBin": ["binaries/node"],
+    "resources": {
+      "resources/server": "server",
+      "resources/web": "web",
+      "resources/NODE_LICENSE": "NODE_LICENSE",
+      "resources/FONT_LICENSE_BARLOW_CONDENSED": "FONT_LICENSE_BARLOW_CONDENSED",
+      "resources/FONT_LICENSE_IBM_PLEX_MONO": "FONT_LICENSE_IBM_PLEX_MONO"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}

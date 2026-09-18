@@ -288,8 +288,8 @@ Fader 滚轮与翻页滚轮共存规则:
 
 验收标准:
 
-- [ ] Rust 单测(设置、局域网地址选择、子进程状态机)、clippy、fmt 全绿;窗口前端(view-model 与组件)覆盖率达标;`ci.yml` 在 ubuntu 上继续全绿
-- [ ] Windows 安装包在开发机实装:无控制台窗口、托盘与窗口全部控件可用、改端口重启、关闭即隐藏、单实例、结束启动器后后端自行退出、`Exit` 干净、卸载无残留
-- [ ] `desktop.yml` 在 PR 上全绿且 artifact 可下载
-- [ ] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实 Fairlight Live、`Start with Windows` 注销重登生效、关机重启不残留
+- [x] Rust 单测(设置、局域网地址选择、子进程状态机)、clippy、fmt 全绿;窗口前端(view-model 与组件)覆盖率达标;`ci.yml` 在 ubuntu 上继续全绿
+- [x] Windows 安装包在开发机实装:无控制台窗口、托盘与窗口全部控件可用、改端口重启、关闭即隐藏、单实例、结束启动器后后端自行退出、`Exit` 干净、卸载无残留
+- [x] `desktop.yml` 在 PR 上全绿且 artifact 可下载
+- [x] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实 Fairlight Live、`Start with Windows` 注销重登生效(自启项不带参数,登录后显不显示窗口由 `Start hidden in the tray` 决定)、关机重启不残留
 - [ ] 合并后打第一个标签,Release 上同时出现镜像包与 Windows 安装包,GHCR 包为 public

@@ -15,6 +15,7 @@ Fairlight Live Web Controller:通过 Ember+ 协议远程控制 Blackmagic Design
 ```
 apps/server         后端:REST、socket.io 网关、Ember+ 客户端(TreeMapper 树发现)、命令行工具
 apps/web            前端:混音页、配置页
+apps/desktop        桌面启动器(Windows,Tauri 2):设置窗口 + 托盘,后端跑在它的子进程里
 packages/shared     共享类型与 zod 消息契约
 packages/test-utils Mock Ember+ Provider 等测试夹具
 scripts/            Shell 脚本(Docker 冒烟测试)

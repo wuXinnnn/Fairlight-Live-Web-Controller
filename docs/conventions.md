@@ -20,6 +20,11 @@ apps/
       store/         zustand stores
       lib/           socket 客户端、工具
     tests/           集成测试
+  desktop/           桌面启动器(Windows,Tauri 2)
+    src/             设置窗口(React,与 web 同一套工具链)
+    tests/           窗口的假实现夹具
+    scripts/         取 Node 运行时、铺服务端产物、生成图标、冒烟
+    src-tauri/       Rust 侧:进程监督、托盘、窗口生命周期、命令
 packages/
   shared/            前后端共享类型与 zod 消息契约
   test-utils/        Mock Ember+ Provider 等测试夹具
@@ -36,7 +41,8 @@ docker-compose.yml   拉取 GHCR 镜像、命名卷
 
 ## 语言与许可
 
-- 代码、注释、提交信息、PR 标题与正文、日志文案:**英文**
+- 代码、注释、提交信息、PR 标题与正文、日志文案:**英文**。Rust 同样如此,并且由 `cargo fmt` 统一格式、
+  `cargo clippy -D warnings` 把关
 - 前端固定 UI 文本:**英文**;仅设备或应用在运行时带入的动态文本(如通道名称)可保留原文
 - Agent 文档(AGENTS.md、CLAUDE.md、docs/)与 Agent 对话:**简体中文**
 - 新增依赖必须 MIT 或 MIT 兼容许可(项目将 MIT 开源);引入前确认 license 字段。字体是唯一的例外:Barlow Condensed 与 IBM Plex Mono 为 OFL-1.1,许可文本必须随产物一起分发——web 端放在 `apps/web/public/licenses/`,桌面安装包另铺一份
@@ -77,6 +83,9 @@ docker-compose.yml   拉取 GHCR 镜像、命名卷
 - 提交信息:Conventional Commits(`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`),英文
 - PR 标题与正文:英文
 - 不提交 `data/`、`node_modules/`、构建产物(`dist/`、`*.tsbuildinfo`)、覆盖率报告、`soak-reports/`、`.env*`、`docker-compose.override.yml`
+- 桌面启动器同样不提交任何二进制或生成物:`apps/desktop/src-tauri/` 下的 `binaries/`(下载的 Node 运行时)、
+  `resources/`(铺进安装包的服务端与 web 产物)、`icons/`(`tauri icon` 生成)、`target/`、`gen/`。
+  `Cargo.lock` 是入库的——它是可执行程序,依赖版本要可复现
 - 换行符由 `.gitattributes` 统一:默认与 `*.sh` 为 LF,`*.cmd` / `*.bat` 为 CRLF(cmd.exe 对 LF 文件里的 `goto` 与括号块处理不可靠)
 - `start.sh` 与 `scripts/*.sh` 带可执行位入库(`git update-index --chmod=+x`)
 

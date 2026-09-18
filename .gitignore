@@ -10,3 +10,10 @@ data/
 .specstory/
 soak-reports/
 docker-compose.override.yml
+
+# Desktop launcher: downloaded runtime, staged backend, generated icons, cargo output.
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/
+apps/desktop/src-tauri/icons/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
