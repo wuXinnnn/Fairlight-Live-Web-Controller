@@ -56,6 +56,13 @@ describe('the status line', () => {
     expect(screen.getByText('STARTING')).toBeInTheDocument();
   });
 
+  // The fourth state is the one nothing else here goes through, and it is the one whose lamp
+  // is meant to stay dark: not running is not the same as having gone wrong.
+  it('has a word for a backend that has not started', async () => {
+    await mount(new FakeLauncherApi(snapshot({ server: { kind: 'stopped' } })));
+    expect(screen.getByText('STOPPED')).toBeInTheDocument();
+  });
+
   it('copies the address it is showing', async () => {
     const api = await mount(new FakeLauncherApi());
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
