@@ -145,6 +145,16 @@ describe('the port field', () => {
     expect(api.applied).toEqual([{ version: 1, port: 3000, bindLan: true, startHidden: false }]);
   });
 
+  it('stops waiting when the apply turned out not to restart anything', async () => {
+    // The Rust side leaves a healthy backend alone when nothing it cares about changed, so
+    // no state event follows and the button has to let go by itself.
+    const api = await mount(new FakeLauncherApi());
+    setPort('3100');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByRole('button', { name: 'Apply' })).toBeInTheDocument();
+    expect(api.stateCalls).toBe(2);
+  });
+
   it('stops saying Restarting when the call is rejected', async () => {
     const api = new FakeLauncherApi();
     api.applyError = new Error('port 3100 is not usable');

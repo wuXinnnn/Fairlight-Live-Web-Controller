@@ -105,6 +105,12 @@ export function App({ api }: AppProps) {
                 autostartEnabled: fresh.autostartEnabled,
               },
         );
+        // Not every apply restarts -- changing only `Start hidden`, or applying the same
+        // settings to a healthy backend, does not. Nothing would then arrive to end the
+        // wait, so a settled state here is the signal.
+        if (isRestartSettled(fresh.server)) {
+          setRestarting(false);
+        }
       } catch {
         setRestarting(false);
       }

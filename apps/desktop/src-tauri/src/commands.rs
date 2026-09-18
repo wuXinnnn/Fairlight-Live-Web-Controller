@@ -125,6 +125,23 @@ pub fn launcher_state(app: AppHandle) -> LauncherStateDto {
     }
 }
 
+/// Whether applying these settings has to restart the backend.
+///
+/// Two reasons: something the backend was started with changed, or there is no backend to
+/// leave alone. The second is what makes Apply the way back from a failure -- without it,
+/// a backend that had died could only be restarted by changing the port to something else
+/// and back again. `start_hidden` is read at startup and nowhere else, so it never counts.
+fn should_restart(
+    previous: &LauncherSettings,
+    next: &LauncherSettings,
+    server: &ServerState,
+) -> bool {
+    if previous.port != next.port || previous.bind_lan != next.bind_lan {
+        return true;
+    }
+    !matches!(server, ServerState::Running { .. } | ServerState::Starting)
+}
+
 #[tauri::command]
 pub async fn apply_settings(app: AppHandle, settings: LauncherSettings) -> Result<(), String> {
     if !settings.is_valid() {
@@ -142,9 +159,7 @@ pub async fn apply_settings(app: AppHandle, settings: LauncherSettings) -> Resul
     settings::save(&state.settings_path, &settings)
         .map_err(|error| format!("could not save the settings: {error}"))?;
 
-    // Only the two things the backend is started with are worth a restart; start_hidden is
-    // read at startup and nowhere else.
-    if previous.port == settings.port && previous.bind_lan == settings.bind_lan {
+    if !should_restart(&previous, &settings, &state.supervisor.state()) {
         return Ok(());
     }
 
@@ -184,4 +199,71 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     quit_now(&app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::state::FailureReason;
+
+    fn settings(port: u16, bind_lan: bool) -> LauncherSettings {
+        LauncherSettings {
+            port,
+            bind_lan,
+            ..LauncherSettings::default()
+        }
+    }
+
+    const FAILED: ServerState = ServerState::Failed {
+        reason: FailureReason::ExitedWhileRunning,
+        exit_code: Some(1),
+        tail: Vec::new(),
+    };
+
+    #[test]
+    fn a_changed_port_or_binding_restarts() {
+        let running = ServerState::Running { port: 3000 };
+        assert!(should_restart(
+            &settings(3000, true),
+            &settings(3100, true),
+            &running
+        ));
+        assert!(should_restart(
+            &settings(3000, true),
+            &settings(3000, false),
+            &running
+        ));
+    }
+
+    #[test]
+    fn an_unchanged_setting_leaves_a_healthy_backend_alone() {
+        for server in [ServerState::Running { port: 3000 }, ServerState::Starting] {
+            assert!(!should_restart(
+                &settings(3000, true),
+                &settings(3000, true),
+                &server
+            ));
+        }
+    }
+
+    #[test]
+    fn an_unchanged_setting_still_brings_a_dead_backend_back() {
+        for server in [FAILED, ServerState::Stopped] {
+            assert!(should_restart(
+                &settings(3000, true),
+                &settings(3000, true),
+                &server
+            ));
+        }
+    }
+
+    #[test]
+    fn start_hidden_alone_never_restarts() {
+        let running = ServerState::Running { port: 3000 };
+        let hidden = LauncherSettings {
+            start_hidden: true,
+            ..settings(3000, true)
+        };
+        assert!(!should_restart(&settings(3000, true), &hidden, &running));
+    }
 }
