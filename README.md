@@ -148,7 +148,8 @@ Start it from the Start menu and a small window comes up:
 - the address to open on a tablet, with a **Copy** button next to it
 - **Port**, and whether other devices on the network may reach it; **Apply** restarts the
   backend on the new setting
-- **Start with Windows** and **Start hidden in the tray**
+- **Start with Windows**, and **Start hidden in the tray**, which decides whether any start,
+  including the one at login, shows this window or only the tray icon
 - **Open in browser**, **Hide to tray**, **Exit**, and the backend's log
 
 Open the address it shows on the tablet. Set the Ember+ endpoint there, in the mixer page's

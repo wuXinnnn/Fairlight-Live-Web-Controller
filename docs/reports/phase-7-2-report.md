@@ -645,6 +645,15 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
 
 这一条在 `a89e725`。
 
+### 11.2.6 评审后的补充(监督会话,合并前)
+
+| # | 事项 | 改法 |
+| --- | --- | --- |
+| 1 | 开机自启原本固定带 `--hidden`,于是只要勾了 `Start with Windows`,登录时一律无窗口,`Start hidden in the tray` 只对手动启动生效 | 自启项改为**不带任何参数**(`tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None)`),登录后显不显示窗口与手动启动一样由 `Start hidden in the tray` 决定;`--hidden` 保留为当次启动的命令行覆盖。第 4.7 节记录的注册表值从此不再带 `--hidden` |
+| 2 | `docs/architecture.md` 的窗口默认尺寸仍写 640×560,第 15 节改版后实际是 640×600 | 文档改为 640×600,并补一条两个启动复选框的分工 |
+
+用户在真机验收开机自启与隐藏启动时按新语义验:只勾 `Start with Windows` → 登录后窗口显示;两个都勾 → 登录后只有托盘图标。
+
 ### 11.3 明确评估过并否决的
 
 - **用 esbuild 把服务端打成单文件**:文件数能从 4500 降到个位数,但 `pino` 走 `thread-stream` + worker、

@@ -1,9 +1,10 @@
 //! The two command-line options the launcher takes.
 //!
-//! `--hidden` is what the autostart registration passes, so a machine that starts the
-//! launcher at login does not throw a window at the user. `--port` overrides the saved port
-//! for one run and exists for development: the saved default is 3000, which is also the port
-//! a checkout's `pnpm dev` uses.
+//! `--hidden` starts with the window hidden for this one run, whatever the saved
+//! `Start hidden in the tray` setting says; the startup entry does not pass it, because that
+//! setting is what decides how a login start looks. `--port` overrides the saved port for one
+//! run and exists for development: the saved default is 3000, which is also the port a
+//! checkout's `pnpm dev` uses.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CliOptions {

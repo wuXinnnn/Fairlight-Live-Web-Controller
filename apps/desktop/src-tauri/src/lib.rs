@@ -30,11 +30,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        // The argument is what the startup entry launches with, so a machine that starts the
-        // launcher at login gets the tray icon and not a window.
+        // The startup entry launches the executable with no arguments on purpose. Whether a
+        // login start shows the window or only the tray icon is decided by the saved
+        // `Start hidden in the tray` setting, the same way it is for a start from the Start
+        // menu -- one checkbox, one answer, however the launcher was started.
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            Some(vec!["--hidden"]),
+            None,
         ))
         .invoke_handler(tauri::generate_handler![
             commands::launcher_state,
