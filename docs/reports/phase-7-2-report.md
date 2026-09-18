@@ -9,10 +9,11 @@
 - Windows NSIS 安装包(按用户安装,不需要管理员权限),自带官方 Node 运行时与铺好的服务端、web 产物,
   目标机器不需要装任何东西。
 - 进程边界只有一条:子进程的 stdin 是启动器持有的管道。没有 Job Object,没有保活代码。
-- Rust 单测 63 条,窗口前端 47 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
+- Rust 单测 63 条,窗口前端 48 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
   窗口覆盖率远超 80% 门槛。
 - `ci.yml` / `soak.yml` / `docker.yml` 一字未动;Rust 全部在新增的 `desktop.yml` 里。
-- **实测中发现并修复了四个真实缺陷**(见第 11.1 节),其中一个会让整个进程模型不成立。
+- **实测中发现并修复了四个真实缺陷**(见第 11.1 节),其中一个会让整个进程模型不成立;
+  Cursor Bugbot 另报 3 条,全部成立并已修复(见第 11.2.5 节,其中一条与实测发现的是同一个问题)。
 - 全程没有改动真实 Fairlight Live 的任何参数,没有碰过任何推子。
 
 ## 2. 验收标准逐条核对
@@ -157,7 +158,7 @@ HTTP 服务确实关掉了(端口释放),但进程一直在,静止无 CPU,连它
 | `cargo test` | 63 passed |
 | `cargo clippy --all-targets -- -D warnings` | 干净 |
 | `cargo fmt --check` | 干净 |
-| `@flwc/desktop` vitest | 47 passed;语句 99.1% / 分支 89.5% / 函数 100% / 行 99.1%(门槛 80%) |
+| `@flwc/desktop` vitest | 48 passed;语句 99.13% / 分支 89.74% / 函数 100% / 行 99.13%(门槛 80%) |
 | 既有包 | shared 44、test-utils 23、server 287、web 497,覆盖率与合并前一致 |
 | 根 `pnpm lint` / `typecheck` / `test` / `build` | 全绿 |
 
@@ -340,7 +341,42 @@ processes      : launcher=0 node-under-install=0
 ports 3000/3100: False
 ```
 
-### 4.10 注销 / 关机(第 10 条)
+### 4.10 含评审修复的最终构建复验
+
+第 11.1 与 11.2.5 的修复都落在 Apply 这条路上,所以在最终代码上重新打了一次安装包
+(**27,980,384 字节 = 26.68 MiB**,装后仍是 4,526 个文件 / 116.0 MiB),重装后把受影响的几条又走了一遍。
+这一次在首次启动**之前**就把 `config.json` 预置成了 `127.0.0.1:9100`,全程没有再连过真台子:
+
+```
+status: RUNNING   port 3100: True
+--- kill the backend, then Apply unchanged ---
+FAILED: True
+Apply enabled: True
+RUNNING again: True
+--- change the port and Apply ---
+RUNNING on the new port: True
+3100 released: True  3200 listening: True
+launcher.json: { "version": 1, "port": 3200, "bindLan": true, "startHidden": false }
+address shown: http://192.168.50.115:3200
+```
+
+最后一行就是「改端口后地址栏仍显示旧端口」那条修复的现场证据。托盘也复验了一遍:
+
+```
+tray tooltip: Running at http://192.168.50.115:3200
+tray Exit: launcher gone=True backend gone=True port3200=False
+```
+
+然后卸载并再次清空残留,复查结果与第 4.9 条一致,并确认 9000 仍然只属于 Fairlight Live 本体:
+
+```
+install dir / %APPDATA% data / %LOCALAPPDATA% data / start menu / HKCU Run / uninstall key : gone
+launcher processes: 0   stray node procs: 0
+ports 3000/3100/3200 listening: False
+port 9000 owned by : Fairlight Live
+```
+
+### 4.11 注销 / 关机(第 10 条)
 
 **移交用户**。这条要真的注销和关机才能验,见第 13 节的验收清单。代码侧的依据:
 `RunEvent::ExitRequested` 与 `RunEvent::Exit` 都走 `stop()`;即使这两个事件因为系统强制结束而没有机会跑到,
@@ -519,6 +555,18 @@ _(待填)_
 | ⑧ | 日志事件没有 stdout / stderr 的区分 | 输出现在是一个文件、一条流;窗口本来也没有用它区分任何东西,留一个名不副实的字段不如去掉 |
 | ⑨ | Tauri 插件做不到「同一条 2.x 小版本线」 | 官方插件各有独立小版本线;改为全部钉精确版、JS 与 Rust 对齐,`Cargo.lock` 入库 |
 | ⑩ | `stage-server.mjs` 会保存并还原仓库根的 pnpm workspace 状态文件 | `pnpm deploy` 会把一次 filtered + production 安装记到根上,留着不管会让开发者下一条 `pnpm exec` 被提示清空 `node_modules` 重装。见第 3.3 节 |
+
+### 11.2.5 评审后的修订(Cursor Bugbot)
+
+Bugbot 在 `6baeef4` 上报了 3 条,全部处理完毕并在各自线程里回复。
+
+| # | Finding | 判断 | 改法与回归锁 |
+| --- | --- | --- | --- |
+| 1 | **Apply does not restart a failed backend**(High,`commands.rs`) | **成立**,而且是同一个问题——本机实测已经先一步发现并在 `969797c` 修掉了 | `should_restart(previous, next, server)`:设置变了**或**没有后端可留着不动就重启。四条单测覆盖「端口变」「绑定变」「都没变且健康」「都没变但已死」。窗口侧配套:一次不重启的 apply 不会有状态事件,所以改成用刷新回来的已落定状态来结束等待 |
+| 2 | **Startup can miss the running state**(Medium,`App.tsx`) | **成立**。事件处理器往一个还不存在的 snapshot 里合并,于是在 `launcher_state` 还在路上时到达的状态事件被丢掉。后端在几百毫秒内就绪是这里的常态而不是罕见情况,丢掉它会让窗口停在 STARTING 而台子其实已经起来了 | 服务器状态挪出 snapshot 单独存,snapshot 只在没有事件先到时提供它(`setServer((current) => current ?? loaded.server)`)。回归锁:一条把 `launcher_state` 挂起、期间发 Running 事件的用例——**对旧代码是红的**(已验证) |
+| 3 | **Settings update before disk save**(Medium,`commands.rs`) | **成立**。先写内存后写盘,写盘失败就会让内存与 `launcher.json` 不一致;而 `should_restart` 拿 previous 比对,于是下一次 Apply 会以为端口已经生效而跳过重启 | 顺序调成先 `settings::save` 再换内存 |
+
+第 2、3 条在 `dc80412`。
 
 ### 11.3 明确评估过并否决的
 
