@@ -3,7 +3,16 @@
 # --- base --------------------------------------------------------------------------------------
 # git is for emberplus-connection@0.3.1, whose asn1 dependency is hosted on GitHub rather than on
 # the registry. Only the two build stages need it; the runtime stage does not.
-FROM node:22-alpine AS base
+#
+# --platform=$BUILDPLATFORM: the build and deps stages run on the machine doing the building,
+# whatever the image is for. Everything they produce is platform-independent -- compiled
+# TypeScript, the Vite bundle, and a production node_modules with no native module in it (the
+# only platform-specific packages in the lockfile are build tooling: esbuild, rolldown,
+# lightningcss). Running these stages under emulation instead bought nothing and cost two
+# things: an arm64 build took its pnpm fetch through QEMU, and QEMU intermittently kills Node
+# there with "uncaught target signal 4 (Illegal instruction)", after which pnpm waits for a
+# worker that is never coming back. Only the runtime stage below is built for the target.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS base
 RUN apk add --no-cache git
 RUN corepack enable && corepack prepare pnpm@11.17.0 --activate
 WORKDIR /app

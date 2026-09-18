@@ -328,7 +328,11 @@ Tauri 插件,不写死 Windows 路径与注册表。
 
 ### Docker
 
-- `Dockerfile` 四个阶段:`base`(node:22-alpine + git + corepack pnpm)、`build`、`deps`、`runtime`。
+- `Dockerfile` 四个阶段:`base`(node:22-alpine + git + corepack pnpm)、`build`、`deps`、`runtime`。前三个阶段
+  `--platform=$BUILDPLATFORM`,在构建机上原生跑,只有 `runtime` 按目标平台构建:它们的产物(编译后的 TS、Vite
+  产物、没有任何原生模块的生产 `node_modules`)与平台无关,lockfile 里唯一平台相关的包全是构建工具(esbuild、
+  rolldown、lightningcss)。arm64 之前把 `pnpm fetch` 放在 QEMU 下跑,QEMU 会偶发用 `Illegal instruction` 杀掉
+  Node,之后 pnpm 等一个不会回来的 worker,整个构建卡死;原生构建既没有这个问题也快得多。
 - **依赖装法**:`pnpm fetch`(只要 lockfile)填虚拟store → `COPY . .` → `pnpm install --frozen-lockfile --offline`
   → `pnpm build`。不能按常规「先复制各 `package.json` 再 install」分层:workspace 安装会跑每个项目的 `prepare`,
   而 `packages/shared` 与 `packages/test-utils` 的 `prepare` 是 `tsc`,那时源码还没复制进来。
