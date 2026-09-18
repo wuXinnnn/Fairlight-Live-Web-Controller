@@ -1042,10 +1042,16 @@ input.page-rail__jump {
     #14161b;
 }
 
+/*
+ * The strip grid has three rows — header, ON key, controls — and a missing strip has nothing to
+ * put in the last two, so its body takes both: the dashed frame then reaches the same bottom edge
+ * as a live strip's controls, whatever the viewport made of the strip's height.
+ */
 .missing-channel-strip__body {
   display: flex;
-  min-height: 10rem;
+  min-height: 0;
   flex-direction: column;
+  grid-row: 2 / -1;
   align-items: center;
   justify-content: center;
   margin-top: 0.8rem;
@@ -1077,26 +1083,6 @@ input.page-rail__jump {
   letter-spacing: 0.08em;
   line-height: 1.45;
   text-align: center;
-}
-
-.missing-channel-strip__trace {
-  display: grid;
-  min-height: 0;
-  align-content: center;
-  gap: 1.4rem;
-  padding: 2.1rem 0.8rem;
-  opacity: 0.38;
-}
-
-.missing-channel-strip__trace i {
-  display: block;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--channel-accent) 62%, var(--line)),
-    transparent
-  );
 }
 
 /*
