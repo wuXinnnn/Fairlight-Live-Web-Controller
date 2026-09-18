@@ -23,8 +23,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
-      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
     }
   },
   "bundle": {
@@ -46,7 +46,9 @@
     "resources": {
       "resources/server": "server",
       "resources/web": "web",
-      "resources/NODE_LICENSE": "NODE_LICENSE"
+      "resources/NODE_LICENSE": "NODE_LICENSE",
+      "resources/FONT_LICENSE_BARLOW_CONDENSED": "FONT_LICENSE_BARLOW_CONDENSED",
+      "resources/FONT_LICENSE_IBM_PLEX_MONO": "FONT_LICENSE_IBM_PLEX_MONO"
     },
     "windows": {
       "nsis": {
