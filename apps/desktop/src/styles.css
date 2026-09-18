@@ -1,0 +1,221 @@
+/*
+  The colour tokens below are copied by value from apps/web/src/styles.css so the launcher
+  looks like the desk it launches. They are copied rather than imported because packages do
+  not reach into each other's source; if the mixer page's palette changes, change it here too.
+*/
+:root {
+  color-scheme: dark;
+  font-family: 'Aptos Narrow', 'Segoe UI', sans-serif;
+  color: #e8e4da;
+  background: #111318;
+  --surface-0: #111318;
+  --surface-1: #171a20;
+  --surface-2: #1d2027;
+  --surface-3: #272b34;
+  --line: #343945;
+  --line-strong: #4a505e;
+  --text: #e8e4da;
+  --text-dim: #969ba6;
+  --amber: #efa928;
+  --green: #66c987;
+  --red: #ff5d55;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text);
+  font-size: 13px;
+  /* The window is not resizable, so nothing here should ever need to scroll. */
+  overflow: hidden;
+  user-select: none;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  height: 100vh;
+}
+
+.loading {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-word {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.status-stopped {
+  color: var(--text-dim);
+}
+
+.status-starting {
+  color: var(--amber);
+}
+
+.status-running {
+  color: var(--green);
+}
+
+.status-failed {
+  color: var(--red);
+}
+
+.address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.address-url {
+  font-family: 'Consolas', monospace;
+  color: var(--text);
+  user-select: text;
+}
+
+.notice,
+.failure {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--amber);
+}
+
+.failure {
+  border-left-color: var(--red);
+}
+
+fieldset {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-1);
+}
+
+legend {
+  padding: 0 4px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.check + .check {
+  margin-top: 6px;
+}
+
+input[type='number'] {
+  width: 84px;
+  padding: 4px 6px;
+  background: var(--surface-0);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font: inherit;
+}
+
+button {
+  padding: 4px 12px;
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+button.danger {
+  border-color: var(--red);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+.log label {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.log textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  padding: 6px;
+  background: var(--surface-0);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  white-space: pre;
+  user-select: text;
+}
+
+.log-tail {
+  margin: 0;
+  max-height: 72px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--red);
+  color: var(--text);
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  user-select: text;
+}
+
+/* Hover belongs to devices that have a pointer; the mixer page makes the same distinction. */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    border-color: var(--amber);
+  }
+}
