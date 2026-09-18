@@ -188,8 +188,9 @@ pnpm test       # all packages, with coverage thresholds
 pnpm build      # production build; server serves the built frontend
 ```
 
-Both development servers listen on every interface, so a tablet can reach
-`http://<your machine>:5173` while you work.
+The Vite dev server listens on every interface and proxies `/api` and `/socket.io` to the
+backend, so a tablet can reach `http://<your machine>:5173` while you work. The backend itself
+stays on `127.0.0.1:3000` in development unless `HOST` is set.
 
 `pnpm dev` builds `@flwc/shared` first. If you change `packages/shared`, rerun it (or
 `pnpm --filter @flwc/shared build`) before the other packages see the new types.

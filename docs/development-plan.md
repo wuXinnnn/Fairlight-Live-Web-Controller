@@ -261,18 +261,18 @@ Fader 滚轮与翻页滚轮共存规则:
 - 进程生命周期:`SIGINT` / `SIGTERM` 走 `app.close()` 优雅退出(超时 `SHUTDOWN_TIMEOUT_MS` 后强制退出);`FLWC_EXIT_ON_STDIN_CLOSE=1` 时 stdin 关闭即退出,供桌面壳与进程管理器做进程边界
 - 环境变量:`EMBER_HOST` / `EMBER_PORT` 仅在配置文件不存在时作为种子写入配置文件,之后以文件为准,UI 始终可改;`FLWC_DATA_DIR` / `FLWC_WEB_ROOT` 覆盖数据目录与 web 产物目录,默认值不变;`HOST` / `PORT` 维持现状
 - Mock Provider 命令行工具(`pnpm --filter @flwc/server mock-provider --port <p> [--meters]`),供本地验证与无台子演示
-- 控制台启动脚本 `start.cmd` / `start.sh`:检查 Node 版本与构建产物,默认 `HOST=0.0.0.0`,前台运行
+- 控制台启动脚本 `start.cmd` / `start.sh`:检查 Node 版本与构建产物,读仓库根的 `.env`(Node `--env-file`,模板 `.env.example`,shell 变量优先于文件),没人指定 host 时补 `0.0.0.0`,前台运行
 - 多阶段 `Dockerfile`(`node:22-alpine`,运行阶段只含生产依赖,非 root,`HEALTHCHECK`,`/app/data` 挂卷)、`.dockerignore`、`docker-compose.yml`(拉取 GHCR 镜像,命名卷)、`scripts/docker-smoke.sh`(健康、种子写入、PUT 后重启仍保留、`docker stop` 时长)
 - `.github/workflows/docker.yml`:PR 构建 + 冒烟;`main` 推 `:main`;标签 `v*` 推 `:vX.Y.Z` / `:latest`(amd64 + arm64)并把 `docker save` 的离线镜像包挂到 Release;`ci.yml` 不改
 - README 按三态重写快速开始与配置表;`AGENTS.md`、`architecture.md`、`conventions.md` 全面核对与实际行为一致
 
 验收标准:
 
-- [ ] 单测与集成用例覆盖:优雅退出与 stdin 守护、种子值(缺失 / 存在 / 损坏 / 只读)、路径环境变量、种子写入后 PUT 覆盖并跨重启保留
-- [ ] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次
-- [ ] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实台子、Ctrl+C 退出;`docker compose` 指向真实台子并跨 `restart` / `down && up` 保留配置
-- [ ] 文档与实际行为一致(报告附逐行核对清单)
-- [ ] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/mock-provider.ts` 一项
+- [x] 单测与集成用例覆盖:优雅退出与 stdin 守护、种子值(缺失 / 存在 / 损坏 / 只读)、路径环境变量、种子写入后 PUT 覆盖并跨重启保留
+- [x] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次(合并后 `main` 首次推送成功,包自动为 public)
+- [x] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实台子、Ctrl+C 退出;`docker compose` 指向真实台子并跨 `restart` / `down && up` 保留配置
+- [x] 文档与实际行为一致(报告附逐行核对清单)
+- [x] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/mock-provider.ts` 一项
 
 ### 7.2 桌面启动器(Tauri,Windows)
 

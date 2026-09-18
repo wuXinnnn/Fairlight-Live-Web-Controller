@@ -239,7 +239,7 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 
 ### 进程生命周期(`apps/server/src/shutdown.ts`)
 
-- `main.ts` 只做接线:`start()` → `installShutdownHandlers(app, { logger })` → 按环境变量决定要不要看 stdin。
+- `main.ts` 只做接线,顺序是**先装处理器、后 `await start()`**:`deferredShutdownTarget()` 先顶着,`installShutdownHandlers(target, { logger })` 装好信号处理器,按环境变量决定要不要看 stdin,最后 `target.attach(app)`。不能反过来:`start()` 等的是 Ember 连接,台子连不上时树展开无限重试,那个 await 永远不返回,装在后面等于整个生命周期都没有处理器(实测 `docker stop -t 30` 等满 30 秒被 SIGKILL,改后 354 ms)。`attach` 之前收到信号直接 `exit(0)`——那时还没写过任何配置。
 - `SIGINT` / `SIGTERM` 走 `app.close()`(既有的 `onClose` 钩子会关 socket.io 并断开 Ember),完成后 `exit(0)`;
   超过 `SHUTDOWN_TIMEOUT_MS`(5000)未完成 `exit(1)`;关闭中再收到信号直接 `exit(130)`。信号用 `on` 注册,
   不用 `once`——否则第二个信号到不了处理器。
