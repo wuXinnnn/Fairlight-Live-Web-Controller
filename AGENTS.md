@@ -45,5 +45,5 @@ Dockerfile / docker-compose.yml / .dockerignore  容器交付
 - 标准命令见 `package.json` 根 scripts:`pnpm dev`(server 3000 + web 5173,web 通过 `/api` 代理到 3000)、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`。
 - Vite 开发服务器监听 `0.0.0.0:5173`,`localhost` 与 `127.0.0.1` 都可以访问,平板也能从局域网打开。后端 Fastify 默认监听 `127.0.0.1:3000`(`HOST` / `PORT` 可覆盖;启动脚本与容器把 `HOST` 设为 `0.0.0.0`)。
 - 云端 Agent 无法连接真实 Fairlight。当前后端启动不需要设备(仅 `/api/v1/health` 与静态托管);Ember+ host/port 为运行时配置。自动化测试一律用 Mock Provider(见 `packages/test-utils`)。
-- 手上没有台子时用 `pnpm --filter @flwc/server mock-provider --port 9100 --meters` 起一个常驻 Mock Provider(按最新树 dump 建树,可选合成电平),再把 `EMBER_HOST` / `EMBER_PORT` 指向它。
+- 手上没有 Fairlight Live 时用 `pnpm --filter @flwc/server mock-provider --port 9100 --meters` 起一个常驻 Mock Provider(按最新树 dump 建树,可选合成电平),再把 `EMBER_HOST` / `EMBER_PORT` 指向它。
 - `pnpm dev` 会先 build `@flwc/shared` 再并行起 server/web;若改了 `packages/shared` 需重跑该构建(或 `pnpm --filter @flwc/shared build`)其它包才能拿到最新类型。

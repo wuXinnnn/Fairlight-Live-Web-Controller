@@ -25,7 +25,7 @@ if [ -z "$IMAGE" ]; then
 fi
 
 # RFC 5737 documentation addresses. Nothing answers on them, which is the point: the server has to
-# come up and serve the UI with the desk unreachable.
+# come up and serve the UI with Fairlight Live unreachable.
 SEED_HOST='203.0.113.9'
 SEED_PORT='9001'
 PUT_HOST='203.0.113.10'
