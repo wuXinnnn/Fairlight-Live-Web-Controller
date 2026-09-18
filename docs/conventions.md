@@ -39,7 +39,7 @@ docker-compose.yml   拉取 GHCR 镜像、命名卷
 - 代码、注释、提交信息、PR 标题与正文、日志文案:**英文**
 - 前端固定 UI 文本:**英文**;仅设备或应用在运行时带入的动态文本(如通道名称)可保留原文
 - Agent 文档(AGENTS.md、CLAUDE.md、docs/)与 Agent 对话:**简体中文**
-- 新增依赖必须 MIT 或 MIT 兼容许可(项目将 MIT 开源);引入前确认 license 字段
+- 新增依赖必须 MIT 或 MIT 兼容许可(项目将 MIT 开源);引入前确认 license 字段。字体是唯一的例外:Barlow Condensed 与 IBM Plex Mono 为 OFL-1.1,许可文本必须随产物一起分发——web 端放在 `apps/web/public/licenses/`,桌面安装包另铺一份
 
 ## TypeScript
 
