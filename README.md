@@ -35,6 +35,7 @@ level metering and loudness readouts, backed by an extensible Web API.
 ```
 apps/server          Fastify backend: REST API, socket.io gateway, Ember+ client
 apps/web             React frontend: mixer page (/), view configuration page (/views)
+apps/desktop         Windows desktop launcher: Tauri shell (src-tauri) and its settings window
 packages/shared      Shared types and message contracts (zod schemas)
 packages/test-utils  Test fixtures (Mock Ember+ Provider)
 scripts/             Shell helpers (Docker smoke test)
@@ -138,8 +139,26 @@ mkdir -p ./flwc-data && sudo chown -R 1000:1000 ./flwc-data
 
 ## Desktop app
 
-A Windows desktop launcher with a tray icon is coming in Phase 7.2. Until then, use one of the
-two options above.
+The Windows installer on the [latest release](https://github.com/wuxinnnn/Fairlight-Live-Web-Controller/releases/latest)
+carries its own Node runtime and the built desk, so the machine needs nothing installed. It
+installs for the current user, without administrator rights.
+
+Start it from the Start menu and a small window comes up:
+
+- the address to open on a tablet, with a **Copy** button next to it
+- **Port**, and whether other devices on the network may reach it; **Apply** restarts the
+  backend on the new setting
+- **Start with Windows** and **Start hidden in the tray**
+- **Open in browser**, **Hide to tray**, **Exit**, and the backend's log
+
+Open the address it shows on the tablet. Set the Ember+ endpoint there, in the mixer page's
+CONNECTION panel; the launcher has no setting for it.
+
+Closing the window hides it to the tray. The tray icon's menu has **Open in browser**,
+**Show window** and **Exit**; only **Exit** stops the backend. Whatever happens to the
+launcher -- a crash, Task Manager, logging out, a power cut -- the backend goes with it.
+
+macOS and Linux builds are planned.
 
 ## Configuration
 
@@ -165,8 +184,11 @@ CONNECTION panel in the UI decide where Fairlight Live is, however the variables
 address in the UI is the normal way to do it; the variables exist so that a container has
 somewhere to point on its very first start.
 
-`config.json` holds the Ember+ endpoint and your views. It lives in `data/` in a checkout and in
-`/app/data` in the container, which is the directory the compose file mounts a volume on.
+`config.json` holds the Ember+ endpoint and your views. It lives in `data/` in a checkout, in
+`/app/data` in the container, which is the directory the compose file mounts a volume on, and in
+`%APPDATA%\io.github.wuxinnnn.flwc\data` under the desktop app. The desktop app keeps its own
+`launcher.json` -- port, network access, start hidden -- next to that, and writes the backend's
+log to `%LOCALAPPDATA%\io.github.wuxinnnn.flwc\logs\server.log`.
 
 ## Try it without Fairlight Live
 
@@ -196,6 +218,29 @@ stays on `127.0.0.1:3000` in development unless `HOST` is set.
 
 `pnpm dev` builds `@flwc/shared` first. If you change `packages/shared`, rerun it (or
 `pnpm --filter @flwc/shared build`) before the other packages see the new types.
+
+### The desktop launcher
+
+```bash
+pnpm desktop:dev      # builds the workspace, then runs the launcher against a dev window
+pnpm desktop:build    # produces the NSIS installer under apps/desktop/src-tauri/target
+```
+
+Both need the Rust toolchain, the MSVC build tools (Visual Studio's "Desktop development with
+C++" workload) and the WebView2 runtime, which Windows 11 already has. The first run downloads
+the Node runtime the installer ships and stages the built backend into `src-tauri/resources`;
+none of that is committed.
+
+The launcher's saved port is 3000, which is the port `pnpm dev` uses. Pass another one for a
+development run so the two do not collide:
+
+```bash
+pnpm --filter @flwc/desktop tauri dev -- -- --port 3100
+```
+
+In a development build the launcher keeps a console window of its own, because
+`windows_subsystem = "windows"` only applies to a release build. The installed application has
+none, and neither does the backend it starts.
 
 ## Documentation
 
