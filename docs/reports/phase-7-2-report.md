@@ -692,6 +692,14 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
    超时不在这个批次的范围内。但它确实是一颗定时炸弹,值得后续批次给这条用例一个显式的 `testTimeout`
    或者拆小。
 
+11. **`apps/server` 的一条既有集成测试也在 CI 上偶发超时**,与上一条同类但在另一个包。第 15 节那一轮推送时,
+    `tests/mixer.integration.test.ts > emits a snapshot when the provider adds and offlines a channel`
+    在第 185 行的 `expect.poll(...).toBeUndefined()` 上红了一次(`Matcher did not succeed in time`)。
+    **同一个提交的另一个 `ci` run 是绿的**,重跑也直接通过;本地 287/287 从未失败。`apps/server` 本批次
+    只加过 `package.json` 的 `files: ["dist"]` 三行,源码与测试一行未改。根因同上:`expect.poll` 用的是
+    默认超时,runner 一慢就不够。后续批次可以连同第 10 条一起处理——给这些跨进程的轮询断言一个显式的、
+    宽一些的 `timeout`。
+
 ## 13. 真机验收操作清单(移交用户)
 
 **安全约束**(照抄 6.4 报告第 6 节):本批次改的是交付方式与进程生命周期,**不会改动 Fairlight 的任何参数**;
