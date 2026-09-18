@@ -385,20 +385,24 @@ stdin 管道也会随启动器消失而断,后端照样退出——第 4.5 条�
 
 ## 5. CI 记录
 
-PR [#25](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/pull/25),最终提交 `dc80412`
-(评审修复)之后的一轮:
+PR [#25](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/pull/25)。下表是最后一条代码提交
+(`a89e725`,第 4 条评审修复)之后的那一轮,`71fd497`:
 
 | 工作流 | 结果 | run |
 | --- | --- | --- |
-| `ci`(ubuntu-latest,`push` 事件) | ✅ SUCCESS | [35330006888](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330006888) |
-| `ci`(ubuntu-latest,`pull_request` 事件) | ✅ SUCCESS | [35330008221](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008221) |
-| `docker` | ✅ SUCCESS | [35330008306](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008306) |
-| `desktop`(windows-latest) | ✅ SUCCESS,16 分 08 秒 | [35330008199](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008199) |
+| `ci`(ubuntu-latest,`push` 事件) | ✅ SUCCESS,2 分 20 秒 | [35333975199](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35333975199) |
+| `ci`(ubuntu-latest,`pull_request` 事件) | ✅ SUCCESS,2 分 20 秒 | [35333978100](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35333978100) |
+| `docker` | ✅ SUCCESS,1 分 19 秒 | [35333978113](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35333978113) |
+| `desktop`(windows-latest) | ✅ SUCCESS,5 分 16 秒 | [35333978202](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35333978202) |
+| Cursor Bugbot | ✅ pass,无新 finding | — |
+
+第一次跑 `desktop` 用了 **16 分 08 秒**([35330008199](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008199),
+下面 artifact 实装验证用的就是它的产物);cargo 缓存建立之后降到 **5–6 分钟**。
 
 **`ci` 在 ubuntu 上继续全绿**,这就是「`@flwc/desktop` 没有把 cargo 带进根脚本」的证明:那台 runner 上
 没有 Tauri 需要的任何系统库,而 `@flwc/desktop` 的 `build` 只是 `vite build`。
 
-`desktop` job 的步骤顺序与结果:
+`desktop` job 的步骤顺序与结果(每一轮都相同):
 
 | 步骤 | 结果 |
 | --- | --- |
