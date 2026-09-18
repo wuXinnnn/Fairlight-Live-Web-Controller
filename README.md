@@ -208,4 +208,8 @@ Developer documentation lives in [`docs/`](docs/) (written in Simplified Chinese
 
 ## License
 
-[MIT](LICENSE). All dependencies are MIT or MIT-compatible.
+[MIT](LICENSE). All code dependencies are MIT or MIT-compatible.
+
+The Barlow Condensed and IBM Plex Mono typefaces are used under the
+[SIL Open Font License 1.1](https://openfontlicense.org/). Their licence texts are served with the
+page under [`/licenses/`](apps/web/public/licenses/) and ship inside the desktop installer.
