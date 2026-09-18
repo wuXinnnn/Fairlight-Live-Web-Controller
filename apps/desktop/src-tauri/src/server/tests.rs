@@ -6,7 +6,7 @@
 use super::ports::{
     ChildHandle, Clock, EventSink, HealthProbe, LaunchPlan, LogPump, ProcessSpawner,
 };
-use super::state::{FailureReason, ServerState, Stream};
+use super::state::{FailureReason, ServerState};
 use super::{Step, Supervisor, EXIT_WAIT_MS, HEALTH_POLL_MS, HEALTH_TIMEOUT_MS};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -29,8 +29,7 @@ struct FakeChild {
     exits_on_stdin_close: bool,
     polls: u32,
     flags: ChildFlags,
-    stdout: Option<Vec<String>>,
-    stderr: Option<Vec<String>>,
+    output: Option<Vec<String>>,
 }
 
 impl FakeChild {
@@ -41,8 +40,7 @@ impl FakeChild {
             exits_on_stdin_close: true,
             polls: 0,
             flags,
-            stdout: None,
-            stderr: None,
+            output: None,
         }
     }
 
@@ -58,13 +56,8 @@ impl FakeChild {
         self
     }
 
-    fn with_stderr(mut self, lines: &[&str]) -> Self {
-        self.stderr = Some(lines.iter().map(|line| (*line).to_owned()).collect());
-        self
-    }
-
-    fn with_stdout(mut self, lines: &[&str]) -> Self {
-        self.stdout = Some(lines.iter().map(|line| (*line).to_owned()).collect());
+    fn with_output(mut self, lines: &[&str]) -> Self {
+        self.output = Some(lines.iter().map(|line| (*line).to_owned()).collect());
         self
     }
 }
@@ -93,14 +86,8 @@ impl ChildHandle for FakeChild {
         self.exit_code = None;
     }
 
-    fn take_stdout(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>> {
-        self.stdout
-            .take()
-            .map(|lines| Box::new(lines.into_iter()) as Box<dyn Iterator<Item = String> + Send>)
-    }
-
-    fn take_stderr(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>> {
-        self.stderr
+    fn take_output(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>> {
+        self.output
             .take()
             .map(|lines| Box::new(lines.into_iter()) as Box<dyn Iterator<Item = String> + Send>)
     }
@@ -192,7 +179,7 @@ impl Clock for FakeClock {
 #[derive(Default)]
 struct RecordingSink {
     states: Mutex<Vec<ServerState>>,
-    lines: Mutex<Vec<(Stream, String)>>,
+    lines: Mutex<Vec<String>>,
 }
 
 impl RecordingSink {
@@ -200,7 +187,7 @@ impl RecordingSink {
         self.states.lock().expect("states").clone()
     }
 
-    fn lines(&self) -> Vec<(Stream, String)> {
+    fn lines(&self) -> Vec<String> {
         self.lines.lock().expect("lines").clone()
     }
 }
@@ -210,11 +197,8 @@ impl EventSink for RecordingSink {
         self.states.lock().expect("states").push(state.clone());
     }
 
-    fn log_line(&self, stream: Stream, line: &str) {
-        self.lines
-            .lock()
-            .expect("lines")
-            .push((stream, line.to_owned()));
+    fn log_line(&self, line: &str) {
+        self.lines.lock().expect("lines").push(line.to_owned());
     }
 }
 
@@ -345,7 +329,7 @@ fn a_child_that_exits_before_it_is_ready_fails_with_its_output() {
     let harness = harness(ScriptedProbe::never());
     harness
         .spawner
-        .queue(Ok(harness.child().exiting_after(1, Some(1)).with_stderr(
+        .queue(Ok(harness.child().exiting_after(1, Some(1)).with_output(
             &["listen EADDRINUSE", "at Server.setupListenHandle"],
         )));
 
@@ -531,16 +515,14 @@ fn output_reaches_both_the_window_and_the_ring() {
     let harness = harness(ScriptedProbe::ready_from(1));
     harness.spawner.queue(Ok(harness
         .child()
-        .with_stdout(&["{\"msg\":\"Server listening\"}"])
-        .with_stderr(&["a warning"])));
+        .with_output(&["{\"msg\":\"Server listening\"}", "a warning"])));
 
     harness.supervisor.start(&plan());
 
     let lines = harness.sink.lines();
-    assert_eq!(lines[0].0, Stream::Stdout);
-    assert!(lines[0].1.contains("Server listening"));
-    assert_eq!(lines[1], (Stream::Stderr, "a warning".to_owned()));
-    assert_eq!(harness.supervisor.log_tail(10).len(), 2);
+    assert!(lines[0].contains("Server listening"));
+    assert_eq!(lines[1], "a warning");
+    assert_eq!(harness.supervisor.log_tail(10), lines);
 }
 
 #[test]
@@ -548,10 +530,10 @@ fn each_run_starts_with_an_empty_log() {
     let harness = harness(ScriptedProbe::ready_from(1));
     harness
         .spawner
-        .queue(Ok(harness.child().with_stdout(&["first run"])));
+        .queue(Ok(harness.child().with_output(&["first run"])));
     harness
         .spawner
-        .queue(Ok(harness.child().with_stdout(&["second run"])));
+        .queue(Ok(harness.child().with_output(&["second run"])));
 
     harness.supervisor.start(&plan());
     harness.supervisor.restart(&plan());

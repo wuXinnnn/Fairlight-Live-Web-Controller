@@ -31,8 +31,8 @@ export interface LauncherSnapshot {
   notice: string | null;
 }
 
+/** One line of the backend's log, as it is appended to server.log. */
 export interface LogEvent {
-  stream: 'stdout' | 'stderr';
   line: string;
 }
 

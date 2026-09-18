@@ -174,7 +174,7 @@ describe('the log pane', () => {
   it('appends lines as they arrive and scrolls to the bottom', async () => {
     const api = await mount(new FakeLauncherApi());
     act(() => api.emitLog('Server listening'));
-    act(() => api.emitLog('a warning', 'stderr'));
+    act(() => api.emitLog('a warning'));
 
     const pane = screen.getByLabelText('Server log');
     expect(pane).toHaveValue('Server listening\na warning');

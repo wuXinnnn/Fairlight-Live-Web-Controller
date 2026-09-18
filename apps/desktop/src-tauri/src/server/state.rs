@@ -41,14 +41,6 @@ pub enum ServerState {
     },
 }
 
-/// Which pipe a log line came from, so the window can mark the noisy one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Stream {
-    Stdout,
-    Stderr,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,17 +76,5 @@ mod tests {
         })
         .expect("serialise");
         assert!(json.contains(r#""exitCode":null"#));
-    }
-
-    #[test]
-    fn stream_names_are_lower_case() {
-        assert_eq!(
-            serde_json::to_string(&Stream::Stdout).unwrap(),
-            r#""stdout""#
-        );
-        assert_eq!(
-            serde_json::to_string(&Stream::Stderr).unwrap(),
-            r#""stderr""#
-        );
     }
 }

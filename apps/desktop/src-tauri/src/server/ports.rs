@@ -4,7 +4,7 @@
 //! what lets the whole state machine be unit tested with fakes, on any platform, with no
 //! AppHandle, no real process and no real clock. The real implementations live in bridge.rs.
 
-use super::state::{ServerState, Stream};
+use super::state::ServerState;
 use std::path::PathBuf;
 
 /// Everything that varies between one launch and the next.
@@ -48,8 +48,9 @@ pub trait ChildHandle: Send + 'static {
     /// `None` if it was terminated rather than exiting on its own.
     fn try_wait(&mut self) -> Option<Option<i32>>;
     fn kill(&mut self);
-    fn take_stdout(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>>;
-    fn take_stderr(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>>;
+    /// The backend's log, one line at a time, ending when the process does. It is not a pipe:
+    /// the backend writes straight to its log file and this reads that file (see bridge.rs).
+    fn take_output(&mut self) -> Option<Box<dyn Iterator<Item = String> + Send>>;
 }
 
 pub trait ProcessSpawner: Send + Sync + 'static {
@@ -64,11 +65,8 @@ pub trait HealthProbe: Send + Sync + 'static {
 }
 
 pub trait EventSink: Send + Sync + 'static {
-    /// A new run is beginning. The on-disk log belongs to the current process, so this is
-    /// where it is truncated; a sink that has no log file has nothing to do here.
-    fn run_started(&self) {}
     fn state_changed(&self, state: &ServerState);
-    fn log_line(&self, stream: Stream, line: &str);
+    fn log_line(&self, line: &str);
 }
 
 pub trait Clock: Send + Sync + 'static {

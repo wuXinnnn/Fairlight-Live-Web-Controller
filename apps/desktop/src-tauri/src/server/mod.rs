@@ -15,7 +15,7 @@ pub mod state;
 
 use ports::{ChildHandle, Clock, EventSink, HealthProbe, LaunchPlan, LogPump, ProcessSpawner};
 use ring::LogRing;
-use state::{FailureReason, ServerState, Stream};
+use state::{FailureReason, ServerState};
 use std::sync::{Arc, Mutex};
 
 /// How often the readiness probe runs, and how long it may keep failing. Phase 7.1 measured
@@ -62,9 +62,9 @@ impl<Ev: EventSink> LogHub<Ev> {
         }
     }
 
-    fn record(&self, stream: Stream, line: String) {
+    fn record(&self, line: String) {
         self.ring.lock().expect("log ring").push(line.clone());
-        self.sink.log_line(stream, &line);
+        self.sink.log_line(&line);
     }
 
     fn tail(&self, count: usize) -> Vec<String> {
@@ -140,7 +140,6 @@ where
     pub fn start(&self, plan: &LaunchPlan) -> u64 {
         // Each run gets a clean log: the window shows the current process, not the last one.
         self.hub.clear();
-        self.hub.sink.run_started();
 
         // Spawning and draining happen outside the lock, so nothing that can block or call
         // back into the app is done while the supervisor state is held.
@@ -148,7 +147,7 @@ where
 
         let (generation, state) = match spawned {
             Ok(mut child) => {
-                self.attach_streams(&mut child);
+                self.attach_output(&mut child);
                 let started_at_ms = self.clock.now_ms();
                 let mut inner = self.inner.lock().expect("supervisor");
                 inner.generation += 1;
@@ -159,7 +158,7 @@ where
                 (inner.generation, ServerState::Starting)
             }
             Err(message) => {
-                self.hub.record(Stream::Stderr, message);
+                self.hub.record(message);
                 let failed = ServerState::Failed {
                     reason: FailureReason::SpawnFailed,
                     exit_code: None,
@@ -259,16 +258,13 @@ where
         self.start(plan)
     }
 
-    fn attach_streams(&self, child: &mut Box<dyn ChildHandle>) {
-        for (stream, lines) in [
-            (Stream::Stdout, child.take_stdout()),
-            (Stream::Stderr, child.take_stderr()),
-        ] {
-            let Some(lines) = lines else { continue };
-            let hub = Arc::clone(&self.hub);
-            self.pump
-                .pump(lines, Box::new(move |line| hub.record(stream, line)));
-        }
+    fn attach_output(&self, child: &mut Box<dyn ChildHandle>) {
+        let Some(lines) = child.take_output() else {
+            return;
+        };
+        let hub = Arc::clone(&self.hub);
+        self.pump
+            .pump(lines, Box::new(move |line| hub.record(line)));
     }
 
     fn kill_current(&self, generation: u64) {

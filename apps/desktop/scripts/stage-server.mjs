@@ -11,7 +11,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, lstat, mkdir, readdir, rm } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,6 +42,33 @@ const REQUIRED_IN_STAGE = [
   join(serverStage, 'node_modules', 'fastify', 'package.json'),
   join(webStage, 'index.html'),
 ];
+
+/**
+ * pnpm's deploy runs a filtered, production-only install at the workspace root and records
+ * that as the root's install state. Left behind, the next `pnpm exec` or `pnpm run` in this
+ * checkout decides the workspace is stale and offers to purge node_modules and reinstall
+ * without dev dependencies. The state files are put back exactly as they were.
+ */
+async function withWorkspaceStatePreserved(body) {
+  const modules = join(repoRoot, 'node_modules');
+  const isState = (name) => name.startsWith('.pnpm-workspace-state') && name.endsWith('.json');
+  const before = (await readdir(modules).catch(() => [])).filter(isState);
+  const saved = await Promise.all(
+    before.map(async (name) => [name, await readFile(join(modules, name))]),
+  );
+
+  try {
+    return await body();
+  } finally {
+    for (const [name, contents] of saved) {
+      await writeFile(join(modules, name), contents);
+    }
+    const after = (await readdir(modules).catch(() => [])).filter(isState);
+    for (const name of after.filter((name) => !before.includes(name))) {
+      await rm(join(modules, name), { force: true });
+    }
+  }
+}
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
@@ -89,20 +116,22 @@ async function main() {
   // --legacy: pnpm 11.17 still refuses a deploy of a workspace package that is not injected.
   // --ignore-scripts: @flwc/shared's `prepare` runs tsc, and --prod does not install it.
   // node-linker=hoisted + package-import-method=copy: real directories, no link farm.
-  run(
-    'pnpm',
-    [
-      '--filter',
-      '@flwc/server',
-      'deploy',
-      '--prod',
-      '--legacy',
-      '--ignore-scripts',
-      '--config.node-linker=hoisted',
-      '--config.package-import-method=copy',
-      serverStage,
-    ],
-    repoRoot,
+  await withWorkspaceStatePreserved(() =>
+    run(
+      'pnpm',
+      [
+        '--filter',
+        '@flwc/server',
+        'deploy',
+        '--prod',
+        '--legacy',
+        '--ignore-scripts',
+        '--config.node-linker=hoisted',
+        '--config.package-import-method=copy',
+        serverStage,
+      ],
+      repoRoot,
+    ),
   );
 
   await cp(join(repoRoot, 'apps', 'web', 'dist'), webStage, { recursive: true });

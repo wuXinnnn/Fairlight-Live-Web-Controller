@@ -101,9 +101,9 @@ export class FakeLauncherApi implements LauncherApi {
   }
 
   /** Pushes a log line the way the Rust side's `server-log` event would. */
-  emitLog(line: string, stream: LogEvent['stream'] = 'stdout'): void {
+  emitLog(line: string): void {
     for (const listener of this.logListeners) {
-      listener({ stream, line });
+      listener({ line });
     }
   }
 }
