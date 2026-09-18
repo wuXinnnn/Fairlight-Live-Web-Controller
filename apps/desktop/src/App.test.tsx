@@ -34,6 +34,22 @@ describe('the status line', () => {
     expect(screen.getByText('http://localhost:3100')).toBeInTheDocument();
   });
 
+  it('keeps a state that arrived before the first snapshot did', async () => {
+    // The backend reaching Running within the first few hundred milliseconds is the normal
+    // case. Dropping that event would leave the window on STARTING over a working desk.
+    const api = new FakeLauncherApi(snapshot({ server: { kind: 'starting' } }));
+    api.deferLauncherState = true;
+    render(<App api={api} />);
+    await waitFor(() => expect(api.stateCalls).toBe(1));
+
+    act(() => api.emitState({ kind: 'running', port: 3000 }));
+    await act(async () => {
+      api.releaseLauncherState();
+    });
+
+    expect(await screen.findByText('RUNNING')).toBeInTheDocument();
+  });
+
   it('follows the server-state event', async () => {
     const api = await mount(new FakeLauncherApi());
     act(() => api.emitState({ kind: 'starting' }));

@@ -47,10 +47,24 @@ export class FakeLauncherApi implements LauncherApi {
 
   /** Every `launcher_state` call, so a test can tell the mount from a later refresh. */
   stateCalls = 0;
+  /** When set, `launcherState` waits for `releaseLauncherState`, so a test can land an
+   * event while the first call is still in flight. */
+  deferLauncherState = false;
+  private release: (() => void) | null = null;
 
   launcherState(): Promise<LauncherSnapshot> {
     this.stateCalls += 1;
-    return Promise.resolve(this.current);
+    if (!this.deferLauncherState) {
+      return Promise.resolve(this.current);
+    }
+    return new Promise((resolve) => {
+      this.release = () => resolve(this.current);
+    });
+  }
+
+  releaseLauncherState(): void {
+    this.release?.();
+    this.release = null;
   }
 
   /** Changes what the next `launcher_state` will answer, the way a restart would. */

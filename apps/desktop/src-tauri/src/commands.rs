@@ -149,15 +149,14 @@ pub async fn apply_settings(app: AppHandle, settings: LauncherSettings) -> Resul
     }
 
     let state = Arc::clone(&launcher(&app));
-    let previous = {
-        let mut held = state.settings.lock().expect("settings");
-        let previous = *held;
-        *held = settings;
-        previous
-    };
+    let previous = current_settings(&app);
 
+    // Disk first. Putting the new settings in memory before the write succeeds would leave
+    // this process believing something the file does not say, and the next Apply would then
+    // compare against settings that were never saved and skip a restart that was needed.
     settings::save(&state.settings_path, &settings)
         .map_err(|error| format!("could not save the settings: {error}"))?;
+    *state.settings.lock().expect("settings") = settings;
 
     if !should_restart(&previous, &settings, &state.supervisor.state()) {
         return Ok(());

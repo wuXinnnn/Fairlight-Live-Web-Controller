@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LauncherApi, LauncherSnapshot, LauncherSettings } from './launcher-api.js';
+import type {
+  LauncherApi,
+  LauncherSettings,
+  LauncherSnapshot,
+  ServerState,
+} from './launcher-api.js';
 import { createTauriLauncherApi } from './tauri-api.js';
 import {
   appendLine,
@@ -24,6 +29,13 @@ interface AppProps {
 export function App({ api }: AppProps) {
   const [launcher] = useState<LauncherApi>(() => api ?? createTauriLauncherApi());
   const [snapshot, setSnapshot] = useState<LauncherSnapshot | null>(null);
+  /**
+   * Kept out of the snapshot because it has its own source of truth. A `server-state` event
+   * can land while `launcher_state` is still in flight -- the backend reaching Running
+   * within the first few hundred milliseconds is the normal case, not a rare one -- and the
+   * event is by definition newer than the snapshot that was already on its way.
+   */
+  const [server, setServer] = useState<ServerState | null>(null);
   const [draft, setDraft] = useState<Draft>({ portText: '', bindLan: true });
   const [restarting, setRestarting] = useState(false);
   const [log, setLog] = useState<string[]>([]);
@@ -37,9 +49,9 @@ export function App({ api }: AppProps) {
 
     const load = async () => {
       unsubscribes.push(
-        await launcher.onServerState((server) => {
-          setSnapshot((current) => (current === null ? current : { ...current, server }));
-          if (isRestartSettled(server)) {
+        await launcher.onServerState((next) => {
+          setServer(next);
+          if (isRestartSettled(next)) {
             setRestarting(false);
           }
         }),
@@ -57,6 +69,8 @@ export function App({ api }: AppProps) {
       setSnapshot(loaded);
       setDraft(draftFrom(loaded.settings));
       setLog(trimLines(loaded.log));
+      // Only if no event beat the snapshot here.
+      setServer((current) => current ?? loaded.server);
     };
 
     void load();
@@ -126,11 +140,12 @@ export function App({ api }: AppProps) {
     );
   }
 
-  const status = statusLabel(snapshot.server);
+  const serverState = server ?? snapshot.server;
+  const status = statusLabel(serverState);
   const address = displayUrl(snapshot);
-  const summary = failureSummary(snapshot.server);
-  const tail = failureTail(snapshot.server);
-  const applyAvailable = canApply(draft, snapshot.settings, restarting, snapshot.server);
+  const summary = failureSummary(serverState);
+  const tail = failureTail(serverState);
+  const applyAvailable = canApply(draft, snapshot.settings, restarting, serverState);
 
   const onApply = () => {
     const settings = settingsFrom(draft, snapshot.settings);
