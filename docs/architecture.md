@@ -317,6 +317,11 @@ Tauri 插件,不写死 Windows 路径与注册表。
   CONNECTION 面板管理。
 - **可测性**:`src-tauri/src/server/` 不引用 `tauri`,进程、探测、时钟、事件都是 trait;状态机是一个可以
   单步调用的同步 `tick()`。真实实现集中在 `bridge.rs`。
+- **窗口的样子**:与混音页同一套「工业控制台」语言——Barlow Condensed 做标题、IBM Plex Mono 做全部小标签
+  与读数、几乎零圆角、琥珀强调色、状态用指示灯。色板按值抄自 `apps/web/src/styles.css`(跨包不能 import
+  CSS,改了一边要改另一边);字体走 `@fontsource`,随 Vite 构建打进产物,离线可用,两款都是 OFL-1.1,
+  许可文本随安装包一起分发。窗口布局是与混音页相同的 grid 三行外壳(分格 header / 可滚动内容区 /
+  动作条),可缩放,默认 640×560、最小 560×440——只有中间那一行滚动,文档本身从不滚动。
 
 ### Docker
 
