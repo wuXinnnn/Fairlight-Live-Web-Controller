@@ -9,6 +9,12 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# A Windows Rust build is slow and there is no point finishing one for a commit that has
+# already been superseded. A tag build is never cancelled: it is the one that publishes.
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   desktop:
     # One entry today. Adding macOS or Linux later is a matter of appending to this list and
