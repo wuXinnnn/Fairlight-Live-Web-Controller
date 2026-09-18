@@ -11,7 +11,9 @@
     "build": "pnpm -r --if-present build",
     "lint": "eslint . && prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "desktop:dev": "pnpm build && pnpm --filter @flwc/desktop tauri dev",
+    "desktop:build": "pnpm build && pnpm --filter @flwc/desktop tauri build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
