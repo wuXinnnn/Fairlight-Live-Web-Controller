@@ -133,7 +133,7 @@ export function App({ api }: AppProps) {
 
   if (snapshot === null) {
     return (
-      <main className="shell">
+      <main className="shell shell--loading">
         <p className="loading">Starting the launcher&#8230;</p>
       </main>
     );
@@ -176,86 +176,160 @@ export function App({ api }: AppProps) {
 
   return (
     <main className="shell">
-      <header className="status">
-        <p className={`status-word status-${status.toLowerCase()}`}>{status}</p>
-        <div className="address">
-          <span className="address-url">{address}</span>
-          <button type="button" onClick={onCopy}>
+      <header className="console-header">
+        <div className="console-brand">
+          <span className="console-brand__eyebrow">FAIRLIGHT LIVE</span>
+          <h1>LAUNCHER</h1>
+        </div>
+        {/* The live region wraps the word, so a state change is announced and not only painted. */}
+        <div className={`console-status is-${status.toLowerCase()}`} role="status">
+          <span className="console-status__lamp" aria-hidden="true" />
+          <span>{status}</span>
+        </div>
+        <div className="console-address">
+          <span className="console-address__url">{address}</span>
+          <button
+            type="button"
+            className={`utility-button console-address__copy${
+              copiedUrl === address ? ' is-confirmed' : ''
+            }`}
+            onClick={onCopy}
+          >
             {copiedUrl === address ? 'Copied' : 'Copy'}
           </button>
         </div>
       </header>
 
-      {snapshot.notice !== null && <p className="notice">{snapshot.notice}</p>}
-      {summary !== null && <p className="failure">{summary}</p>}
+      <div className="console-body">
+        <div className="console-stack">
+          {snapshot.notice !== null && (
+            <div className="console-banner" role="status">
+              <strong>NOTICE</strong>
+              <span>{snapshot.notice}</span>
+            </div>
+          )}
+          {summary !== null && (
+            <div className="console-banner console-banner--failure" role="alert">
+              <strong>FAILURE</strong>
+              <span>{summary}</span>
+            </div>
+          )}
 
-      <fieldset>
-        <legend>Server</legend>
-        <div className="row">
-          <label htmlFor="port">Port</label>
-          <input
-            id="port"
-            type="number"
-            min={1}
-            max={65535}
-            value={draft.portText}
-            onChange={(event) => setDraft({ ...draft, portText: event.target.value })}
-          />
-          <button type="button" onClick={onApply} disabled={!applyAvailable}>
-            {applyLabel(restarting)}
-          </button>
+          <section className="console-section">
+            <div className="workbench-label">
+              <span>01</span>
+              <h2>Server</h2>
+            </div>
+            <div className="console-field">
+              <label htmlFor="port">Port</label>
+              <div className="console-field__control">
+                <input
+                  id="port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={draft.portText}
+                  onChange={(event) => setDraft({ ...draft, portText: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={onApply}
+                  disabled={!applyAvailable}
+                >
+                  {applyLabel(restarting)}
+                </button>
+              </div>
+            </div>
+            <label className={`console-check${draft.bindLan ? ' is-checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={draft.bindLan}
+                onChange={(event) => setDraft({ ...draft, bindLan: event.target.checked })}
+              />
+              <span className="console-check__box" aria-hidden="true" />
+              Allow access from other devices on the network
+            </label>
+          </section>
+
+          <section className="console-section">
+            <div className="workbench-label">
+              <span>02</span>
+              <h2>Startup</h2>
+            </div>
+            <label className={`console-check${snapshot.autostartEnabled ? ' is-checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={snapshot.autostartEnabled}
+                onChange={(event) => onAutostart(event.target.checked)}
+              />
+              <span className="console-check__box" aria-hidden="true" />
+              Start with Windows
+            </label>
+            <label className={`console-check${snapshot.settings.startHidden ? ' is-checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={snapshot.settings.startHidden}
+                onChange={(event) => onStartHidden(event.target.checked)}
+              />
+              <span className="console-check__box" aria-hidden="true" />
+              Start hidden in the tray
+            </label>
+          </section>
         </div>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={draft.bindLan}
-            onChange={(event) => setDraft({ ...draft, bindLan: event.target.checked })}
-          />
-          Allow access from other devices on the network
-        </label>
-      </fieldset>
 
-      <fieldset>
-        <legend>Startup</legend>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={snapshot.autostartEnabled}
-            onChange={(event) => onAutostart(event.target.checked)}
+        <section className="console-section console-section--log">
+          <div className="workbench-label">
+            <span>03</span>
+            {/*
+              The heading is the pane's label. One string does both jobs, so the section is
+              not titled twice over in a window this size.
+            */}
+            <h2>
+              <label htmlFor="server-log">Server log</label>
+            </h2>
+          </div>
+          <textarea
+            id="server-log"
+            className="console-log__pane"
+            ref={logRef}
+            readOnly
+            value={log.join('\n')}
           />
-          Start with Windows
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={snapshot.settings.startHidden}
-            onChange={(event) => onStartHidden(event.target.checked)}
-          />
-          Start hidden in the tray
-        </label>
-      </fieldset>
-
-      <div className="actions">
-        <button type="button" onClick={() => void launcher.openInBrowser()}>
-          Open in browser
-        </button>
-        <button type="button" onClick={() => void launcher.hideWindow()}>
-          Hide to tray
-        </button>
-        <button type="button" className="danger" onClick={() => void launcher.quit()}>
-          Exit
-        </button>
+          {tail.length > 0 && (
+            <pre className="console-log__tail" aria-label="Last output before the failure">
+              {tail.join('\n')}
+            </pre>
+          )}
+        </section>
       </div>
 
-      <section className="log">
-        <label htmlFor="server-log">Server log</label>
-        <textarea id="server-log" ref={logRef} readOnly value={log.join('\n')} />
-        {tail.length > 0 && (
-          <pre className="log-tail" aria-label="Last output before the failure">
-            {tail.join('\n')}
-          </pre>
-        )}
-      </section>
+      <footer className="console-footer">
+        <div className="console-footer__group">
+          <button
+            type="button"
+            className="utility-button"
+            onClick={() => void launcher.openInBrowser()}
+          >
+            Open in browser
+          </button>
+          <button
+            type="button"
+            className="utility-button"
+            onClick={() => void launcher.hideWindow()}
+          >
+            Hide to tray
+          </button>
+        </div>
+        {/* Apart from the others: the one button here that ends the show. */}
+        <button
+          type="button"
+          className="utility-button is-danger"
+          onClick={() => void launcher.quit()}
+        >
+          Exit
+        </button>
+      </footer>
     </main>
   );
 }
