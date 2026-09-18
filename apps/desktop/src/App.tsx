@@ -80,12 +80,31 @@ export function App({ api }: AppProps) {
     async (settings: LauncherSettings, restarts: boolean) => {
       if (restarts) {
         setRestarting(true);
+        // The Rust side starts each run with an empty ring; the window follows suit rather
+        // than mixing the old process's output into the new one's.
+        setLog([]);
       }
       setSnapshot((current) => (current === null ? current : { ...current, settings }));
       try {
         await launcher.applySettings(settings);
-        // Success does not clear the flag: the restart is over when a Running or Failed
-        // state arrives, which is the only thing that knows whether it worked.
+        // Success does not clear the restarting flag: the restart is over when a Running or
+        // Failed state arrives, which is the only thing that knows whether it worked.
+        //
+        // The addresses do have to be re-read. They are built from the port and the binding,
+        // so leaving the old ones on screen would have the window naming a port that is no
+        // longer listening. The log is left alone: it is fed by events, not by this.
+        const fresh = await launcher.launcherState();
+        setSnapshot((current) =>
+          current === null
+            ? current
+            : {
+                ...current,
+                settings: fresh.settings,
+                localUrl: fresh.localUrl,
+                lanUrl: fresh.lanUrl,
+                autostartEnabled: fresh.autostartEnabled,
+              },
+        );
       } catch {
         setRestarting(false);
       }
@@ -105,7 +124,7 @@ export function App({ api }: AppProps) {
   const address = displayUrl(snapshot);
   const summary = failureSummary(snapshot.server);
   const tail = failureTail(snapshot.server);
-  const applyAvailable = canApply(draft, snapshot.settings, restarting);
+  const applyAvailable = canApply(draft, snapshot.settings, restarting, snapshot.server);
 
   const onApply = () => {
     const settings = settingsFrom(draft, snapshot.settings);

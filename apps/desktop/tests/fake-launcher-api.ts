@@ -45,8 +45,17 @@ export class FakeLauncherApi implements LauncherApi {
     this.current = initial;
   }
 
+  /** Every `launcher_state` call, so a test can tell the mount from a later refresh. */
+  stateCalls = 0;
+
   launcherState(): Promise<LauncherSnapshot> {
+    this.stateCalls += 1;
     return Promise.resolve(this.current);
+  }
+
+  /** Changes what the next `launcher_state` will answer, the way a restart would. */
+  update(overrides: Partial<LauncherSnapshot>): void {
+    this.current = { ...this.current, ...overrides };
   }
 
   applySettings(settings: LauncherSettings): Promise<void> {

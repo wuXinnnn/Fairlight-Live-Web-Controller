@@ -9,6 +9,7 @@ import {
   failureSummary,
   failureTail,
   isDraftChanged,
+  isRestartable,
   isRestartSettled,
   parsePort,
   settingsFrom,
@@ -91,22 +92,49 @@ describe('the draft', () => {
 });
 
 describe('canApply', () => {
+  const running: ServerState = { kind: 'running', port: 3000 };
+  const failed: ServerState = {
+    kind: 'failed',
+    reason: 'exitedWhileRunning',
+    exitCode: 1,
+    tail: [],
+  };
+
   it('is offered for a valid change', () => {
-    expect(canApply({ portText: '3100', bindLan: true }, saved, false)).toBe(true);
-    expect(canApply({ portText: '3000', bindLan: false }, saved, false)).toBe(true);
+    expect(canApply({ portText: '3100', bindLan: true }, saved, false, running)).toBe(true);
+    expect(canApply({ portText: '3000', bindLan: false }, saved, false, running)).toBe(true);
   });
 
-  it('is not offered when nothing changed', () => {
-    expect(canApply({ portText: '3000', bindLan: true }, saved, false)).toBe(false);
+  it('is not offered when nothing changed and the backend is up', () => {
+    expect(canApply({ portText: '3000', bindLan: true }, saved, false, running)).toBe(false);
   });
 
-  it('is not offered for an unusable port', () => {
-    expect(canApply({ portText: '99999', bindLan: true }, saved, false)).toBe(false);
-    expect(canApply({ portText: '', bindLan: true }, saved, false)).toBe(false);
+  it('is offered unchanged when there is a backend to bring back', () => {
+    expect(canApply({ portText: '3000', bindLan: true }, saved, false, failed)).toBe(true);
+    expect(canApply({ portText: '3000', bindLan: true }, saved, false, { kind: 'stopped' })).toBe(
+      true,
+    );
+  });
+
+  it('is not offered for an unusable port, whatever the backend is doing', () => {
+    expect(canApply({ portText: '99999', bindLan: true }, saved, false, running)).toBe(false);
+    expect(canApply({ portText: '', bindLan: true }, saved, false, failed)).toBe(false);
   });
 
   it('is not offered while a restart is in flight', () => {
-    expect(canApply({ portText: '3100', bindLan: true }, saved, true)).toBe(false);
+    expect(canApply({ portText: '3100', bindLan: true }, saved, true, running)).toBe(false);
+    expect(canApply({ portText: '3100', bindLan: true }, saved, true, failed)).toBe(false);
+  });
+});
+
+describe('isRestartable', () => {
+  it('is true only for a backend that is not there', () => {
+    expect(isRestartable({ kind: 'stopped' })).toBe(true);
+    expect(
+      isRestartable({ kind: 'failed', reason: 'healthTimeout', exitCode: null, tail: [] }),
+    ).toBe(true);
+    expect(isRestartable({ kind: 'running', port: 3000 })).toBe(false);
+    expect(isRestartable({ kind: 'starting' })).toBe(false);
   });
 });
 

@@ -101,6 +101,50 @@ describe('the port field', () => {
     expect(await screen.findByRole('button', { name: 'Apply' })).toBeInTheDocument();
   });
 
+  it('shows the new address once the restart has been applied', async () => {
+    const api = await mount(new FakeLauncherApi());
+    expect(screen.getByText('http://192.168.1.40:3000')).toBeInTheDocument();
+
+    // What the Rust side will report after the restart.
+    api.update({
+      settings: { version: 1, port: 3100, bindLan: true, startHidden: false },
+      localUrl: 'http://localhost:3100',
+      lanUrl: 'http://192.168.1.40:3100',
+    });
+    setPort('3100');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    // Leaving the old one up would have the window naming a port nothing is listening on.
+    expect(await screen.findByText('http://192.168.1.40:3100')).toBeInTheDocument();
+  });
+
+  it('clears the log when a restart begins', async () => {
+    await mount(new FakeLauncherApi(snapshot({ log: ['from the old run'] })));
+    expect(screen.getByLabelText('Server log')).toHaveValue('from the old run');
+    setPort('3100');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(screen.getByLabelText('Server log')).toHaveValue(''));
+  });
+
+  it('offers Apply again once the backend has failed, unchanged', async () => {
+    const api = await mount(new FakeLauncherApi());
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+
+    act(() =>
+      api.emitState({
+        kind: 'failed',
+        reason: 'exitedWhileRunning',
+        exitCode: -1,
+        tail: ['gone'],
+      }),
+    );
+
+    const apply = screen.getByRole('button', { name: 'Apply' });
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    expect(api.applied).toEqual([{ version: 1, port: 3000, bindLan: true, startHidden: false }]);
+  });
+
   it('stops saying Restarting when the call is rejected', async () => {
     const api = new FakeLauncherApi();
     api.applyError = new Error('port 3100 is not usable');

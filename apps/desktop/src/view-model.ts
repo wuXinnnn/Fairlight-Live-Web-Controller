@@ -62,13 +62,25 @@ export function isDraftChanged(draft: Draft, saved: LauncherSettings): boolean {
   return parsePort(draft.portText) !== saved.port || draft.bindLan !== saved.bindLan;
 }
 
-/** Apply is offered only when there is a valid, different setting to apply, and no restart
- * is already in flight. */
-export function canApply(draft: Draft, saved: LauncherSettings, restarting: boolean): boolean {
+/** A backend that is not running is one Apply can start again, unchanged settings or not. */
+export function isRestartable(state: ServerState): boolean {
+  return state.kind === 'failed' || state.kind === 'stopped';
+}
+
+/**
+ * Apply is offered when the port is usable, no restart is already in flight, and there is
+ * either something to change or something to bring back.
+ */
+export function canApply(
+  draft: Draft,
+  saved: LauncherSettings,
+  restarting: boolean,
+  server: ServerState,
+): boolean {
   if (restarting || parsePort(draft.portText) === null) {
     return false;
   }
-  return isDraftChanged(draft, saved);
+  return isDraftChanged(draft, saved) || isRestartable(server);
 }
 
 export function applyLabel(restarting: boolean): string {
