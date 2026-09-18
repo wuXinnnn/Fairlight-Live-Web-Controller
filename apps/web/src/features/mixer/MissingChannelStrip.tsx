@@ -31,15 +31,11 @@ export function MissingChannelStrip({
         <span className="channel-strip__signal" aria-hidden="true" />
         <h3 title={reference.name}>{reference.name}</h3>
       </header>
+      {/* Spans every row below the header, so the dashed frame fills the strip's body. */}
       <div className="missing-channel-strip__body">
         <span aria-hidden="true">×</span>
         <strong>MISSING</strong>
         <small>CHANNEL REFERENCE UNAVAILABLE</small>
-      </div>
-      <div className="missing-channel-strip__trace" aria-hidden="true">
-        <i />
-        <i />
-        <i />
       </div>
     </article>
   );
