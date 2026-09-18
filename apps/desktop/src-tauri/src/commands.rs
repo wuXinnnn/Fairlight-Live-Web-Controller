@@ -125,12 +125,15 @@ pub fn launcher_state(app: AppHandle) -> LauncherStateDto {
     }
 }
 
-/// Whether applying these settings has to restart the backend.
+/// Whether Apply has to restart the backend.
 ///
 /// Two reasons: something the backend was started with changed, or there is no backend to
 /// leave alone. The second is what makes Apply the way back from a failure -- without it,
 /// a backend that had died could only be restarted by changing the port to something else
-/// and back again. `start_hidden` is read at startup and nowhere else, so it never counts.
+/// and back again.
+///
+/// Only Apply reaches this. `start_hidden` has its own command precisely so that ticking a
+/// startup checkbox cannot bring a dead backend back behind the user's back.
 fn should_restart(
     previous: &LauncherSettings,
     next: &LauncherSettings,
@@ -171,6 +174,24 @@ pub async fn apply_settings(app: AppHandle, settings: LauncherSettings) -> Resul
     })
     .await
     .map_err(|error| format!("the restart did not complete: {error}"))
+}
+
+/// Saves `Start hidden in the tray`, and nothing else.
+///
+/// It is read once at startup and never again, so it has no business going through
+/// `apply_settings`: that would put a startup checkbox on the path that decides whether the
+/// backend restarts.
+#[tauri::command]
+pub fn set_start_hidden(app: AppHandle, hidden: bool) -> Result<(), String> {
+    let state = Arc::clone(&launcher(&app));
+    let updated = LauncherSettings {
+        start_hidden: hidden,
+        ..current_settings(&app)
+    };
+    settings::save(&state.settings_path, &updated)
+        .map_err(|error| format!("could not save the settings: {error}"))?;
+    *state.settings.lock().expect("settings") = updated;
+    Ok(())
 }
 
 #[tauri::command]
@@ -257,7 +278,10 @@ mod tests {
     }
 
     #[test]
-    fn start_hidden_alone_never_restarts() {
+    fn start_hidden_never_reaches_this_decision() {
+        // It has its own command. If it ever did come through here it would still leave a
+        // healthy backend alone -- but a dead one would come back from a startup checkbox,
+        // which is why the separate command exists.
         let running = ServerState::Running { port: 3000 };
         let hidden = LauncherSettings {
             start_hidden: true,

@@ -41,8 +41,10 @@ export type Unlisten = () => void;
 export interface LauncherApi {
   /** Everything the window needs to render, asked for once on mount. */
   launcherState(): Promise<LauncherSnapshot>;
-  /** Saves the settings and, if the backend is affected, restarts it. */
+  /** Saves the settings and, if the backend is affected or absent, restarts it. */
   applySettings(settings: LauncherSettings): Promise<void>;
+  /** Saves `Start hidden in the tray`. Read once at startup, so it never restarts anything. */
+  setStartHidden(hidden: boolean): Promise<void>;
   openInBrowser(): Promise<void>;
   hideWindow(): Promise<void>;
   /** Returns the state the startup entry actually ended up in. */

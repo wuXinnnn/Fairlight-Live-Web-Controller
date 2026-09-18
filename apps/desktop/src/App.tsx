@@ -90,14 +90,13 @@ export function App({ api }: AppProps) {
     }
   }, [log]);
 
-  const saveSettings = useCallback(
-    async (settings: LauncherSettings, restarts: boolean) => {
-      if (restarts) {
-        setRestarting(true);
-        // The Rust side starts each run with an empty ring; the window follows suit rather
-        // than mixing the old process's output into the new one's.
-        setLog([]);
-      }
+  /** Apply: save the backend's settings and wait out the restart they cause. */
+  const applySettings = useCallback(
+    async (settings: LauncherSettings) => {
+      setRestarting(true);
+      // The Rust side starts each run with an empty ring; the window follows suit rather
+      // than mixing the old process's output into the new one's.
+      setLog([]);
       setSnapshot((current) => (current === null ? current : { ...current, settings }));
       try {
         await launcher.applySettings(settings);
@@ -150,7 +149,7 @@ export function App({ api }: AppProps) {
   const onApply = () => {
     const settings = settingsFrom(draft, snapshot.settings);
     if (settings !== null) {
-      void saveSettings(settings, true);
+      void applySettings(settings);
     }
   };
 
@@ -160,8 +159,10 @@ export function App({ api }: AppProps) {
   };
 
   const onStartHidden = (startHidden: boolean) => {
-    // Read only at startup, so there is nothing to restart and nothing to Apply.
-    void saveSettings({ ...snapshot.settings, startHidden }, false);
+    // Its own command, not Apply: this is read once at startup and must not be able to put
+    // the backend through a restart.
+    setSnapshot({ ...snapshot, settings: { ...snapshot.settings, startHidden } });
+    void launcher.setStartHidden(startHidden);
   };
 
   const onAutostart = (enabled: boolean) => {

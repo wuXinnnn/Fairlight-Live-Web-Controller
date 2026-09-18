@@ -42,6 +42,7 @@ pub fn run() {
             commands::open_in_browser,
             commands::hide_window,
             commands::set_autostart,
+            commands::set_start_hidden,
             commands::quit,
         ])
         .setup(move |app| {

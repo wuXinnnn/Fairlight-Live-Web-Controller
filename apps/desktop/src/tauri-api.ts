@@ -20,6 +20,9 @@ export function createTauriLauncherApi(): LauncherApi {
     applySettings: async (settings: LauncherSettings) => {
       await invoke('apply_settings', { settings });
     },
+    setStartHidden: async (hidden: boolean) => {
+      await invoke('set_start_hidden', { hidden });
+    },
     openInBrowser: async () => {
       await invoke('open_in_browser');
     },

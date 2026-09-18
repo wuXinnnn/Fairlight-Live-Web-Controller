@@ -216,12 +216,28 @@ describe('the startup group', () => {
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
-  it('saves Start hidden without a restart', async () => {
+  it('saves Start hidden through its own command, never through Apply', async () => {
     const api = await mount(new FakeLauncherApi());
-    fireEvent.click(screen.getByLabelText('Start hidden in the tray'));
-    expect(api.applied).toEqual([{ version: 1, port: 3000, bindLan: true, startHidden: true }]);
-    // Nothing the backend cares about changed, so the button never says Restarting.
+    const toggle = screen.getByLabelText('Start hidden in the tray');
+    fireEvent.click(toggle);
+
+    expect(api.startHiddenCalls).toEqual([true]);
+    // Not Apply: that path decides whether the backend restarts, and a startup checkbox
+    // has no business being on it.
+    expect(api.applied).toEqual([]);
     expect(screen.queryByRole('button', { name: 'Restarting…' })).not.toBeInTheDocument();
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it('does not restart a dead backend from the Start hidden checkbox', async () => {
+    const api = await mount(new FakeLauncherApi());
+    act(() =>
+      api.emitState({ kind: 'failed', reason: 'exitedWhileRunning', exitCode: 1, tail: [] }),
+    );
+    fireEvent.click(screen.getByLabelText('Start hidden in the tray'));
+
+    expect(api.applied).toEqual([]);
+    expect(screen.getByText('FAILED')).toBeInTheDocument();
   });
 });
 

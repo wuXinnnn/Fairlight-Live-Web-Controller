@@ -9,11 +9,12 @@
 - Windows NSIS 安装包(按用户安装,不需要管理员权限),自带官方 Node 运行时与铺好的服务端、web 产物,
   目标机器不需要装任何东西。
 - 进程边界只有一条:子进程的 stdin 是启动器持有的管道。没有 Job Object,没有保活代码。
-- Rust 单测 63 条,窗口前端 48 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
+- Rust 单测 63 条,窗口前端 49 条;`cargo clippy -D warnings` 与 `cargo fmt --check` 全绿;
   窗口覆盖率远超 80% 门槛。
 - `ci.yml` / `soak.yml` / `docker.yml` 一字未动;Rust 全部在新增的 `desktop.yml` 里。
 - **实测中发现并修复了四个真实缺陷**(见第 11.1 节),其中一个会让整个进程模型不成立;
-  Cursor Bugbot 另报 3 条,全部成立并已修复(见第 11.2.5 节,其中一条与实测发现的是同一个问题)。
+  Cursor Bugbot 另报 4 条,全部成立并已修复(见第 11.2.5 节,其中一条与实测发现的是同一个问题,
+  另一条是修那一条带出来的)。
 - 全程没有改动真实 Fairlight Live 的任何参数,没有碰过任何推子。
 
 ## 2. 验收标准逐条核对
@@ -25,7 +26,7 @@
 | ① | 第 5 节 1–9 全部实测通过,10 标注移交 | ✅ 全部通过,含评审修复后的最终构建复验(第 4 节) |
 | ② | `desktop.yml` 在 PR 上全绿,artifact 可下载并实装过一次 | ✅ run 35330008199 绿;artifact 已下载实装(第 5 节) |
 | ③ | `ci.yml` 在 PR 上全绿;三个既有 workflow 无 diff | ✅ `git diff origin/main -- .github/workflows/{ci,soak,docker}.yml` 为空(第 5 节) |
-| ④ | Rust 单测、clippy、fmt 全绿;前端覆盖率达标 | ✅ 63 / 48 条,覆盖率 99%(第 3.7 节) |
+| ④ | Rust 单测、clippy、fmt 全绿;前端覆盖率达标 | ✅ 63 / 49 条,覆盖率 99%(第 3.7 节) |
 | ⑤ | `pnpm-lock.yaml` 只因 `apps/desktop` 而变;依赖逐个列出许可 | ✅ lockfile 新增项全部在 `apps/desktop:` 下(第 7 节) |
 | ⑥ | 仓库里没有二进制 | `git ls-files \| grep -E 'binaries\|icons\|resources'` 为空 |
 | ⑦ | 用户机器上没有残留 | ✅ 三轮安装后都复查过(第 4.9、4.10 与 5 节) |
@@ -158,7 +159,7 @@ HTTP 服务确实关掉了(端口释放),但进程一直在,静止无 CPU,连它
 | `cargo test` | 63 passed |
 | `cargo clippy --all-targets -- -D warnings` | 干净 |
 | `cargo fmt --check` | 干净 |
-| `@flwc/desktop` vitest | 48 passed;语句 99.13% / 分支 89.74% / 函数 100% / 行 99.13%(门槛 80%) |
+| `@flwc/desktop` vitest | 49 passed;语句 99.13% / 分支 89.47% / 函数 100% / 行 99.13%(门槛 80%) |
 | 既有包 | shared 44、test-utils 23、server 287、web 497,覆盖率与合并前一致 |
 | 根 `pnpm lint` / `typecheck` / `test` / `build` | 全绿 |
 
@@ -606,7 +607,7 @@ connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
 
 ### 11.2.5 评审后的修订(Cursor Bugbot)
 
-Bugbot 在 `6baeef4` 上报了 3 条,全部处理完毕并在各自线程里回复。
+Bugbot 一共报了 4 条,全部成立、全部修掉,并在各自线程里回复。前 3 条在 `6baeef4` 上报出:
 
 | # | Finding | 判断 | 改法与回归锁 |
 | --- | --- | --- | --- |
@@ -615,6 +616,14 @@ Bugbot 在 `6baeef4` 上报了 3 条,全部处理完毕并在各自线程里回�
 | 3 | **Settings update before disk save**(Medium,`commands.rs`) | **成立**。先写内存后写盘,写盘失败就会让内存与 `launcher.json` 不一致;而 `should_restart` 拿 previous 比对,于是下一次 Apply 会以为端口已经生效而跳过重启 | 顺序调成先 `settings::save` 再换内存 |
 
 第 2、3 条在 `dc80412`。
+
+Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带出来的:
+
+| # | Finding | 判断 | 改法与回归锁 |
+| --- | --- | --- | --- |
+| 4 | **Start hidden restarts a dead backend**(Medium,`commands.rs`) | **成立**。`should_restart` 把「后端没在跑」一律当成要重启,于是勾一下 `Start hidden in the tray` 也会把一个已经死掉的后端拉起来——而窗口用的是不显示 `Restarting…`、不清日志的那条路径,用户看不到发生了什么 | `Start hidden` 本来就不是后端设置,它只在启动时读一次。给它一个自己的命令 `set_start_hidden`:只存盘,永远不重启。`apply_settings` 因此只剩 Apply 一个入口,`should_restart` 的语义也回到了它该有的样子。两条回归锁:一条断言勾选走的是 `setStartHidden` 而不是 `applySettings`,一条断言后端处于 FAILED 时勾它不会把后端拉回来 |
+
+这一条在 `f325f55`。
 
 ### 11.3 明确评估过并否决的
 

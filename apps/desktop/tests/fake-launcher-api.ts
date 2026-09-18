@@ -77,6 +77,13 @@ export class FakeLauncherApi implements LauncherApi {
     return this.applyError === null ? Promise.resolve() : Promise.reject(this.applyError);
   }
 
+  startHiddenCalls: boolean[] = [];
+
+  setStartHidden(hidden: boolean): Promise<void> {
+    this.startHiddenCalls.push(hidden);
+    return Promise.resolve();
+  }
+
   openInBrowser(): Promise<void> {
     this.opened += 1;
     return Promise.resolve();
