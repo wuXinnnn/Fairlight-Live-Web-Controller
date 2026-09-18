@@ -396,6 +396,9 @@ PR [#25](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/pull/25)。�
 | `desktop`(windows-latest) | ✅ SUCCESS,5 分 16 秒 | [35333978202](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35333978202) |
 | Cursor Bugbot | ✅ pass,无新 finding | — |
 
+再往后只有文档提交。其中一轮的 `ci`(`push` 事件那个)因为 `apps/web` 一条既有集成测试在慢 runner 上
+5 秒超时红过一次——同一提交的另一个 `ci` run 是绿的,重跑即过,详见第 12 节第 9 条。
+
 第一次跑 `desktop` 用了 **16 分 08 秒**([35330008199](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008199),
 下面 artifact 实装验证用的就是它的产物);cargo 缓存建立之后降到 **5–6 分钟**。
 
@@ -664,6 +667,13 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
 7. **窗口日志面板的横向滚动**。pino 的单行 JSON 很长,560px 宽的窗口里要横向拖。没有换行是有意的
    (换行会让一条日志占满整个面板),但如果实际用起来嫌难读,值得在后续批次里考虑做一个精简显示。
 8. **GHCR 包的可见性**是 7.1 的遗留项,与本批次无关,顺带列在第 13 节 ④。
+9. **`apps/web` 的一条既有集成测试在 CI 上偶发超时**。最后一轮里
+   `tests/views.integration.test.tsx > groups channels in the configuration page and renders group sections`
+   在 5 秒的默认超时上红了一次(那一次整个 `apps/web` 套件跑了 85.68 秒,runner 明显偏慢);**同一个提交的
+   另一个 `ci` run 是绿的**,重跑也直接通过,本地 497/497 从未失败。`apps/web` 本批次一行未改
+   (`git diff origin/main -- apps/web` 为空),所以这不是本批次引入的,也没有在本批次里动它——改别人的测试
+   超时不在这个批次的范围内。但它确实是一颗定时炸弹,值得后续批次给这条用例一个显式的 `testTimeout`
+   或者拆小。
 
 ## 13. 真机验收操作清单(移交用户)
 
