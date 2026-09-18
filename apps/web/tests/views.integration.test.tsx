@@ -42,7 +42,9 @@ const snapshot: MixerSnapshot = {
   connection: 'connected',
 };
 
-describe('views integration', () => {
+// An explicit budget for the whole file: its longest scenario has been seen to run past the
+// five-second default on a slow CI runner, and the server suite already does the same.
+describe('views integration', { timeout: 15_000 }, () => {
   beforeEach(() => {
     window.localStorage.clear();
     resetMixerStore();

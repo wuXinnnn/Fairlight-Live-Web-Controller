@@ -180,9 +180,15 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     const { server, provider } = await startStack();
     expect(server.runtime.store.getChannel('channel/2')).toBeUndefined();
     expect(provider.addNode('channel', extraStripNode())).toBe(true);
-    await expect.poll(() => server.runtime.store.getChannel('channel/2')?.name).toBe('PC');
+    // Explicit budgets: on a slow CI runner the debounced tree refresh has been seen to miss
+    // expect.poll's one-second default, while never coming close to these.
+    await expect
+      .poll(() => server.runtime.store.getChannel('channel/2')?.name, { timeout: 5_000 })
+      .toBe('PC');
     expect(provider.setNodeOnline('channel/channel2', false)).toBe(true);
-    await expect.poll(() => server.runtime.store.getChannel('channel/2')).toBeUndefined();
+    await expect
+      .poll(() => server.runtime.store.getChannel('channel/2'), { timeout: 5_000 })
+      .toBeUndefined();
   });
 
   it('discovers a strip that arrives as an empty stub then gains parameters', async () => {
