@@ -6,9 +6,6 @@ A web-based remote controller for Blackmagic Design **Fairlight Live**, built on
 It provides a clean, mixer-style web UI for fader control, channel ON switches,
 level metering and loudness readouts, backed by an extensible Web API.
 
-Fairlight Live is software: it runs on a computer, and this controller talks to that
-application over Ember+. No hardware console is involved.
-
 ## Features
 
 - Fader control for input/output channels (channels, mains, subs, auxes, mix-minus, matrix)

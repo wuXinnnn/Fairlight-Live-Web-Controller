@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Fairlight Live Web Controller:通过 Ember+ 协议远程控制 Blackmagic Design Fairlight Live 的 Web 应用(Fastify 后端 + React 前端)。Fairlight Live 是运行在电脑上的软件(可视为去掉音频编辑功能的 DAW),不需要任何硬件调音台;Ember+ 在其 Show settings 中开启,端口也在那里设置。
+Fairlight Live Web Controller:通过 Ember+ 协议远程控制 Blackmagic Design Fairlight Live 的 Web 应用(Fastify 后端 + React 前端)。
 
 ## 技术栈
 
