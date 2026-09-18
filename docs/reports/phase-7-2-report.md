@@ -22,14 +22,14 @@
 
 | # | 标准 | 结果 |
 | --- | --- | --- |
-| ① | 第 5 节 1–9 全部实测通过,10 标注移交 | 见第 4 节 |
-| ② | `desktop.yml` 在 PR 上全绿,artifact 可下载并实装过一次 | 见第 5 节 |
-| ③ | `ci.yml` 在 PR 上全绿;三个既有 workflow 无 diff | 见第 5 节 |
-| ④ | Rust 单测、clippy、fmt 全绿;前端覆盖率达标 | 见第 3.7 节 |
-| ⑤ | `pnpm-lock.yaml` 只因 `apps/desktop` 而变;依赖逐个列出许可 | 见第 7 节 |
+| ① | 第 5 节 1–9 全部实测通过,10 标注移交 | ✅ 全部通过,含评审修复后的最终构建复验(第 4 节) |
+| ② | `desktop.yml` 在 PR 上全绿,artifact 可下载并实装过一次 | ✅ run 35330008199 绿;artifact 已下载实装(第 5 节) |
+| ③ | `ci.yml` 在 PR 上全绿;三个既有 workflow 无 diff | ✅ `git diff origin/main -- .github/workflows/{ci,soak,docker}.yml` 为空(第 5 节) |
+| ④ | Rust 单测、clippy、fmt 全绿;前端覆盖率达标 | ✅ 63 / 48 条,覆盖率 99%(第 3.7 节) |
+| ⑤ | `pnpm-lock.yaml` 只因 `apps/desktop` 而变;依赖逐个列出许可 | ✅ lockfile 新增项全部在 `apps/desktop:` 下(第 7 节) |
 | ⑥ | 仓库里没有二进制 | `git ls-files \| grep -E 'binaries\|icons\|resources'` 为空 |
-| ⑦ | 用户机器上没有残留 | 见第 4 节第 9 条 |
-| ⑧ | 没有碰真实 Fairlight,没有动 3000 / 5173 / 9000 | 见第 9 节 |
+| ⑦ | 用户机器上没有残留 | ✅ 三轮安装后都复查过(第 4.9、4.10 与 5 节) |
+| ⑧ | 没有碰真实 Fairlight,没有动 3000 / 5173 / 9000 | ✅ 仅首启一次只读连接,经用户同意(第 9 节) |
 
 ## 3. 实现摘要
 
@@ -384,7 +384,55 @@ stdin 管道也会随启动器消失而断,后端照样退出——第 4.5 条�
 
 ## 5. CI 记录
 
-_(待填)_
+PR [#25](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/pull/25),最终提交 `dc80412`
+(评审修复)之后的一轮:
+
+| 工作流 | 结果 | run |
+| --- | --- | --- |
+| `ci`(ubuntu-latest,`push` 事件) | ✅ SUCCESS | [35330006888](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330006888) |
+| `ci`(ubuntu-latest,`pull_request` 事件) | ✅ SUCCESS | [35330008221](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008221) |
+| `docker` | ✅ SUCCESS | [35330008306](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008306) |
+| `desktop`(windows-latest) | ✅ SUCCESS,16 分 08 秒 | [35330008199](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/actions/runs/35330008199) |
+
+**`ci` 在 ubuntu 上继续全绿**,这就是「`@flwc/desktop` 没有把 cargo 带进根脚本」的证明:那台 runner 上
+没有 Tauri 需要的任何系统库,而 `@flwc/desktop` 的 `build` 只是 `vite build`。
+
+`desktop` job 的步骤顺序与结果:
+
+| 步骤 | 结果 |
+| --- | --- |
+| Checkout / pnpm / Node 22 / rustup / Cache cargo | ✅ |
+| `pnpm install --frozen-lockfile` → `pnpm build` | ✅ |
+| `node scripts/prepare.mjs --target x86_64-pc-windows-msvc` | ✅(在 cargo 之前,见偏离 ②) |
+| `node scripts/smoke-staged-server.mjs` | ✅ |
+| `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` | ✅ |
+| `pnpm tauri build` | ✅ |
+| `actions/upload-artifact`(`flwc-launcher-windows-x64`) | ✅ |
+| 标签相关的两步 | 跳过(PR 上 `startsWith(github.ref, 'refs/tags/v')` 为假) |
+
+**artifact 实装验证**:`flwc-launcher-windows-x64`,内容是
+`Fairlight Live Web Controller_0.2.0_x64-setup.exe`,**27,967,097 字节 = 26.67 MiB**(与本机构建的
+27,980,384 字节差几 KB,正常——两台机器的 NSIS 压缩不是逐字节可复现的)。用 `gh run download` 取回本机后
+静默安装了一次:
+
+```
+installed from the CI artifact: 4,526 files, 116.0 MiB
+status: RUNNING
+backend pid 42764, parent 46436 = launcher 46436, MainWindowHandle 0
+port 3100 listening: True
+health=200  mixer page=200
+connection: {"host":"127.0.0.1","port":9101,"status":"connecting", ...}
+```
+
+这一次在首启前就把 Ember 指到了 `127.0.0.1:9101`(一个**什么都没有**的端口),所以 CI 产物的这轮验证
+完全没有可能碰到 9000;`connecting` + 连接超时正是预期结果。验完即卸载,残留复查与第 4.9 条一致。
+
+一点值得记的:`gh run download` 取回的文件**没有** Mark-of-the-Web,所以这次没弹 SmartScreen。
+用浏览器从 Release 下载会带上 MOTW,**那时会弹**——见第 12 节第 1 条。
+
+**并发**:`desktop.yml` 带了 `concurrency` 组。第一轮验证时同时有三个 Windows 构建在跑,每个都是几十分钟,
+而其中两个对应的提交早就被取代了;加上这一组之后,后来的提交会自动取消前一个的构建,标签构建例外
+(它是发布用的那个,不能被取消)。
 
 ## 6. 数值初值清单
 
