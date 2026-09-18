@@ -623,7 +623,7 @@ Bugbot 在 `dc80412` 上又报了第 4 条,而且是上面第 1 条的修复带�
 | --- | --- | --- | --- |
 | 4 | **Start hidden restarts a dead backend**(Medium,`commands.rs`) | **成立**。`should_restart` 把「后端没在跑」一律当成要重启,于是勾一下 `Start hidden in the tray` 也会把一个已经死掉的后端拉起来——而窗口用的是不显示 `Restarting…`、不清日志的那条路径,用户看不到发生了什么 | `Start hidden` 本来就不是后端设置,它只在启动时读一次。给它一个自己的命令 `set_start_hidden`:只存盘,永远不重启。`apply_settings` 因此只剩 Apply 一个入口,`should_restart` 的语义也回到了它该有的样子。两条回归锁:一条断言勾选走的是 `setStartHidden` 而不是 `applySettings`,一条断言后端处于 FAILED 时勾它不会把后端拉回来 |
 
-这一条在 `f325f55`。
+这一条在 `a89e725`。
 
 ### 11.3 明确评估过并否决的
 
