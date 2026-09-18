@@ -15,7 +15,7 @@
         "label": "main",
         "title": "Fairlight Live Web Controller",
         "width": 640,
-        "height": 560,
+        "height": 600,
         "minWidth": 560,
         "minHeight": 440,
         "resizable": true,

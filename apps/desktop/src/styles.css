@@ -52,12 +52,15 @@ body,
 
 body {
   /*
-    The shell is exactly one viewport tall and the middle region is the only thing that
-    scrolls, so the document itself never does. The window is resizable, and Windows display
-    scaling shrinks the client area further -- at 150% the smallest window is under 300 CSS px
-    of height -- so a scrolling region is what keeps the log reachable instead of clipped.
+    At any sane size the shell is exactly one viewport tall, the middle region is the only
+    thing that scrolls, and the header and the action bar stay put. This is the way out of
+    the case where even that will not fit: the window is resizable and Windows display
+    scaling shrinks the client area on top of that, and at 150% the smallest window leaves
+    under 300 CSS px of height -- little enough that the header and the footer alone can
+    fill it. When that happens the shell overflows and the document scrolls, which costs
+    the pinned header but keeps every control reachable.
   */
-  overflow: hidden;
+  overflow: auto;
   user-select: none;
   background:
     radial-gradient(circle at 76% -18%, rgb(239 169 40 / 8%), transparent 34rem),
@@ -79,10 +82,11 @@ textarea {
 
 /* Shell: three rows, one scrolling region --------------------------------- */
 
+/* The middle row has a floor as well as a 1fr, so it can never be squeezed out entirely. */
 .shell {
   display: grid;
   height: 100dvh;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(4rem, 1fr) auto;
 }
 
 .shell--loading {
@@ -110,7 +114,7 @@ textarea {
   min-height: 0;
   padding: 1.05rem 1.15rem 1.2rem;
   overflow-y: auto;
-  gap: 1.15rem;
+  gap: 1rem;
   grid-template-rows: auto minmax(8.5rem, 1fr);
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -120,7 +124,7 @@ textarea {
 .console-stack {
   display: flex;
   flex-direction: column;
-  gap: 1.15rem;
+  gap: 1rem;
 }
 
 /* Console header: brand, lamp, address ------------------------------------ */
@@ -380,7 +384,8 @@ textarea {
 /* The field and its Apply read as one control, so the button drops its left border. */
 .console-field__control {
   display: grid;
-  grid-template-columns: minmax(0, 8rem) auto;
+  justify-content: start;
+  grid-template-columns: 8rem auto;
 }
 
 .console-field__control input {
