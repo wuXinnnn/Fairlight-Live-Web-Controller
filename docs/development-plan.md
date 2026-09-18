@@ -269,7 +269,7 @@ Fader 滚轮与翻页滚轮共存规则:
 验收标准:
 
 - [x] 单测与集成用例覆盖:优雅退出与 stdin 守护、种子值(缺失 / 存在 / 损坏 / 只读)、路径环境变量、种子写入后 PUT 覆盖并跨重启保留
-- [x] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次(合并后 `main` 首次推送成功,包自动为 public)
+- [x] Docker 镜像在 Linux 下运行正常(本机 Docker Desktop 与 CI 冒烟各通过一次),配置可持久化;GHCR 拉取验证过一次(合并后 `main` 首次推送成功,包自动为 public;标签 `v0.1.0` 推出 `:v0.1.0` / `:latest`,Release 附 `flwc-v0.1.0-linux-amd64.tar.gz`,远程拉取部署成功)
 - [x] 本地:`start.cmd` 启动、平板访问、CONNECTION 面板指向真实 Fairlight Live、Ctrl+C 退出;`docker compose` 指向真实 Fairlight Live并跨 `restart` / `down && up` 保留配置
 - [x] 文档与实际行为一致(报告附逐行核对清单)
 - [x] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除只多 `src/tools/mock-provider.ts` 一项
