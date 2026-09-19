@@ -108,10 +108,11 @@ describe('mixer reconnect integration', { timeout: 20_000 }, () => {
     await expect.poll(() => statuses.some((status) => status.ember === 'reconnecting')).toBe(true);
 
     // The desk being gone is not itself a reason. The reason turns up one `timeoutMs` after the
-    // first retry, which is why this stack dials with a short one.
+    // first retry, which is why this stack dials with a short one; it names the refused port the
+    // library kept quiet about rather than the timeout it reported.
     await expect
       .poll(() => server.runtime.store.connectionError, { timeout: 5_000 })
-      .toMatch(/^Timeout after \d+ms: connect$/);
+      .toMatch(/^connect ECONNREFUSED 127\.0\.0\.1:\d+$/);
 
     const revived = MockEmberProvider.fromDump(createRequiredDump(), { port: emberPort });
     providers.push(revived);

@@ -56,6 +56,9 @@ function extraStripNode() {
   return dumpNodeToEmber(added);
 }
 
+/** What a dial to a port nobody listens on is reported as. */
+const DEAD_PORT_REASON = /^connect ECONNREFUSED 127\.0\.0\.1:\d+$/;
+
 describe('mixer backend integration', { timeout: 15_000 }, () => {
   const harness = createStackHarness();
   const { providers, servers, sockets, connectClient, startStack } = harness;
@@ -128,22 +131,23 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     });
     expect(disconnect.status).toBe(200);
     // The PUT awaits the first attempt, so its response already names the failure. The Sofie
-    // client swallows ECONNREFUSED and keeps dialling, so a dead port surfaces as our timeout.
+    // client swallows ECONNREFUSED and keeps dialling until our timeout, but the socket error it
+    // swallowed is what the reason reports, so a dead port reads as refused rather than silent.
     expect(await disconnect.json()).toEqual({
       host: '127.0.0.1',
       port: deadPort,
       status: 'reconnecting',
-      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+      lastError: expect.stringMatching(DEAD_PORT_REASON) as string,
     });
     await expect.poll(() => server.runtime.store.connection).toBe('reconnecting');
-    expect(server.runtime.store.connectionError).toMatch(/^Timeout after \d+ms: connect$/);
+    expect(server.runtime.store.connectionError).toMatch(DEAD_PORT_REASON);
     await expect
-      .poll(() => statuses.some((status) => status.lastError?.startsWith('Timeout after')))
+      .poll(() => statuses.some((status) => DEAD_PORT_REASON.test(status.lastError ?? '')))
       .toBe(true);
     const read = await fetch(`${url}/api/v1/connection`);
     expect(await read.json()).toMatchObject({
       status: 'reconnecting',
-      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+      lastError: expect.stringMatching(DEAD_PORT_REASON) as string,
     });
 
     // A client that connects while the mixer is unreachable learns the reason right away.
@@ -153,7 +157,7 @@ describe('mixer backend integration', { timeout: 15_000 }, () => {
     late.connect();
     expect(await lateStatus).toMatchObject({
       ember: 'reconnecting',
-      lastError: expect.stringMatching(/^Timeout after \d+ms: connect$/) as string,
+      lastError: expect.stringMatching(DEAD_PORT_REASON) as string,
     });
 
     // The tree is unchanged after the restore, yet clients still get a connected snapshot.

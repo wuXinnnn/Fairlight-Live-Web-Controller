@@ -50,6 +50,11 @@ export const INCOMPLETE_STRIP_RETRY_SCHEDULE_MS: readonly number[] = [
 export const DEFAULT_BUS_DIRECTORY_POLL_MS = 60_000;
 /** The least time between two probes, however many triggers arrive in between. */
 export const PROBE_MIN_GAP_MS = 5_000;
+/**
+ * Reconnect delays are spread by this much either way, so backends that lost the desk together
+ * (it restarted, say) do not all dial again in the same millisecond and queue for its accept.
+ */
+export const RECONNECT_JITTER_RATIO = 0.3;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 const MAX_LAST_ERROR_LENGTH = 200;
 
@@ -74,6 +79,8 @@ export interface EmberServiceOptions {
   /** GetDirectory timeout for named strips during expansion; see `STRIP_DIRECTORY_TIMEOUT_MS`. */
   stripDirectoryTimeoutMs?: number;
   createClient?: EmberClientFactory;
+  /** Source of the reconnect jitter, in [0, 1). Tests inject a constant. */
+  random?: () => number;
 }
 
 export interface EmberServiceEvents {
@@ -94,6 +101,7 @@ export class EmberService extends EventEmitter {
   private readonly busDirectoryPollMs: number;
   private readonly stripDirectoryTimeoutMs: number | undefined;
   private readonly createClient: EmberClientFactory;
+  private readonly random: () => number;
   private client: EmberClientHandle | undefined;
   private started = false;
   private hasConnected = false;
@@ -133,6 +141,7 @@ export class EmberService extends EventEmitter {
     this.stripDirectoryTimeoutMs = options.stripDirectoryTimeoutMs;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
+    this.random = options.random ?? Math.random;
   }
 
   get status(): ConnectionStatus {
@@ -254,8 +263,16 @@ export class EmberService extends EventEmitter {
     const client = this.createBoundClient();
     this.client = client;
     this.bindClient(client);
+    let socketError: Error | undefined;
     try {
-      const result = await withTimeout(client.connect(), this.timeoutMs, 'connect');
+      const dialling = client.connect();
+      // The library creates the socket synchronously inside connect() and swallows ECONNREFUSED
+      // on it, reporting a refused port and a silent one with the same timeout. The socket's own
+      // error is what tells them apart, so it is caught here, on the socket, as it happens.
+      captureEmberTransport(client)?.socket?.once?.('error', (error) => {
+        socketError ??= error;
+      });
+      const result = await withTimeout(dialling, this.timeoutMs, 'connect');
       if (result instanceof Error) {
         throw result;
       }
@@ -265,6 +282,12 @@ export class EmberService extends EventEmitter {
       await this.expandTree(client);
       if (!this.isActiveClient(client)) {
         return;
+      }
+      if (Object.keys(client.tree).length === 0) {
+        // The TCP session is up but the desk never answered the root GetDirectory. That is what a
+        // desk whose accept queue we are waiting in looks like; a connection with no tree is no
+        // connection, so it is retried with backoff like a dial that timed out.
+        throw new EmberProtocolError(noAnswerReason(this.host, this.port, this.timeoutMs));
       }
       await this.watchStructure(client);
       if (!this.isActiveClient(client)) {
@@ -287,16 +310,18 @@ export class EmberService extends EventEmitter {
         );
         return;
       }
+      const reason = describeConnectFailure(error, socketError, {
+        host: this.host,
+        port: this.port,
+        timeoutMs: this.timeoutMs,
+      });
       this.logger.error(
-        { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
+        { err: reason, host: this.host, port: this.port, layer: 'protocol' },
         'ember connect failed',
       );
       await this.safeClose();
       if (this.started) {
-        this.setStatus(
-          this.hasConnected ? 'reconnecting' : 'connecting',
-          connectFailureReason(error),
-        );
+        this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting', reason);
         this.scheduleReconnect();
       }
     }
@@ -649,7 +674,9 @@ export class EmberService extends EventEmitter {
     if (this.reconnectTimer !== undefined || !this.started) {
       return;
     }
-    const delay = this.backoffMs;
+    // Uniform in [1 - ratio, 1 + ratio): backends that dropped together come back spread out.
+    const jitter = 1 + (2 * this.random() - 1) * RECONNECT_JITTER_RATIO;
+    const delay = Math.round(this.backoffMs * jitter);
     this.backoffMs = Math.min(this.backoffMs * 2, this.reconnectMaxMs);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
@@ -761,6 +788,45 @@ export class EmberService extends EventEmitter {
     this.lastErrorValue = lastError;
     this.emit('status', status, lastError);
   }
+}
+
+export interface ConnectFailureContext {
+  host: string;
+  port: number;
+  timeoutMs: number;
+}
+
+/** What the panel says when the dial got no answer at all; `lastError` and the log share it. */
+export function noAnswerReason(host: string, port: number, timeoutMs: number): string {
+  return `Timeout after ${timeoutMs}ms: connect (no answer from ${host}:${port}; the provider may be busy)`;
+}
+
+/**
+ * Names a failed connect attempt for the panel and the log. A socket error (`ECONNREFUSED`,
+ * `EHOSTUNREACH`, ...) is the real reason whenever there is one, because the library folds it
+ * into the same timeout it reports for a desk that simply did not answer; a timeout with no
+ * socket error is exactly that, and says so.
+ */
+export function describeConnectFailure(
+  error: unknown,
+  socketError: Error | undefined,
+  context: ConnectFailureContext,
+): string {
+  if (socketError !== undefined) {
+    return connectFailureReason(socketError);
+  }
+  if (isConnectTimeout(error)) {
+    return noAnswerReason(context.host, context.port, context.timeoutMs);
+  }
+  return connectFailureReason(error);
+}
+
+function isConnectTimeout(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    /^Timeout after \d+ms: connect$/.test(message) ||
+    /^Could not connect to .* after a timeout/.test(message)
+  );
 }
 
 /**

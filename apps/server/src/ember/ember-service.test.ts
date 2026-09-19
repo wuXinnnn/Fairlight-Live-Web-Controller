@@ -7,8 +7,10 @@ import {
   connectFailureReason,
   DEFAULT_BUS_DIRECTORY_POLL_MS,
   EmberService,
+  describeConnectFailure,
   INCOMPLETE_STRIP_RETRY_SCHEDULE_MS,
   PROBE_MIN_GAP_MS,
+  RECONNECT_JITTER_RATIO,
   type ProbeReason,
 } from './ember-service.js';
 import { FakeEmberClient, FakeEmberTransport } from './fake-ember-client.js';
@@ -79,6 +81,8 @@ describe('EmberService', () => {
       reconnectInitialMs: 15,
       reconnectMaxMs: 15,
       busDirectoryPollMs: 0,
+      // A fixed jitter source keeps the delay at exactly the backoff.
+      random: () => 0.5,
       createClient: () => {
         created += 1;
         return created === 1 ? failing : ok;
@@ -221,9 +225,94 @@ describe('EmberService', () => {
     });
     services.push(service);
     await service.start();
-    expect(service.lastError).toMatch(/^Timeout after \d+ms: connect$/);
+    // No socket error arrived, so the dial simply got no answer; the panel says as much.
+    expect(service.lastError).toBe(
+      'Timeout after 20ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
     await expect.poll(() => service.status).toBe('connected');
     expect(service.lastError).toBeUndefined();
+  });
+
+  it('reports the socket error behind a dial the library kept quiet about', async () => {
+    const refused = new FakeEmberClient();
+    refused.transport = new FakeEmberTransport();
+    refused.socketError = new Error('connect ECONNREFUSED 127.0.0.1:1');
+    // The library swallows ECONNREFUSED and keeps dialling, so all the service sees is a timeout.
+    refused.hangConnect = true;
+    const errors: Array<Record<string, unknown>> = [];
+    const logger: AppLogger = {
+      ...silentLogger(),
+      error: (obj) => errors.push(obj as Record<string, unknown>),
+    };
+    const service = createService(refused, {
+      logger,
+      timeoutMs: 20,
+      reconnectInitialMs: 10_000,
+      reconnectMaxMs: 10_000,
+    });
+    await service.start();
+    expect(service.lastError).toBe('connect ECONNREFUSED 127.0.0.1:1');
+    expect(errors.at(-1)).toMatchObject({ err: 'connect ECONNREFUSED 127.0.0.1:1' });
+  });
+
+  it('turns the library timeout wording into the no-answer reason', async () => {
+    const silent = new FakeEmberClient();
+    silent.transport = new FakeEmberTransport();
+    silent.failConnect = new Error('Could not connect to 127.0.0.1:1 after a timeout of 5 seconds');
+    const service = createService(silent, { reconnectInitialMs: 10_000, reconnectMaxMs: 10_000 });
+    await service.start();
+    expect(service.lastError).toBe(
+      'Timeout after 40ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
+  });
+
+  it('treats a session whose tree never arrives as a dial that got no answer', async () => {
+    const mute = new FakeEmberClient({});
+    const service = createService(mute, { reconnectInitialMs: 10, reconnectMaxMs: 10 });
+    await service.start();
+    expect(service.status).toBe('connecting');
+    expect(service.lastError).toBe(
+      'Timeout after 40ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
+    // Once the desk answers, the retry connects like any other.
+    mute.tree = requiredTree();
+    await expect.poll(() => service.status).toBe('connected');
+    expect(service.lastError).toBeUndefined();
+  });
+
+  it('spreads reconnect delays by up to 30% either way of the backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      expect(RECONNECT_JITTER_RATIO).toBe(0.3);
+      for (const [random, factor] of [
+        [0, 0.7],
+        [1, 1.3],
+        [0.5, 1],
+      ] as const) {
+        const failing = new FakeEmberClient();
+        failing.failConnect = new Error('refused');
+        let created = 0;
+        const service = createService(failing, {
+          reconnectInitialMs: 1_000,
+          reconnectMaxMs: 1_000,
+          random: () => random,
+          createClient: () => {
+            created += 1;
+            return failing;
+          },
+        });
+        await service.start();
+        expect(created).toBe(1);
+        const delayMs = Math.round(1_000 * factor);
+        await vi.advanceTimersByTimeAsync(delayMs - 1);
+        expect(created, `random ${random}`).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(created, `random ${random}`).toBe(2);
+        await service.stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('serializes concurrent writes', async () => {
@@ -850,5 +939,40 @@ describe('connectFailureReason', () => {
     const reason = connectFailureReason(new Error('x'.repeat(500)));
     expect(reason).toHaveLength(200);
     expect(reason.endsWith('…')).toBe(true);
+  });
+});
+
+describe('describeConnectFailure', () => {
+  const context = { host: '10.0.0.8', port: 9000, timeoutMs: 5000 };
+
+  it('prefers the socket error over whatever the dial reported', () => {
+    expect(
+      describeConnectFailure(
+        new Error('Timeout after 5000ms: connect'),
+        new Error('connect EHOSTUNREACH 10.0.0.8:9000'),
+        context,
+      ),
+    ).toBe('connect EHOSTUNREACH 10.0.0.8:9000');
+  });
+
+  it('calls a timeout without a socket error a silent provider', () => {
+    const noAnswer =
+      'Timeout after 5000ms: connect (no answer from 10.0.0.8:9000; the provider may be busy)';
+    expect(
+      describeConnectFailure(new Error('Timeout after 5000ms: connect'), undefined, context),
+    ).toBe(noAnswer);
+    expect(
+      describeConnectFailure(
+        new Error('Could not connect to 10.0.0.8:9000 after a timeout of 5 seconds'),
+        undefined,
+        context,
+      ),
+    ).toBe(noAnswer);
+  });
+
+  it('passes any other failure through as it is', () => {
+    expect(describeConnectFailure(new Error('subscribe denied'), undefined, context)).toBe(
+      'subscribe denied',
+    );
   });
 });
