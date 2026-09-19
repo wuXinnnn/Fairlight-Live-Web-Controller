@@ -798,10 +798,20 @@ describe('EmberService', () => {
       await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 1);
     }
 
-    it('probes once on connect and then every 60 s by default, timed from the last probe', async () => {
+    /** Gets the service past the connect probe: it waits the minimum gap, then runs. */
+    async function passConnectProbe(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS);
+      await finishProbe();
+    }
+
+    it('probes 5 s after connect and then every 60 s by default, timed from the last probe', async () => {
       expect(DEFAULT_BUS_DIRECTORY_POLL_MS).toBe(60_000);
       const { service, probes, reasons } = probeHarness();
       await service.start();
+      // Not in the same second as the connect: every backend that lost the desk is dialling now.
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS - 100);
+      expect(probes).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(100);
       await finishProbe();
       expect(probes).toHaveLength(1);
       expect(reasons()).toEqual([['connect']]);
@@ -825,7 +835,7 @@ describe('EmberService', () => {
       expect(PROBE_MIN_GAP_MS).toBe(5_000);
       const { service, primary, probes, reasons } = probeHarness();
       await service.start();
-      await finishProbe();
+      await passConnectProbe();
       expect(probes).toHaveLength(1);
 
       const channelRoot = primary.tree[1];
@@ -852,10 +862,10 @@ describe('EmberService', () => {
       expect([...(reasons()[1] ?? [])].sort()).toEqual(['children-added', 'ghost']);
     });
 
-    it('asks for a probe when a strip is still incomplete after a refresh', async () => {
+    it('asks for a probe when a strip is still incomplete after a refresh, once per gap', async () => {
       const { service, primary, probes, reasons } = probeHarness();
       await service.start();
-      await finishProbe();
+      await passConnectProbe();
       const channelRoot = primary.tree[1];
       if (channelRoot?.children === undefined) {
         return;
@@ -864,8 +874,110 @@ describe('EmberService', () => {
       primary.emitNodeUpdate(channelRoot);
       await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
       await finishProbe();
-      expect(probes.length).toBeGreaterThanOrEqual(2);
+      expect(probes).toHaveLength(2);
       expect(reasons()[1]).toContain('incomplete');
+      /*
+       * The probe's tree has no channel2 either, so the strip stays incomplete and its retries
+       * keep refreshing the tree (300 ms, 1 s, 3 s, 10 s...). Each refresh finds the same gap the
+       * probe already looked at; none of them asks for another probe. Before this, every one did,
+       * and a gap the desk never fills meant a new connection to it every five seconds for good.
+       */
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(probes).toHaveLength(2);
+      // A gap the probe has not seen is different: it asks within the minimum gap again.
+      channelRoot.children[3] = emberNode(3, new Model.EmberNodeImpl('channel3', 'MUSIC'), {});
+      primary.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      await finishProbe();
+      expect(probes).toHaveLength(3);
+      expect(reasons()[2]).toContain('incomplete');
+    });
+
+    it('does not ask again for a ghost the last probe already saw', async () => {
+      const { service, primary, probes, reasons } = probeHarness();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children !== undefined) {
+        // A ghost from the start; the probe's tree never names it, so it never goes away.
+        channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      }
+      await service.start();
+      await passConnectProbe();
+      expect(probes).toHaveLength(1);
+      expect([...(reasons()[0] ?? [])].sort()).toEqual(['connect', 'ghost']);
+      // The desk keeps updating the bus; every refresh finds the same ghost.
+      for (let round = 0; round < 3; round += 1) {
+        if (channelRoot !== undefined) {
+          primary.emitNodeUpdate(channelRoot);
+        }
+        await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      }
+      expect(probes).toHaveLength(1);
+      // The periodic probe still looks at it, and records it again.
+      await vi.advanceTimersByTimeAsync(DEFAULT_BUS_DIRECTORY_POLL_MS);
+      await finishProbe();
+      expect(probes).toHaveLength(2);
+      expect(reasons()[1]).toEqual(['periodic']);
+      // A second ghost is news.
+      if (channelRoot?.children !== undefined) {
+        channelRoot.children[9] = emberNode(9, new Model.EmberNodeImpl(), {});
+        primary.emitNodeUpdate(channelRoot);
+      }
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      await finishProbe();
+      expect(probes).toHaveLength(3);
+      expect(reasons()[2]).toEqual(['ghost']);
+    });
+
+    it('forgets the gaps it probed when the connection is replaced', async () => {
+      const primary = new FakeEmberClient();
+      const replacement = new FakeEmberClient();
+      for (const client of [primary, replacement]) {
+        const channelRoot = client.tree[1];
+        if (channelRoot?.children !== undefined) {
+          channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+        }
+      }
+      const probes: FakeEmberClient[] = [];
+      const debug: Array<Record<string, unknown>> = [];
+      let created = 0;
+      const service = new EmberService({
+        host: '127.0.0.1',
+        port: 1,
+        logger: { ...silentLogger(), debug: (obj) => debug.push(obj as Record<string, unknown>) },
+        timeoutMs: 40,
+        disconnectTimeoutMs: 30,
+        treeRefreshDebounceMs: 10,
+        reconnectInitialMs: 10,
+        reconnectMaxMs: 10,
+        random: () => 0.5,
+        createClient: () => {
+          created += 1;
+          if (created === 1) {
+            return primary;
+          }
+          if (created === 3) {
+            return replacement;
+          }
+          const probe = new FakeEmberClient(requiredTree());
+          probes.push(probe);
+          return probe;
+        },
+      });
+      services.push(service);
+      await service.start();
+      await passConnectProbe();
+      expect(probes).toHaveLength(1);
+      primary.emit('disconnected');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(replacement.connected).toBe(true);
+      // The same ghost on the new connection is a gap this connection's probes have not seen.
+      await passConnectProbe();
+      expect(probes).toHaveLength(2);
+      const reasons = debug.find((entry, index) => index > 0 && Array.isArray(entry.reasons));
+      expect([...((reasons?.reasons as ProbeReason[] | undefined) ?? [])].sort()).toEqual([
+        'connect',
+        'ghost',
+      ]);
     });
 
     it('ignores every trigger while the probe is switched off', async () => {
@@ -893,6 +1005,7 @@ describe('EmberService', () => {
         return probe;
       });
       await service.start();
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS);
       const probe = probes[0];
       expect(probe?.transport?.socket).toBeDefined();
       const socket = probe?.transport?.socket;
@@ -913,7 +1026,7 @@ describe('EmberService', () => {
         channelRoot.children[2] = stripNode('channel', 2, 'PC');
       }
       await service.start();
-      await finishProbe();
+      await passConnectProbe();
       const warning = warnings.find((entry) => 'missing' in entry);
       expect(warning).toMatchObject({
         known: 4,
@@ -923,25 +1036,29 @@ describe('EmberService', () => {
     });
 
     it('keeps a trigger that fires while a probe is in flight for the probe after it', async () => {
-      // A ghost from the start: the first publish asks for a probe (armed 5 s out) and the connect
-      // probe starts at once and runs long enough for that timer to fire while it is in flight.
+      // The connect probe runs long enough for a directory update to arrive while it is in flight.
       const slowProbeMs = PROBE_MIN_GAP_MS + 1_000;
       const { service, primary, probes, reasons } = probeHarness({ timeoutMs: 20_000 }, () =>
         slowProbe(slowProbeMs),
       );
+      await service.start();
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 10);
+      expect(probes).toHaveLength(1);
       const channelRoot = primary.tree[1];
       if (channelRoot?.children !== undefined) {
-        channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+        // A numbered directory update brings a new child while the probe is still running.
+        primary._updateTree(
+          emberNode(1, new Model.EmberNodeImpl('channel'), { 8: stripNode('channel', 8, 'PC') }),
+          channelRoot,
+        );
       }
-      await service.start();
-      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
-      expect(probes).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS);
       expect(reasons()[0]).toEqual(['connect']);
-      // The ghost is still there, so its probe follows within the minimum gap, not a full period.
+      // The trigger is kept, so its probe follows within the minimum gap, not a full period.
       await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
       expect(probes).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
-      expect(reasons()[1]).toContain('ghost');
+      expect(reasons()[1]).toEqual(['children-added']);
     });
 
     it('still probes a new connection when the old one dropped with a probe in flight', async () => {
@@ -975,7 +1092,7 @@ describe('EmberService', () => {
       });
       services.push(service);
       await service.start();
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 50);
       expect(probes).toHaveLength(1);
       // The desk drops the live connection while the connect probe is still running.
       primary.emit('disconnected');
@@ -991,7 +1108,7 @@ describe('EmberService', () => {
     it('stops the probe timer with the service', async () => {
       const { service, probes } = probeHarness();
       await service.start();
-      await finishProbe();
+      await passConnectProbe();
       await service.stop();
       await vi.advanceTimersByTimeAsync(2 * DEFAULT_BUS_DIRECTORY_POLL_MS);
       expect(probes).toHaveLength(1);

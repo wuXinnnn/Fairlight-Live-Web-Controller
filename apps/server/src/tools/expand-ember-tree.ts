@@ -276,19 +276,39 @@ export async function discoverMixerStripRefs(
   return { refs: listMixerStripRefs(client.tree), errors };
 }
 
-/** True when an online mixer bus holds an online child without an identifier (a ghost). */
-export function hasGhostMixerChildren(tree: EmberCollection): boolean {
+/** The online, identifier-less children (ghosts) under online mixer buses, as `bus#number`. */
+export function ghostMixerChildKeys(tree: EmberCollection): string[] {
+  const keys: string[] = [];
   for (const root of Object.values(tree)) {
-    if (!isMixerBus(readIdentifier(root)) || !isNodeOnline(root)) {
+    const bus = readIdentifier(root);
+    if (!isMixerBus(bus) || !isNodeOnline(root)) {
       continue;
     }
     for (const child of Object.values(root.children ?? {})) {
       if (readIdentifier(child) === undefined && isNodeOnline(child)) {
-        return true;
+        keys.push(`${bus}#${child.number}`);
       }
     }
   }
-  return false;
+  return keys;
+}
+
+/** True when an online mixer bus holds an online child without an identifier (a ghost). */
+export function hasGhostMixerChildren(tree: EmberCollection): boolean {
+  return ghostMixerChildKeys(tree).length > 0;
+}
+
+/**
+ * Everything in the tree a probe exists to fill in, as one key per gap: `ghost:<bus>#<number>`
+ * for a child the desk pushed without an identifier, `incomplete:<bus>/<strip>` for a named strip
+ * still without level/mute/name. A probe records the set it saw, so that the same gaps do not ask
+ * for another probe on every refresh, only a gap the last probe never saw does.
+ */
+export function mixerGapKeys(tree: EmberCollection): string[] {
+  return [
+    ...ghostMixerChildKeys(tree).map((key) => `ghost:${key}`),
+    ...incompleteMixerStripKeys(tree).map((key) => `incomplete:${key}`),
+  ];
 }
 
 /**
