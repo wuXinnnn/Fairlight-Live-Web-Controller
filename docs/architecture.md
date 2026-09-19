@@ -36,7 +36,7 @@ flowchart LR
 
 | 模块 | 职责 |
 | --- | --- |
-| `EmberService` | Ember+ 连接生命周期(连接/断线/自动重连/超时)、树展开、目录变化后重新展开、参数订阅、参数写入、function 调用。只处理原始 Ember 节点,不理解业务含义。S101 keepalive 由 `emberplus-connection` 在 TCP 连上后自动维持(每 10 s 发 KeepAliveRequest,500 ms 内无应答即关闭 socket,同时自动应答 Provider 的请求),库不提供配置项;关闭会以 `disconnected` 进入本服务的退避重连。记录最近一次连接失败的简短原因(`lastError`,如 `Timeout after 5000ms: connect`):重试期间保留,连接成功、重新配置端点或停止服务时清空;状态事件以 `(status, lastError)` 去重,原因变化时即使状态枚举不变也会广播。注意 `emberplus-connection` 会吞掉 ECONNREFUSED 并自行重拨,因此地址错误在本服务表现为 connect 超时 |
+| `EmberService` | Ember+ 连接生命周期(连接/断线/自动重连/超时)、树展开、目录变化后重新展开、参数订阅、参数写入、function 调用。只处理原始 Ember 节点,不理解业务含义。S101 keepalive 由 `emberplus-connection` 在 TCP 连上后自动维持(每 10 s 发 KeepAliveRequest,500 ms 内无应答即关闭 socket,同时自动应答 Provider 的请求),库不提供配置项;关闭会以 `disconnected` 进入本服务的退避重连。记录最近一次连接失败的简短原因(`lastError`,如 `Timeout after 5000ms: connect`):重试期间保留,连接成功、重新配置端点或停止服务时清空;状态事件以 `(status, lastError)` 去重,原因变化时即使状态枚举不变也会广播。`emberplus-connection` 会吞掉 ECONNREFUSED 并自行重拨,所以本服务在 `connect()` 发出后直接挂住底层 socket 的 `error`,失败原因优先取该错误(如 `connect ECONNREFUSED 10.0.0.8:9000`),没有 socket 错误的超时写成 `Timeout after 5000ms: connect (no answer from <host>:<port>; the provider may be busy)`;连上后根目录无应答同样按连接失败退避。重连延迟带 ±30% 抖动(`RECONNECT_JITTER_RATIO`)。混音条带探测(短时只读连接)默认 60 s 一次并在目录更新插入新孩子、刷新后仍有幽灵孩子或不完整条带时触发,两次探测至少间隔 5 s、触发合并,探测连接以 RST 关闭而不是 FIN,列表前等 200 ms 尾包;首轮展开对命名条带给 2 s、对幽灵孩子给 400 ms 两档超时,不完整条带按 300 ms / 1 s / 3 s / 10 s / 30 s 退避持续重试,探测也会把不完整的已知条带清掉重拉(实测依据见 `fairlight-ember.md` 踩坑记录第 12 条) |
 | `TreeMapper` | 运行时树发现:遍历实际树,按节点 identifier 模式识别通道、各类总线、响度节点,建立"逻辑通道模型 ↔ Ember 路径"映射。树变化时增量更新映射并发出事件;无法识别的节点安全忽略并记日志 |
 | `MixerStateStore` | 规范化业务状态:通道清单(id、类型、名称、level、mute)、响度、连接状态与最近连接失败原因(`connectionError`)。事件驱动,是 WS 网关的唯一数据源 |
 | `MeterHub` | 电平/响度更新的聚合与 50ms 节流,批量成帧后交给 WS 网关广播,与状态增量通道分离 |
@@ -231,7 +231,7 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 - **怎么判定**。热身 10 分钟之后取第一个 10 分钟窗口为基准、最后一个同长窗口为终点,比较两者:JS 堆增长 ≤ 10 MiB 且 ≤ 20%、DOM 节点与监听数漂移 ≤ 5%、服务端堆增长 ≤ 20 MiB、句柄数变化 ≤ 4、每次断连都在 30 秒内恢复。阈值全部是 `soak-report.ts` 里的导出常量,是**实测后定的初值**,不是规范。断连没恢复在任何时长下都直接 `fail`;样本不够两个窗口(不足 30 分钟)则为 `inconclusive`,退出码仍是 0。
 - **产物**。`soak-reports/<时间戳>/` 下的 `samples.json` 与 `report.md`(英文,由 `renderMarkdown` 生成),该目录不提交。`fail` 退出码 1。
 - **CI**。`.github/workflows/soak.yml` 只能手动触发(`workflow_dispatch`,输入分钟数),用 runner 自带的 Chrome,报告作为 artifact 上传保留 30 天;`ci.yml` 不跑 soak。
-- soak 的第一次实跑就找到了一个真实缺陷:总线目录探针每 2 秒建一个 Ember 客户端,断开时只 `disconnect()` 而没有 `discard()`,而 `EmberClient` 的重发定时器只有 `discard()` 会清——服务端句柄数每 10 秒涨 5 个,一小时一千八百个。修法见 `ember-service.ts` 的探针 `finally`。
+- soak 的第一次实跑就找到了一个真实缺陷:总线目录探针每 2 秒建一个 Ember 客户端,断开时只 `disconnect()` 而没有 `discard()`,而 `EmberClient` 的重发定时器只有 `discard()` 会清——服务端句柄数每 10 秒涨 5 个,一小时一千八百个。修法见 `ember-service.ts` 的探针 `finally`。后来对真实 Fairlight Live 的实测又把探针本身的频率压下来:它默认 60 s 一次、事件触发合并、以 RST 关闭(见「后端分层职责」的 `EmberService` 一行),所以默认时序下的 soak 现在一小时只开几十条探测连接。
 
 ## 部署
 

@@ -49,7 +49,7 @@ describe('mixer strip probe', { timeout: 40_000 }, () => {
      * nothing that lasts. `disconnect()` alone does not achieve that, which is why the live client
      * is put through `retireEmberTransport` rather than merely disconnected: that is what clears
      * the connection-attempt interval the library leaves running. A probe that skips it leaks one
-     * timer every interval — at the production two second poll, eighteen hundred over an hour, and
+     * timer every interval — at the two second poll it once had, eighteen hundred over an hour, and
      * the soak run that found this watched the server's handle count climb by five every ten
      * seconds for exactly that reason.
      *
