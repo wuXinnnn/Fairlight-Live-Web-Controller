@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequiredDump, findFreePort, MockEmberProvider } from '@flwc/test-utils';
-import type { DumpTree } from '@flwc/test-utils';
+import type { DumpTree, MockEmberProviderOptions } from '@flwc/test-utils';
 import { SOCKET_EVENTS, type ControlAck, type MixerSnapshot } from '@flwc/shared';
 import { io, type ManagerOptions, type Socket, type SocketOptions } from 'socket.io-client';
 import { start, type StartedServer } from '../src/server.js';
@@ -24,6 +24,8 @@ export interface StartStackOptions {
   timeoutMs?: number;
   /** How often the mixer strip probe runs. Zero, the default here, turns it off. */
   busDirectoryPollMs?: number;
+  /** Handed to the provider as is, for the cases that want it to behave like a busy desk. */
+  providerOptions?: MockEmberProviderOptions;
 }
 
 export interface Stack {
@@ -190,10 +192,10 @@ export function createStackHarness(): StackHarness {
     dump: DumpTree = createRequiredDump(),
     extra: StartStackOptions = {},
   ): Promise<Stack> => {
-    const provider = MockEmberProvider.fromDump(
-      dump,
-      extra.providerPort === undefined ? {} : { port: extra.providerPort },
-    );
+    const provider = MockEmberProvider.fromDump(dump, {
+      ...(extra.providerPort === undefined ? {} : { port: extra.providerPort }),
+      ...extra.providerOptions,
+    });
     providers.push(provider);
     const { host, port } = await provider.listen();
     const configDir = await mkdtemp(path.join(tmpdir(), 'flwc-int-'));

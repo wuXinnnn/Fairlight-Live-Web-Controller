@@ -14,10 +14,73 @@ interface DirectoryListener {
   cb: (node: EmberTreeNode) => void;
 }
 
+/** Stands in for the `net.Socket` an S101 transport holds; it records how it was closed. */
+export class FakeEmberSocket {
+  destroyed = false;
+  destroyCalls = 0;
+  resetCalls = 0;
+  endCalls = 0;
+  private errorListeners: Array<(error: Error) => void> = [];
+
+  on(event: 'error', listener: (error: Error) => void): this {
+    if (event === 'error') {
+      this.errorListeners.push(listener);
+    }
+    return this;
+  }
+
+  once(event: 'error', listener: (error: Error) => void): this {
+    const wrapped = (error: Error): void => {
+      this.errorListeners = this.errorListeners.filter((entry) => entry !== wrapped);
+      listener(error);
+    };
+    return this.on(event, wrapped);
+  }
+
+  emitError(error: Error): void {
+    for (const listener of [...this.errorListeners]) {
+      listener(error);
+    }
+  }
+
+  removeAllListeners(): this {
+    this.errorListeners = [];
+    return this;
+  }
+
+  destroy(): void {
+    this.destroyCalls += 1;
+    this.destroyed = true;
+  }
+
+  resetAndDestroy(): void {
+    this.resetCalls += 1;
+    this.destroyed = true;
+  }
+
+  /** What the library's `disconnect()` does to the socket: a FIN. */
+  end(): void {
+    this.endCalls += 1;
+  }
+}
+
+/** Stands in for the library's S101Client, reachable through `_client` like the real one. */
+export class FakeEmberTransport {
+  socket: FakeEmberSocket | undefined = new FakeEmberSocket();
+  _autoReconnect = true;
+  _shouldBeConnected = false;
+  connect = async (): Promise<undefined> => undefined;
+}
+
 export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   tree: EmberCollection;
   connected = false;
   discarded = false;
+  disconnectCalls = 0;
+  /** Set to give the client a transport, so `captureEmberTransport` finds something to retire. */
+  transport: FakeEmberTransport | undefined;
+  /** Emitted on the transport's socket while connecting, before `failConnect` or `hangConnect`. */
+  socketError: Error | undefined;
   connectDelayMs = 0;
   hangConnect = false;
   hangDisconnect = false;
@@ -46,7 +109,17 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
     this.port = port;
   }
 
+  /** The real client exposes its S101Client here; `captureEmberTransport` reads it. */
+  get _client(): FakeEmberTransport | undefined {
+    return this.transport;
+  }
+
   async connect(): Promise<Error | undefined> {
+    if (this.socketError !== undefined) {
+      const error = this.socketError;
+      // The library's socket error fires asynchronously, after the dial has been started.
+      queueMicrotask(() => this.transport?.socket?.emitError(error));
+    }
     if (this.hangConnect) {
       return new Promise(() => undefined);
     }
@@ -61,6 +134,8 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   }
 
   async disconnect(): Promise<void> {
+    this.disconnectCalls += 1;
+    this.transport?.socket?.end();
     if (this.hangDisconnect) {
       return new Promise(() => undefined);
     }
@@ -71,6 +146,17 @@ export class FakeEmberClient extends EventEmitter implements EmberClientHandle {
   discard(): void {
     this.discarded = true;
     this.connected = false;
+    // Like the library: discard() hangs up first, which reaches the socket only if one is left.
+    this.transport?.socket?.end();
+    this.transport = undefined;
+  }
+
+  /** The library patches `_updateTree`; a fake one lets a test drive `onChildrenAdded`. */
+  _updateTree(update: EmberTreeNode, tree: EmberTreeNode | undefined): unknown[] {
+    // The patch in front of this does the merging; the original only has to exist and return.
+    void update;
+    void tree;
+    return [];
   }
 
   async getDirectory(

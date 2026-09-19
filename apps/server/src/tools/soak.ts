@@ -189,8 +189,8 @@ async function buildStack(dumpPath: string): Promise<LocalStack> {
       'utf8',
     );
     const httpPort = await findFreePort('127.0.0.1');
-    // Default Ember timings on purpose, the two second bus directory poll included: building and
-    // tearing down that probe client every two seconds is one of the things worth soaking.
+    // Default Ember timings on purpose, the once-a-minute strip probe included: building and
+    // tearing down that probe client is one of the things worth soaking.
     const server = await start({
       host: '127.0.0.1',
       port: httpPort,

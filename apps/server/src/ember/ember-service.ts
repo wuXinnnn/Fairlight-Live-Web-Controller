@@ -7,6 +7,7 @@ import {
   attachMissingMixerStrips,
   discoverMixerStripRefs,
   expandEmberTree,
+  hasGhostMixerChildren,
   incompleteMixerStripKeys,
   listMixerStripRefs,
   mixerStripKey,
@@ -28,13 +29,37 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_DISCONNECT_TIMEOUT_MS = 2_000;
-const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
-const DEFAULT_RECONNECT_MAX_MS = 30_000;
+export const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
+export const DEFAULT_RECONNECT_MAX_MS = 30_000;
 const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
-const DEFAULT_INCOMPLETE_STRIP_RETRY_MS = 300;
-const DEFAULT_BUS_DIRECTORY_POLL_MS = 2_000;
+/**
+ * How long to wait before asking again for a strip that is online but still without
+ * level/mute/name, by attempt: the last entry repeats until the strip fills in or the
+ * connection is replaced. Each strip counts its own attempts, so a strip that appears later
+ * starts at the front of the schedule whatever the older ones are up to.
+ */
+export const INCOMPLETE_STRIP_RETRY_SCHEDULE_MS: readonly number[] = [
+  300, 1_000, 3_000, 10_000, 30_000,
+];
+/**
+ * How often the mixer strip probe dials the desk when nothing else asks for it. Every probe is a
+ * fresh TCP session that Fairlight Live admits at about two a second and never tidies up after a
+ * FIN, so the period is minutes, not seconds; changes the desk does not push arrive through the
+ * triggered probes long before this timer fires. Zero turns the probe off altogether.
+ */
+export const DEFAULT_BUS_DIRECTORY_POLL_MS = 60_000;
+/** The least time between two probes, however many triggers arrive in between. */
+export const PROBE_MIN_GAP_MS = 5_000;
+/**
+ * Reconnect delays are spread by this much either way, so backends that lost the desk together
+ * (it restarted, say) do not all dial again in the same millisecond and queue for its accept.
+ */
+export const RECONNECT_JITTER_RATIO = 0.3;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 const MAX_LAST_ERROR_LENGTH = 200;
+
+/** Why a mixer strip probe was run. `connect` is the one right after the tree first expanded. */
+export type ProbeReason = 'connect' | 'periodic' | 'children-added' | 'ghost' | 'incomplete';
 
 export interface EmberServiceOptions {
   host: string;
@@ -45,9 +70,17 @@ export interface EmberServiceOptions {
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
   treeRefreshDebounceMs?: number;
+  /**
+   * Replaces the first entry of `INCOMPLETE_STRIP_RETRY_SCHEDULE_MS`; the rest of the schedule
+   * stands. Zero or less turns the retry off.
+   */
   incompleteStripRetryMs?: number;
   busDirectoryPollMs?: number;
+  /** GetDirectory timeout for named strips during expansion; see `STRIP_DIRECTORY_TIMEOUT_MS`. */
+  stripDirectoryTimeoutMs?: number;
   createClient?: EmberClientFactory;
+  /** Source of the reconnect jitter, in [0, 1). Tests inject a constant. */
+  random?: () => number;
 }
 
 export interface EmberServiceEvents {
@@ -64,9 +97,11 @@ export class EmberService extends EventEmitter {
   private readonly reconnectInitialMs: number;
   private readonly reconnectMaxMs: number;
   private readonly treeRefreshDebounceMs: number;
-  private readonly incompleteStripRetryMs: number;
+  private readonly incompleteStripRetryScheduleMs: readonly number[];
   private readonly busDirectoryPollMs: number;
+  private readonly stripDirectoryTimeoutMs: number | undefined;
   private readonly createClient: EmberClientFactory;
+  private readonly random: () => number;
   private client: EmberClientHandle | undefined;
   private started = false;
   private hasConnected = false;
@@ -76,9 +111,15 @@ export class EmberService extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private incompleteStripRetryTimer: ReturnType<typeof setTimeout> | undefined;
-  private busDirectoryPollTimer: ReturnType<typeof setInterval> | undefined;
+  private incompleteStripRetryDueAt: number | undefined;
+  private probeTimer: ReturnType<typeof setTimeout> | undefined;
+  private probeTimerDueAt: number | undefined;
+  private readonly pendingProbeReasons = new Set<ProbeReason>();
+  private lastProbeAt: number | undefined;
+  private mixerProbeQueued = false;
   private mixerProbeInFlight = false;
-  private readonly retriedIncompleteStrips = new Set<string>();
+  /** Incomplete strip key → how many retries it has had on this connection. */
+  private readonly incompleteStripAttempts = new Map<string, number>();
   private treeRefreshTail: Promise<void> = Promise.resolve();
   private writeTail: Promise<void> = Promise.resolve();
   private subscribedNodes = new WeakSet<EmberTreeNode>();
@@ -93,11 +134,14 @@ export class EmberService extends EventEmitter {
     this.reconnectInitialMs = options.reconnectInitialMs ?? DEFAULT_RECONNECT_INITIAL_MS;
     this.reconnectMaxMs = options.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
     this.treeRefreshDebounceMs = options.treeRefreshDebounceMs ?? DEFAULT_TREE_REFRESH_DEBOUNCE_MS;
-    this.incompleteStripRetryMs =
-      options.incompleteStripRetryMs ?? DEFAULT_INCOMPLETE_STRIP_RETRY_MS;
+    this.incompleteStripRetryScheduleMs = incompleteStripRetrySchedule(
+      options.incompleteStripRetryMs,
+    );
     this.busDirectoryPollMs = options.busDirectoryPollMs ?? DEFAULT_BUS_DIRECTORY_POLL_MS;
+    this.stripDirectoryTimeoutMs = options.stripDirectoryTimeoutMs;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
+    this.random = options.random ?? Math.random;
   }
 
   get status(): ConnectionStatus {
@@ -117,6 +161,14 @@ export class EmberService extends EventEmitter {
     return this.client?.tree;
   }
 
+  /** The timings the environment may override, as this service ended up with them. */
+  get tuning(): { busDirectoryPollMs: number; stripDirectoryTimeoutMs: number | undefined } {
+    return {
+      busDirectoryPollMs: this.busDirectoryPollMs,
+      stripDirectoryTimeoutMs: this.stripDirectoryTimeoutMs,
+    };
+  }
+
   async start(): Promise<void> {
     if (this.started) {
       return;
@@ -130,7 +182,7 @@ export class EmberService extends EventEmitter {
     this.clearReconnectTimer();
     this.clearTreeRefreshTimer();
     this.clearIncompleteStripRetryTimer();
-    this.clearBusDirectoryPollTimer();
+    this.clearProbeTimer();
     await this.safeClose();
     this.setStatus('disconnected', undefined);
   }
@@ -219,8 +271,16 @@ export class EmberService extends EventEmitter {
     const client = this.createBoundClient();
     this.client = client;
     this.bindClient(client);
+    let socketError: Error | undefined;
     try {
-      const result = await withTimeout(client.connect(), this.timeoutMs, 'connect');
+      const dialling = client.connect();
+      // The library creates the socket synchronously inside connect() and swallows ECONNREFUSED
+      // on it, reporting a refused port and a silent one with the same timeout. The socket's own
+      // error is what tells them apart, so it is caught here, on the socket, as it happens.
+      captureEmberTransport(client)?.socket?.once?.('error', (error) => {
+        socketError ??= error;
+      });
+      const result = await withTimeout(dialling, this.timeoutMs, 'connect');
       if (result instanceof Error) {
         throw result;
       }
@@ -231,6 +291,12 @@ export class EmberService extends EventEmitter {
       if (!this.isActiveClient(client)) {
         return;
       }
+      if (Object.keys(client.tree).length === 0) {
+        // The TCP session is up but the desk never answered the root GetDirectory. That is what a
+        // desk whose accept queue we are waiting in looks like; a connection with no tree is no
+        // connection, so it is retried with backoff like a dial that timed out.
+        throw new EmberProtocolError(noAnswerReason(this.host, this.port, this.timeoutMs));
+      }
       await this.watchStructure(client);
       if (!this.isActiveClient(client)) {
         return;
@@ -239,9 +305,8 @@ export class EmberService extends EventEmitter {
       this.backoffMs = this.reconnectInitialMs;
       this.setStatus('connected', undefined);
       this.publishTree(client);
-      this.startBusDirectoryPoll();
       if (this.busDirectoryPollMs > 0) {
-        this.enqueueMixerStripReconcile();
+        this.enqueueMixerStripReconcile(['connect']);
       }
     } catch (error) {
       if (this.client !== client) {
@@ -253,16 +318,18 @@ export class EmberService extends EventEmitter {
         );
         return;
       }
+      const reason = describeConnectFailure(error, socketError, {
+        host: this.host,
+        port: this.port,
+        timeoutMs: this.timeoutMs,
+      });
       this.logger.error(
-        { err: errorMessage(error), host: this.host, port: this.port, layer: 'protocol' },
+        { err: reason, host: this.host, port: this.port, layer: 'protocol' },
         'ember connect failed',
       );
       await this.safeClose();
       if (this.started) {
-        this.setStatus(
-          this.hasConnected ? 'reconnecting' : 'connecting',
-          connectFailureReason(error),
-        );
+        this.setStatus(this.hasConnected ? 'reconnecting' : 'connecting', reason);
         this.scheduleReconnect();
       }
     }
@@ -275,7 +342,7 @@ export class EmberService extends EventEmitter {
     const { errors } = await expandEmberTree(client, {
       timeoutMs: this.timeoutMs,
       skipIdentifiers: SKIP_IDENTIFIERS,
-      stripDirectoryTimeoutMs,
+      stripDirectoryTimeoutMs: stripDirectoryTimeoutMs ?? this.stripDirectoryTimeoutMs,
     });
     for (const error of errors) {
       this.logger.warn(
@@ -322,33 +389,67 @@ export class EmberService extends EventEmitter {
   private publishTree(client: EmberClientHandle): void {
     this.emit('tree', client.tree);
     this.scheduleIncompleteStripRetry(client);
+    // What the tree itself says is missing: a ghost child the desk pushed without an identifier,
+    // or a named strip still without level/mute/name. Both are what the probe is for.
+    if (hasGhostMixerChildren(client.tree)) {
+      this.requestMixerStripProbe('ghost');
+    }
+    if (incompleteMixerStripKeys(client.tree).length > 0) {
+      this.requestMixerStripProbe('incomplete');
+    }
   }
 
+  /**
+   * Keeps asking for strips that are online but still without level/mute/name, backing off per
+   * strip along `INCOMPLETE_STRIP_RETRY_SCHEDULE_MS`. One timer serves every pending strip: it is
+   * due when the earliest of them is, and a later tree publish can only pull it forward (a new
+   * strip at the front of the schedule), never push it back. A retry refreshes the whole tree, so
+   * every strip still pending afterwards has had another attempt.
+   */
   private scheduleIncompleteStripRetry(client: EmberClientHandle): void {
-    if (this.incompleteStripRetryMs <= 0 || !this.isActiveClient(client)) {
+    if (this.incompleteStripRetryScheduleMs.length === 0 || !this.isActiveClient(client)) {
       return;
     }
     const pending = incompleteMixerStripKeys(client.tree);
-    for (const key of [...this.retriedIncompleteStrips]) {
+    for (const key of [...this.incompleteStripAttempts.keys()]) {
       if (!pending.includes(key)) {
-        this.retriedIncompleteStrips.delete(key);
+        this.incompleteStripAttempts.delete(key);
       }
     }
-    const fresh = pending.filter((key) => !this.retriedIncompleteStrips.has(key));
-    if (fresh.length === 0) {
+    if (pending.length === 0) {
+      this.clearIncompleteStripRetryTimer();
       return;
     }
+    const now = Date.now();
+    let dueAt = Number.POSITIVE_INFINITY;
     for (const key of pending) {
-      this.retriedIncompleteStrips.add(key);
+      const attempts = this.incompleteStripAttempts.get(key) ?? 0;
+      this.incompleteStripAttempts.set(key, attempts);
+      dueAt = Math.min(dueAt, now + this.incompleteStripRetryDelay(attempts));
     }
-    this.clearIncompleteStripRetryTimer();
+    if (this.incompleteStripRetryTimer !== undefined) {
+      if (this.incompleteStripRetryDueAt !== undefined && this.incompleteStripRetryDueAt <= dueAt) {
+        return;
+      }
+      this.clearIncompleteStripRetryTimer();
+    }
+    this.incompleteStripRetryDueAt = dueAt;
     this.incompleteStripRetryTimer = setTimeout(() => {
       this.incompleteStripRetryTimer = undefined;
+      this.incompleteStripRetryDueAt = undefined;
+      for (const [key, attempts] of this.incompleteStripAttempts) {
+        this.incompleteStripAttempts.set(key, attempts + 1);
+      }
       this.treeRefreshTail = this.treeRefreshTail.then(
         () => this.refreshTreeIfConnected(),
         () => this.refreshTreeIfConnected(),
       );
-    }, this.incompleteStripRetryMs);
+    }, dueAt - now);
+  }
+
+  private incompleteStripRetryDelay(attempts: number): number {
+    const schedule = this.incompleteStripRetryScheduleMs;
+    return schedule[Math.min(attempts, schedule.length - 1)] ?? 0;
   }
 
   private scheduleTreeRefresh(): void {
@@ -378,22 +479,107 @@ export class EmberService extends EventEmitter {
     }
   }
 
-  private enqueueMixerStripReconcile(): void {
-    if (this.mixerProbeInFlight) {
+  /**
+   * Asks for a probe because of `reason`. It runs once the minimum gap since the last probe has
+   * passed; reasons arriving before then are folded into that one run. With the probe off it does
+   * nothing, and while a probe is queued or in flight it only records the reason.
+   */
+  private requestMixerStripProbe(reason: ProbeReason): void {
+    if (this.busDirectoryPollMs <= 0 || !this.started || this.client === undefined) {
       return;
     }
-    this.treeRefreshTail = this.treeRefreshTail.then(
-      () => this.reconcileMixerStripsIfConnected(),
-      () => this.reconcileMixerStripsIfConnected(),
+    this.pendingProbeReasons.add(reason);
+    this.armProbeTimer();
+  }
+
+  /**
+   * One timer covers both the periodic probe and the triggered one: whichever is due first. An
+   * existing timer is only replaced when the new due time is earlier, so a trigger can pull the
+   * next probe forward but nothing can push it back.
+   */
+  private armProbeTimer(): void {
+    if (
+      this.busDirectoryPollMs <= 0 ||
+      !this.started ||
+      this.client === undefined ||
+      this.mixerProbeQueued ||
+      this.mixerProbeInFlight
+    ) {
+      return;
+    }
+    const now = Date.now();
+    const since = this.lastProbeAt ?? now;
+    const periodicAt = since + this.busDirectoryPollMs;
+    const triggeredAt =
+      this.pendingProbeReasons.size > 0
+        ? Math.max(now, since + PROBE_MIN_GAP_MS)
+        : Number.POSITIVE_INFINITY;
+    const dueAt = Math.min(periodicAt, triggeredAt);
+    if (this.probeTimer !== undefined) {
+      if (this.probeTimerDueAt !== undefined && this.probeTimerDueAt <= dueAt) {
+        return;
+      }
+      clearTimeout(this.probeTimer);
+    }
+    this.probeTimerDueAt = dueAt;
+    this.probeTimer = setTimeout(
+      () => {
+        this.probeTimer = undefined;
+        this.probeTimerDueAt = undefined;
+        const reasons: ProbeReason[] =
+          this.pendingProbeReasons.size > 0 ? [...this.pendingProbeReasons] : ['periodic'];
+        this.pendingProbeReasons.clear();
+        this.enqueueMixerStripReconcile(reasons);
+      },
+      Math.max(0, dueAt - now),
     );
   }
 
-  private async reconcileMixerStripsIfConnected(): Promise<void> {
+  private clearProbeTimer(): void {
+    this.disarmProbeTimer();
+    this.pendingProbeReasons.clear();
+    this.lastProbeAt = undefined;
+  }
+
+  private disarmProbeTimer(): void {
+    if (this.probeTimer !== undefined) {
+      clearTimeout(this.probeTimer);
+      this.probeTimer = undefined;
+    }
+    this.probeTimerDueAt = undefined;
+  }
+
+  /**
+   * Starts a probe for `reasons` unless one is already queued or running. In that case the
+   * reasons are kept for the probe after it: the running one may have read the desk before
+   * whatever prompted them happened, and it may belong to a connection that has since been
+   * replaced. Its completion re-arms the timer, which sees them and probes again after the
+   * minimum gap rather than a whole period.
+   */
+  private enqueueMixerStripReconcile(reasons: readonly ProbeReason[]): void {
+    if (this.mixerProbeQueued || this.mixerProbeInFlight) {
+      for (const reason of reasons) {
+        this.pendingProbeReasons.add(reason);
+      }
+      return;
+    }
+    // A timer armed earlier is superseded: this probe's completion re-arms it.
+    this.disarmProbeTimer();
+    this.mixerProbeQueued = true;
+    this.treeRefreshTail = this.treeRefreshTail.then(
+      () => this.reconcileMixerStripsIfConnected(reasons),
+      () => this.reconcileMixerStripsIfConnected(reasons),
+    );
+  }
+
+  private async reconcileMixerStripsIfConnected(reasons: readonly ProbeReason[]): Promise<void> {
+    this.mixerProbeQueued = false;
     const primary = this.client;
     if (this.mixerProbeInFlight || !this.started || primary === undefined || !primary.connected) {
       return;
     }
     this.mixerProbeInFlight = true;
+    const startedAt = Date.now();
     const probe = this.createClient(this.host, this.port, this.timeoutMs);
     try {
       const result = await withTimeout(probe.connect(), this.timeoutMs, 'probe connect');
@@ -412,20 +598,36 @@ export class EmberService extends EventEmitter {
       }
       const known = listMixerStripRefs(primary.tree);
       const knownKeys = new Set(known.map(mixerStripKey));
+      const discoveredKeys = new Set(refs.map(mixerStripKey));
       const extra = refs.filter((ref) => !knownKeys.has(mixerStripKey(ref)));
+      const missing = known.filter((ref) => !discoveredKeys.has(mixerStripKey(ref)));
       const added = attachMissingMixerStrips(primary.tree, refs);
-      if (extra.length > 0 || added.length > 0 || known.length !== refs.length) {
-        this.logger.info(
-          {
-            known: known.length,
-            discovered: refs.length,
-            extra: extra.map((ref) => `${mixerStripKey(ref)}#${ref.number}`),
-            added: added.map((ref) => mixerStripKey(ref)),
-            layer: 'protocol',
-          },
-          'mixer strip probe',
-        );
+      const summary = {
+        known: known.length,
+        discovered: refs.length,
+        extra: extra.map((ref) => `${mixerStripKey(ref)}#${ref.number}`),
+        missing: missing.map((ref) => mixerStripKey(ref)),
+        added: added.map((ref) => mixerStripKey(ref)),
+        layer: 'protocol',
+      };
+      if (refs.length < known.length) {
+        // Fewer than the live tree has. Either the desk dropped strips without saying so, or the
+        // probe listed a bus directory before all of it arrived; both deserve a look.
+        this.logger.warn(summary, 'mixer strip probe');
+      } else if (extra.length > 0 || added.length > 0) {
+        this.logger.info(summary, 'mixer strip probe');
       }
+      this.logger.debug(
+        {
+          reasons,
+          durationMs: Date.now() - startedAt,
+          known: known.length,
+          discovered: refs.length,
+          added: added.length,
+          layer: 'protocol',
+        },
+        'mixer strip probe finished',
+      );
       if (added.length === 0) {
         return;
       }
@@ -435,30 +637,29 @@ export class EmberService extends EventEmitter {
     } finally {
       if (probe !== primary) {
         /*
-         * Captured before anything is closed, because `discard()` drops the client's own reference
-         * to it and retiring it afterwards would then reach nothing.
+         * The probe is closed with a TCP reset, not a FIN: Fairlight Live never closes its side
+         * of a session that was ended politely, and every such session stays in CLOSE_WAIT on the
+         * desk, holding a handle, until the desk restarts.
+         *
+         * The order is fixed. The transport is captured first because `discard()` deletes the
+         * client's own reference to it. It is retired (reset) before `discard()` because
+         * `discard()` calls the library's `disconnect()`, which would send the FIN; retiring
+         * clears the transport's socket, and `disconnect()` returns at once when there is none.
+         * `discard()` still runs last, always: an EmberClient starts a resend interval in its
+         * constructor and only `discard()` clears it. A soak run found that leak by watching the
+         * server's handle count climb by five every ten seconds.
          */
         const transport = captureEmberTransport(probe);
+        retireEmberTransport(transport, { reset: true });
         try {
-          await withTimeout(probe.disconnect(), this.disconnectTimeoutMs, 'probe disconnect');
-        } catch {
-          // A probe that will not hang up is discarded below like any other.
-        }
-        try {
-          /*
-           * Always, not only after a failed disconnect. An EmberClient starts a resend interval in
-           * its constructor and only `discard()` clears it, so a probe that hung up cleanly still
-           * leaves a live timer behind for the rest of the process — one per poll, which at the
-           * production two second interval is eighteen hundred an hour. A soak run found this by
-           * watching the server's handle count climb by five every ten seconds.
-           */
           probe.discard();
         } catch {
           // Nothing else to clean up if the client objects to being discarded.
         }
-        retireEmberTransport(transport);
       }
+      this.lastProbeAt = Date.now();
       this.mixerProbeInFlight = false;
+      this.armProbeTimer();
     }
   }
 
@@ -497,7 +698,9 @@ export class EmberService extends EventEmitter {
     if (this.reconnectTimer !== undefined || !this.started) {
       return;
     }
-    const delay = this.backoffMs;
+    // Uniform in [1 - ratio, 1 + ratio): backends that dropped together come back spread out.
+    const jitter = 1 + (2 * this.random() - 1) * RECONNECT_JITTER_RATIO;
+    const delay = Math.round(this.backoffMs * jitter);
     this.backoffMs = Math.min(this.backoffMs * 2, this.reconnectMaxMs);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
@@ -524,23 +727,7 @@ export class EmberService extends EventEmitter {
       clearTimeout(this.incompleteStripRetryTimer);
       this.incompleteStripRetryTimer = undefined;
     }
-  }
-
-  private startBusDirectoryPoll(): void {
-    this.clearBusDirectoryPollTimer();
-    if (this.busDirectoryPollMs <= 0 || !this.started) {
-      return;
-    }
-    this.busDirectoryPollTimer = setInterval(() => {
-      this.enqueueMixerStripReconcile();
-    }, this.busDirectoryPollMs);
-  }
-
-  private clearBusDirectoryPollTimer(): void {
-    if (this.busDirectoryPollTimer !== undefined) {
-      clearInterval(this.busDirectoryPollTimer);
-      this.busDirectoryPollTimer = undefined;
-    }
+    this.incompleteStripRetryDueAt = undefined;
   }
 
   private createBoundClient(): EmberClientHandle {
@@ -548,6 +735,9 @@ export class EmberService extends EventEmitter {
     patchEmberClientTreeMerge(client, {
       onChildrenAdded: () => {
         this.scheduleTreeRefresh();
+        // A numbered directory update brought a new child; the desk may have more to tell a
+        // fresh connection than it pushed to this one.
+        this.requestMixerStripProbe('children-added');
       },
       onIncomingError: (error) => {
         this.logger.warn(
@@ -561,13 +751,14 @@ export class EmberService extends EventEmitter {
 
   private resetWatches(): void {
     this.subscribedNodes = new WeakSet();
-    this.retriedIncompleteStrips.clear();
+    // A new connection starts every strip at the front of the retry schedule again.
+    this.incompleteStripAttempts.clear();
   }
 
   private async safeClose(): Promise<void> {
     this.clearTreeRefreshTimer();
     this.clearIncompleteStripRetryTimer();
-    this.clearBusDirectoryPollTimer();
+    this.clearProbeTimer();
     this.resetWatches();
     const client = this.client;
     this.client = undefined;
@@ -623,6 +814,45 @@ export class EmberService extends EventEmitter {
   }
 }
 
+export interface ConnectFailureContext {
+  host: string;
+  port: number;
+  timeoutMs: number;
+}
+
+/** What the panel says when the dial got no answer at all; `lastError` and the log share it. */
+export function noAnswerReason(host: string, port: number, timeoutMs: number): string {
+  return `Timeout after ${timeoutMs}ms: connect (no answer from ${host}:${port}; the provider may be busy)`;
+}
+
+/**
+ * Names a failed connect attempt for the panel and the log. A socket error (`ECONNREFUSED`,
+ * `EHOSTUNREACH`, ...) is the real reason whenever there is one, because the library folds it
+ * into the same timeout it reports for a desk that simply did not answer; a timeout with no
+ * socket error is exactly that, and says so.
+ */
+export function describeConnectFailure(
+  error: unknown,
+  socketError: Error | undefined,
+  context: ConnectFailureContext,
+): string {
+  if (socketError !== undefined) {
+    return connectFailureReason(socketError);
+  }
+  if (isConnectTimeout(error)) {
+    return noAnswerReason(context.host, context.port, context.timeoutMs);
+  }
+  return connectFailureReason(error);
+}
+
+function isConnectTimeout(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    /^Timeout after \d+ms: connect$/.test(message) ||
+    /^Could not connect to .* after a timeout/.test(message)
+  );
+}
+
 /**
  * Condenses a connect failure into one short line for the connection panel, e.g.
  * `connect ECONNREFUSED 10.0.0.8:9000` or `Timeout after 5000ms: connect`.
@@ -637,6 +867,17 @@ export function connectFailureReason(error: unknown): string {
   return message.length > MAX_LAST_ERROR_LENGTH
     ? `${message.slice(0, MAX_LAST_ERROR_LENGTH - 1)}…`
     : message;
+}
+
+/** The retry schedule with its first entry replaced when a caller asked for that; empty when off. */
+function incompleteStripRetrySchedule(firstMs: number | undefined): readonly number[] {
+  if (firstMs === undefined) {
+    return INCOMPLETE_STRIP_RETRY_SCHEDULE_MS;
+  }
+  if (firstMs <= 0) {
+    return [];
+  }
+  return [firstMs, ...INCOMPLETE_STRIP_RETRY_SCHEDULE_MS.slice(1)];
 }
 
 function defaultEmberClientFactory(

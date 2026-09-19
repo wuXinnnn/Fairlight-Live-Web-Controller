@@ -1,10 +1,26 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppLogger } from '../logger.js';
 import { silentLogger } from '../logger.js';
+import { PROBE_SETTLE_MS } from '../tools/expand-ember-tree.js';
 import { EmberProtocolError } from './errors.js';
-import { connectFailureReason, EmberService } from './ember-service.js';
-import { FakeEmberClient } from './fake-ember-client.js';
+import {
+  connectFailureReason,
+  DEFAULT_BUS_DIRECTORY_POLL_MS,
+  EmberService,
+  describeConnectFailure,
+  INCOMPLETE_STRIP_RETRY_SCHEDULE_MS,
+  PROBE_MIN_GAP_MS,
+  RECONNECT_JITTER_RATIO,
+  type ProbeReason,
+} from './ember-service.js';
+import { FakeEmberClient, FakeEmberTransport } from './fake-ember-client.js';
 import { emberNode, parameterNode, requiredTree, stripNode } from './tree-helpers.js';
-import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
+import type {
+  EmberCollection,
+  EmberFunctionNode,
+  EmberParameterNode,
+  EmberTreeNode,
+} from './types.js';
 import { Model } from 'emberplus-connection';
 
 describe('EmberService', () => {
@@ -65,6 +81,8 @@ describe('EmberService', () => {
       reconnectInitialMs: 15,
       reconnectMaxMs: 15,
       busDirectoryPollMs: 0,
+      // A fixed jitter source keeps the delay at exactly the backoff.
+      random: () => 0.5,
       createClient: () => {
         created += 1;
         return created === 1 ? failing : ok;
@@ -207,9 +225,94 @@ describe('EmberService', () => {
     });
     services.push(service);
     await service.start();
-    expect(service.lastError).toMatch(/^Timeout after \d+ms: connect$/);
+    // No socket error arrived, so the dial simply got no answer; the panel says as much.
+    expect(service.lastError).toBe(
+      'Timeout after 20ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
     await expect.poll(() => service.status).toBe('connected');
     expect(service.lastError).toBeUndefined();
+  });
+
+  it('reports the socket error behind a dial the library kept quiet about', async () => {
+    const refused = new FakeEmberClient();
+    refused.transport = new FakeEmberTransport();
+    refused.socketError = new Error('connect ECONNREFUSED 127.0.0.1:1');
+    // The library swallows ECONNREFUSED and keeps dialling, so all the service sees is a timeout.
+    refused.hangConnect = true;
+    const errors: Array<Record<string, unknown>> = [];
+    const logger: AppLogger = {
+      ...silentLogger(),
+      error: (obj) => errors.push(obj as Record<string, unknown>),
+    };
+    const service = createService(refused, {
+      logger,
+      timeoutMs: 20,
+      reconnectInitialMs: 10_000,
+      reconnectMaxMs: 10_000,
+    });
+    await service.start();
+    expect(service.lastError).toBe('connect ECONNREFUSED 127.0.0.1:1');
+    expect(errors.at(-1)).toMatchObject({ err: 'connect ECONNREFUSED 127.0.0.1:1' });
+  });
+
+  it('turns the library timeout wording into the no-answer reason', async () => {
+    const silent = new FakeEmberClient();
+    silent.transport = new FakeEmberTransport();
+    silent.failConnect = new Error('Could not connect to 127.0.0.1:1 after a timeout of 5 seconds');
+    const service = createService(silent, { reconnectInitialMs: 10_000, reconnectMaxMs: 10_000 });
+    await service.start();
+    expect(service.lastError).toBe(
+      'Timeout after 40ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
+  });
+
+  it('treats a session whose tree never arrives as a dial that got no answer', async () => {
+    const mute = new FakeEmberClient({});
+    const service = createService(mute, { reconnectInitialMs: 10, reconnectMaxMs: 10 });
+    await service.start();
+    expect(service.status).toBe('connecting');
+    expect(service.lastError).toBe(
+      'Timeout after 40ms: connect (no answer from 127.0.0.1:1; the provider may be busy)',
+    );
+    // Once the desk answers, the retry connects like any other.
+    mute.tree = requiredTree();
+    await expect.poll(() => service.status).toBe('connected');
+    expect(service.lastError).toBeUndefined();
+  });
+
+  it('spreads reconnect delays by up to 30% either way of the backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      expect(RECONNECT_JITTER_RATIO).toBe(0.3);
+      for (const [random, factor] of [
+        [0, 0.7],
+        [1, 1.3],
+        [0.5, 1],
+      ] as const) {
+        const failing = new FakeEmberClient();
+        failing.failConnect = new Error('refused');
+        let created = 0;
+        const service = createService(failing, {
+          reconnectInitialMs: 1_000,
+          reconnectMaxMs: 1_000,
+          random: () => random,
+          createClient: () => {
+            created += 1;
+            return failing;
+          },
+        });
+        await service.start();
+        expect(created).toBe(1);
+        const delayMs = Math.round(1_000 * factor);
+        await vi.advanceTimersByTimeAsync(delayMs - 1);
+        expect(created, `random ${random}`).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(created, `random ${random}`).toBe(2);
+        await service.stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('serializes concurrent writes', async () => {
@@ -404,7 +507,7 @@ describe('EmberService', () => {
     expect(trees).toHaveLength(count);
   });
 
-  it('retries tree expand once when a new strip is missing parameters', async () => {
+  it('retries tree expand after the first delay when a new strip is missing parameters', async () => {
     const client = new FakeEmberClient();
     const service = createService(client, { incompleteStripRetryMs: 20 });
     const trees: EmberCollection[] = [];
@@ -419,10 +522,81 @@ describe('EmberService', () => {
     channelRoot.children[2] = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
     client.emitNodeUpdate(channelRoot);
     await expect.poll(() => trees.length).toBe(3);
+    // The second attempt is a full second away on the schedule, so nothing more lands in 50 ms.
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
     expect(trees).toHaveLength(3);
+  });
+
+  it('backs off retries for an incomplete strip until it fills in, and starts over after a reconnect', async () => {
+    vi.useFakeTimers();
+    try {
+      expect(INCOMPLETE_STRIP_RETRY_SCHEDULE_MS).toEqual([300, 1_000, 3_000, 10_000, 30_000]);
+      const client = new FakeEmberClient();
+      const service = createService(client, { reconnectInitialMs: 10, reconnectMaxMs: 10 });
+      // Every refresh publishes the tree once, so the count of trees is the count of refreshes.
+      let refreshes = 0;
+      service.on('tree', () => {
+        refreshes += 1;
+      });
+      await service.start();
+      const channelRoot = client.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      const stub = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
+      channelRoot.children[2] = stub;
+      client.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(20);
+      const baseline = refreshes;
+
+      // Each step waits until just short of the next delay (the refresh debounce puts the clock
+      // a few ms ahead of the schedule), checks nothing ran, then crosses the delay.
+      for (const delayMs of [300, 1_000, 3_000, 10_000, 30_000, 30_000]) {
+        const before = refreshes;
+        await vi.advanceTimersByTimeAsync(delayMs - 100);
+        expect(refreshes, `no retry before ${delayMs} ms`).toBe(before);
+        await vi.advanceTimersByTimeAsync(110);
+        expect(refreshes, `retry after ${delayMs} ms`).toBe(before + 1);
+      }
+      expect(refreshes).toBe(baseline + 6);
+
+      // A second strip appears: it starts at the front of the schedule, the first one does not.
+      channelRoot.children[3] = emberNode(3, new Model.EmberNodeImpl('channel3', 'MUSIC'), {});
+      client.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(20);
+      const beforeNewcomer = refreshes;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(refreshes).toBe(beforeNewcomer + 1);
+
+      // Once the strips fill in, the retries stop.
+      const params = (name: string): { [index: number]: EmberTreeNode } => ({
+        1: parameterNode(1, 'level', Model.ParameterType.Real, 0),
+        2: parameterNode(2, 'mute', Model.ParameterType.Boolean, false),
+        3: parameterNode(3, 'name', Model.ParameterType.String, name),
+      });
+      stub.children = params('PC');
+      const other = channelRoot.children[3];
+      if (other !== undefined) {
+        other.children = params('MUSIC');
+      }
+      await vi.advanceTimersByTimeAsync(1_000);
+      const settled = refreshes;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refreshes).toBe(settled);
+
+      // After a reconnect the count is gone: an incomplete strip is retried after 300 ms again.
+      stub.children = {};
+      client.emit('disconnected');
+      await vi.advanceTimersByTimeAsync(50);
+      expect(service.status).toBe('connected');
+      const afterReconnect = refreshes;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(refreshes).toBe(afterReconnect + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('re-emits the tree when a watched bus node is updated', async () => {
@@ -542,6 +716,287 @@ describe('EmberService', () => {
     await service.start();
     expect(service.status).toBe('connected');
   });
+
+  describe('mixer strip probe scheduling', () => {
+    interface ProbeHarness {
+      service: EmberService;
+      primary: FakeEmberClient;
+      probes: FakeEmberClient[];
+      reasons: () => ProbeReason[][];
+      warnings: Array<Record<string, unknown>>;
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /**
+     * The first client the service asks for is the live one; every later one is a probe, built
+     * from a fresh copy of the required tree unless the case supplies its own.
+     */
+    function probeHarness(
+      extra: Partial<ConstructorParameters<typeof EmberService>[0]> = {},
+      makeProbe: () => FakeEmberClient = () => new FakeEmberClient(requiredTree()),
+    ): ProbeHarness {
+      const primary = new FakeEmberClient();
+      const probes: FakeEmberClient[] = [];
+      const debug: Array<Record<string, unknown>> = [];
+      const warnings: Array<Record<string, unknown>> = [];
+      const logger: AppLogger = {
+        ...silentLogger(),
+        debug: (obj) => debug.push(obj as Record<string, unknown>),
+        warn: (obj) => warnings.push(obj as Record<string, unknown>),
+      };
+      let created = 0;
+      const service = new EmberService({
+        host: '127.0.0.1',
+        port: 1,
+        logger,
+        timeoutMs: 40,
+        disconnectTimeoutMs: 30,
+        treeRefreshDebounceMs: 10,
+        createClient: () => {
+          created += 1;
+          if (created === 1) {
+            return primary;
+          }
+          const probe = makeProbe();
+          probes.push(probe);
+          return probe;
+        },
+        ...extra,
+      });
+      services.push(service);
+      const reasons = (): ProbeReason[][] =>
+        debug
+          .filter((entry) => Array.isArray(entry.reasons))
+          .map((entry) => entry.reasons as ProbeReason[]);
+      return { service, primary, probes, reasons, warnings };
+    }
+
+    /**
+     * A probe whose one bus directory request (the channel root starts without children) takes
+     * this long. The service under test needs a `timeoutMs` above it, or the request is cut short.
+     */
+    function slowProbe(delayMs: number): FakeEmberClient {
+      const tree = requiredTree();
+      const channelRoot = tree[1];
+      if (channelRoot !== undefined) {
+        channelRoot.children = undefined;
+      }
+      const probe = new FakeEmberClient(tree);
+      probe.getDirectoryDelayMs = delayMs;
+      return probe;
+    }
+
+    /** Lets a probe that has started run to its end: the settle wait is the only timer in it. */
+    async function finishProbe(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 1);
+    }
+
+    it('probes once on connect and then every 60 s by default, timed from the last probe', async () => {
+      expect(DEFAULT_BUS_DIRECTORY_POLL_MS).toBe(60_000);
+      const { service, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      expect(probes).toHaveLength(1);
+      expect(reasons()).toEqual([['connect']]);
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_BUS_DIRECTORY_POLL_MS - 1_000);
+      expect(probes).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await finishProbe();
+      expect(probes).toHaveLength(2);
+      expect(reasons()).toEqual([['connect'], ['periodic']]);
+
+      // The next period starts when the last probe finished, not on a fixed grid.
+      await vi.advanceTimersByTimeAsync(DEFAULT_BUS_DIRECTORY_POLL_MS - 10);
+      expect(probes).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 20);
+      await finishProbe();
+      expect(probes).toHaveLength(3);
+    });
+
+    it('folds triggers into one probe and keeps 5 s between probes', async () => {
+      expect(PROBE_MIN_GAP_MS).toBe(5_000);
+      const { service, primary, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      expect(probes).toHaveLength(1);
+
+      const channelRoot = primary.tree[1];
+      expect(channelRoot?.children).toBeDefined();
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      // A ghost the desk pushed without an identifier: found on the next tree refresh.
+      channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      primary.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(50);
+      // A numbered directory update that brought a new child: reported by the merge patch.
+      primary._updateTree(
+        emberNode(1, new Model.EmberNodeImpl('channel'), { 8: stripNode('channel', 8, 'PC') }),
+        channelRoot,
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      // Both asked within a second of the connect probe; neither gets its own run yet.
+      expect(probes).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS);
+      await finishProbe();
+      expect(probes).toHaveLength(2);
+      expect([...(reasons()[1] ?? [])].sort()).toEqual(['children-added', 'ghost']);
+    });
+
+    it('asks for a probe when a strip is still incomplete after a refresh', async () => {
+      const { service, primary, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      channelRoot.children[2] = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
+      primary.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      await finishProbe();
+      expect(probes.length).toBeGreaterThanOrEqual(2);
+      expect(reasons()[1]).toContain('incomplete');
+    });
+
+    it('ignores every trigger while the probe is switched off', async () => {
+      const { service, primary, probes } = probeHarness({ busDirectoryPollMs: 0 });
+      await service.start();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      primary.emitNodeUpdate(channelRoot);
+      primary._updateTree(
+        emberNode(1, new Model.EmberNodeImpl('channel'), { 8: stripNode('channel', 8, 'PC') }),
+        channelRoot,
+      );
+      await vi.advanceTimersByTimeAsync(2 * DEFAULT_BUS_DIRECTORY_POLL_MS);
+      expect(probes).toHaveLength(0);
+      expect(service.status).toBe('connected');
+    });
+
+    it('closes the probe connection with a reset, never a FIN', async () => {
+      const { service, probes } = probeHarness({}, () => {
+        const probe = new FakeEmberClient(requiredTree());
+        probe.transport = new FakeEmberTransport();
+        return probe;
+      });
+      await service.start();
+      const probe = probes[0];
+      expect(probe?.transport?.socket).toBeDefined();
+      const socket = probe?.transport?.socket;
+      await finishProbe();
+      expect(socket?.resetCalls).toBe(1);
+      expect(socket?.endCalls).toBe(0);
+      expect(socket?.destroyCalls).toBe(0);
+      expect(probe?.disconnectCalls).toBe(0);
+      expect(probe?.discarded).toBe(true);
+      // discard() came after the reset, so the library's own hang-up found no socket to FIN.
+      expect(probe?.transport).toBeUndefined();
+    });
+
+    it('warns when the probe lists fewer strips than the live tree holds', async () => {
+      const { service, primary, warnings } = probeHarness();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children !== undefined) {
+        channelRoot.children[2] = stripNode('channel', 2, 'PC');
+      }
+      await service.start();
+      await finishProbe();
+      const warning = warnings.find((entry) => 'missing' in entry);
+      expect(warning).toMatchObject({
+        known: 4,
+        discovered: 3,
+        missing: ['channel/channel2'],
+      });
+    });
+
+    it('keeps a trigger that fires while a probe is in flight for the probe after it', async () => {
+      // A ghost from the start: the first publish asks for a probe (armed 5 s out) and the connect
+      // probe starts at once and runs long enough for that timer to fire while it is in flight.
+      const slowProbeMs = PROBE_MIN_GAP_MS + 1_000;
+      const { service, primary, probes, reasons } = probeHarness({ timeoutMs: 20_000 }, () =>
+        slowProbe(slowProbeMs),
+      );
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children !== undefined) {
+        channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      }
+      await service.start();
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
+      expect(probes).toHaveLength(1);
+      expect(reasons()[0]).toEqual(['connect']);
+      // The ghost is still there, so its probe follows within the minimum gap, not a full period.
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      expect(probes).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
+      expect(reasons()[1]).toContain('ghost');
+    });
+
+    it('still probes a new connection when the old one dropped with a probe in flight', async () => {
+      const slowProbeMs = 3_000;
+      const primary = new FakeEmberClient();
+      const replacement = new FakeEmberClient();
+      const probes: FakeEmberClient[] = [];
+      let created = 0;
+      const service = new EmberService({
+        host: '127.0.0.1',
+        port: 1,
+        logger: silentLogger(),
+        timeoutMs: 20_000,
+        disconnectTimeoutMs: 30,
+        treeRefreshDebounceMs: 10,
+        reconnectInitialMs: 10,
+        reconnectMaxMs: 10,
+        random: () => 0.5,
+        createClient: () => {
+          created += 1;
+          if (created === 1) {
+            return primary;
+          }
+          if (created === 3) {
+            return replacement;
+          }
+          const probe = slowProbe(slowProbeMs);
+          probes.push(probe);
+          return probe;
+        },
+      });
+      services.push(service);
+      await service.start();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(probes).toHaveLength(1);
+      // The desk drops the live connection while the connect probe is still running.
+      primary.emit('disconnected');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(service.status).toBe('connected');
+      expect(replacement.connected).toBe(true);
+      expect(probes).toHaveLength(1);
+      // Once the stale probe is done, the new connection gets its own probe within the minimum gap.
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + PROBE_MIN_GAP_MS + 100);
+      expect(probes).toHaveLength(2);
+    });
+
+    it('stops the probe timer with the service', async () => {
+      const { service, probes } = probeHarness();
+      await service.start();
+      await finishProbe();
+      await service.stop();
+      await vi.advanceTimersByTimeAsync(2 * DEFAULT_BUS_DIRECTORY_POLL_MS);
+      expect(probes).toHaveLength(1);
+    });
+  });
 });
 
 describe('connectFailureReason', () => {
@@ -565,5 +1020,40 @@ describe('connectFailureReason', () => {
     const reason = connectFailureReason(new Error('x'.repeat(500)));
     expect(reason).toHaveLength(200);
     expect(reason.endsWith('…')).toBe(true);
+  });
+});
+
+describe('describeConnectFailure', () => {
+  const context = { host: '10.0.0.8', port: 9000, timeoutMs: 5000 };
+
+  it('prefers the socket error over whatever the dial reported', () => {
+    expect(
+      describeConnectFailure(
+        new Error('Timeout after 5000ms: connect'),
+        new Error('connect EHOSTUNREACH 10.0.0.8:9000'),
+        context,
+      ),
+    ).toBe('connect EHOSTUNREACH 10.0.0.8:9000');
+  });
+
+  it('calls a timeout without a socket error a silent provider', () => {
+    const noAnswer =
+      'Timeout after 5000ms: connect (no answer from 10.0.0.8:9000; the provider may be busy)';
+    expect(
+      describeConnectFailure(new Error('Timeout after 5000ms: connect'), undefined, context),
+    ).toBe(noAnswer);
+    expect(
+      describeConnectFailure(
+        new Error('Could not connect to 10.0.0.8:9000 after a timeout of 5 seconds'),
+        undefined,
+        context,
+      ),
+    ).toBe(noAnswer);
+  });
+
+  it('passes any other failure through as it is', () => {
+    expect(describeConnectFailure(new Error('subscribe denied'), undefined, context)).toBe(
+      'subscribe denied',
+    );
   });
 });

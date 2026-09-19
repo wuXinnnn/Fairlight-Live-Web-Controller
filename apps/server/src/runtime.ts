@@ -30,6 +30,7 @@ export interface MixerRuntimeOptions {
   treeRefreshDebounceMs?: number;
   incompleteStripRetryMs?: number;
   busDirectoryPollMs?: number;
+  stripDirectoryTimeoutMs?: number;
   createClient?: EmberClientFactory;
   meterIntervalMs?: number;
   onMeterFrame?: MeterHub['onFrame'];
@@ -67,6 +68,7 @@ export class MixerRuntime {
       treeRefreshDebounceMs: options.treeRefreshDebounceMs,
       incompleteStripRetryMs: options.incompleteStripRetryMs,
       busDirectoryPollMs: options.busDirectoryPollMs,
+      stripDirectoryTimeoutMs: options.stripDirectoryTimeoutMs,
       createClient: options.createClient,
     });
     this.meters = new MeterHub(options.onMeterFrame ?? (() => undefined), options.meterIntervalMs);
