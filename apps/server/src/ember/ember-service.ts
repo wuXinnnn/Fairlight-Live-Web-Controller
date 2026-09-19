@@ -32,7 +32,15 @@ const DEFAULT_DISCONNECT_TIMEOUT_MS = 2_000;
 export const DEFAULT_RECONNECT_INITIAL_MS = 1_000;
 export const DEFAULT_RECONNECT_MAX_MS = 30_000;
 const DEFAULT_TREE_REFRESH_DEBOUNCE_MS = 100;
-const DEFAULT_INCOMPLETE_STRIP_RETRY_MS = 300;
+/**
+ * How long to wait before asking again for a strip that is online but still without
+ * level/mute/name, by attempt: the last entry repeats until the strip fills in or the
+ * connection is replaced. Each strip counts its own attempts, so a strip that appears later
+ * starts at the front of the schedule whatever the older ones are up to.
+ */
+export const INCOMPLETE_STRIP_RETRY_SCHEDULE_MS: readonly number[] = [
+  300, 1_000, 3_000, 10_000, 30_000,
+];
 /**
  * How often the mixer strip probe dials the desk when nothing else asks for it. Every probe is a
  * fresh TCP session that Fairlight Live admits at about two a second and never tidies up after a
@@ -57,8 +65,14 @@ export interface EmberServiceOptions {
   reconnectInitialMs?: number;
   reconnectMaxMs?: number;
   treeRefreshDebounceMs?: number;
+  /**
+   * Replaces the first entry of `INCOMPLETE_STRIP_RETRY_SCHEDULE_MS`; the rest of the schedule
+   * stands. Zero or less turns the retry off.
+   */
   incompleteStripRetryMs?: number;
   busDirectoryPollMs?: number;
+  /** GetDirectory timeout for named strips during expansion; see `STRIP_DIRECTORY_TIMEOUT_MS`. */
+  stripDirectoryTimeoutMs?: number;
   createClient?: EmberClientFactory;
 }
 
@@ -76,8 +90,9 @@ export class EmberService extends EventEmitter {
   private readonly reconnectInitialMs: number;
   private readonly reconnectMaxMs: number;
   private readonly treeRefreshDebounceMs: number;
-  private readonly incompleteStripRetryMs: number;
+  private readonly incompleteStripRetryScheduleMs: readonly number[];
   private readonly busDirectoryPollMs: number;
+  private readonly stripDirectoryTimeoutMs: number | undefined;
   private readonly createClient: EmberClientFactory;
   private client: EmberClientHandle | undefined;
   private started = false;
@@ -88,13 +103,15 @@ export class EmberService extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private treeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private incompleteStripRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private incompleteStripRetryDueAt: number | undefined;
   private probeTimer: ReturnType<typeof setTimeout> | undefined;
   private probeTimerDueAt: number | undefined;
   private readonly pendingProbeReasons = new Set<ProbeReason>();
   private lastProbeAt: number | undefined;
   private mixerProbeQueued = false;
   private mixerProbeInFlight = false;
-  private readonly retriedIncompleteStrips = new Set<string>();
+  /** Incomplete strip key → how many retries it has had on this connection. */
+  private readonly incompleteStripAttempts = new Map<string, number>();
   private treeRefreshTail: Promise<void> = Promise.resolve();
   private writeTail: Promise<void> = Promise.resolve();
   private subscribedNodes = new WeakSet<EmberTreeNode>();
@@ -109,9 +126,11 @@ export class EmberService extends EventEmitter {
     this.reconnectInitialMs = options.reconnectInitialMs ?? DEFAULT_RECONNECT_INITIAL_MS;
     this.reconnectMaxMs = options.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
     this.treeRefreshDebounceMs = options.treeRefreshDebounceMs ?? DEFAULT_TREE_REFRESH_DEBOUNCE_MS;
-    this.incompleteStripRetryMs =
-      options.incompleteStripRetryMs ?? DEFAULT_INCOMPLETE_STRIP_RETRY_MS;
+    this.incompleteStripRetryScheduleMs = incompleteStripRetrySchedule(
+      options.incompleteStripRetryMs,
+    );
     this.busDirectoryPollMs = options.busDirectoryPollMs ?? DEFAULT_BUS_DIRECTORY_POLL_MS;
+    this.stripDirectoryTimeoutMs = options.stripDirectoryTimeoutMs;
     this.backoffMs = this.reconnectInitialMs;
     this.createClient = options.createClient ?? defaultEmberClientFactory;
   }
@@ -290,7 +309,7 @@ export class EmberService extends EventEmitter {
     const { errors } = await expandEmberTree(client, {
       timeoutMs: this.timeoutMs,
       skipIdentifiers: SKIP_IDENTIFIERS,
-      stripDirectoryTimeoutMs,
+      stripDirectoryTimeoutMs: stripDirectoryTimeoutMs ?? this.stripDirectoryTimeoutMs,
     });
     for (const error of errors) {
       this.logger.warn(
@@ -347,31 +366,57 @@ export class EmberService extends EventEmitter {
     }
   }
 
+  /**
+   * Keeps asking for strips that are online but still without level/mute/name, backing off per
+   * strip along `INCOMPLETE_STRIP_RETRY_SCHEDULE_MS`. One timer serves every pending strip: it is
+   * due when the earliest of them is, and a later tree publish can only pull it forward (a new
+   * strip at the front of the schedule), never push it back. A retry refreshes the whole tree, so
+   * every strip still pending afterwards has had another attempt.
+   */
   private scheduleIncompleteStripRetry(client: EmberClientHandle): void {
-    if (this.incompleteStripRetryMs <= 0 || !this.isActiveClient(client)) {
+    if (this.incompleteStripRetryScheduleMs.length === 0 || !this.isActiveClient(client)) {
       return;
     }
     const pending = incompleteMixerStripKeys(client.tree);
-    for (const key of [...this.retriedIncompleteStrips]) {
+    for (const key of [...this.incompleteStripAttempts.keys()]) {
       if (!pending.includes(key)) {
-        this.retriedIncompleteStrips.delete(key);
+        this.incompleteStripAttempts.delete(key);
       }
     }
-    const fresh = pending.filter((key) => !this.retriedIncompleteStrips.has(key));
-    if (fresh.length === 0) {
+    if (pending.length === 0) {
+      this.clearIncompleteStripRetryTimer();
       return;
     }
+    const now = Date.now();
+    let dueAt = Number.POSITIVE_INFINITY;
     for (const key of pending) {
-      this.retriedIncompleteStrips.add(key);
+      const attempts = this.incompleteStripAttempts.get(key) ?? 0;
+      this.incompleteStripAttempts.set(key, attempts);
+      dueAt = Math.min(dueAt, now + this.incompleteStripRetryDelay(attempts));
     }
-    this.clearIncompleteStripRetryTimer();
+    if (this.incompleteStripRetryTimer !== undefined) {
+      if (this.incompleteStripRetryDueAt !== undefined && this.incompleteStripRetryDueAt <= dueAt) {
+        return;
+      }
+      this.clearIncompleteStripRetryTimer();
+    }
+    this.incompleteStripRetryDueAt = dueAt;
     this.incompleteStripRetryTimer = setTimeout(() => {
       this.incompleteStripRetryTimer = undefined;
+      this.incompleteStripRetryDueAt = undefined;
+      for (const [key, attempts] of this.incompleteStripAttempts) {
+        this.incompleteStripAttempts.set(key, attempts + 1);
+      }
       this.treeRefreshTail = this.treeRefreshTail.then(
         () => this.refreshTreeIfConnected(),
         () => this.refreshTreeIfConnected(),
       );
-    }, this.incompleteStripRetryMs);
+    }, dueAt - now);
+  }
+
+  private incompleteStripRetryDelay(attempts: number): number {
+    const schedule = this.incompleteStripRetryScheduleMs;
+    return schedule[Math.min(attempts, schedule.length - 1)] ?? 0;
   }
 
   private scheduleTreeRefresh(): void {
@@ -631,6 +676,7 @@ export class EmberService extends EventEmitter {
       clearTimeout(this.incompleteStripRetryTimer);
       this.incompleteStripRetryTimer = undefined;
     }
+    this.incompleteStripRetryDueAt = undefined;
   }
 
   private createBoundClient(): EmberClientHandle {
@@ -654,7 +700,8 @@ export class EmberService extends EventEmitter {
 
   private resetWatches(): void {
     this.subscribedNodes = new WeakSet();
-    this.retriedIncompleteStrips.clear();
+    // A new connection starts every strip at the front of the retry schedule again.
+    this.incompleteStripAttempts.clear();
   }
 
   private async safeClose(): Promise<void> {
@@ -730,6 +777,17 @@ export function connectFailureReason(error: unknown): string {
   return message.length > MAX_LAST_ERROR_LENGTH
     ? `${message.slice(0, MAX_LAST_ERROR_LENGTH - 1)}…`
     : message;
+}
+
+/** The retry schedule with its first entry replaced when a caller asked for that; empty when off. */
+function incompleteStripRetrySchedule(firstMs: number | undefined): readonly number[] {
+  if (firstMs === undefined) {
+    return INCOMPLETE_STRIP_RETRY_SCHEDULE_MS;
+  }
+  if (firstMs <= 0) {
+    return [];
+  }
+  return [firstMs, ...INCOMPLETE_STRIP_RETRY_SCHEDULE_MS.slice(1)];
 }
 
 function defaultEmberClientFactory(

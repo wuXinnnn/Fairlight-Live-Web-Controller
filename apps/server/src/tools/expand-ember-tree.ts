@@ -29,7 +29,14 @@ export interface ExpandOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-/** Empty strip stubs must not use the full protocol timeout; GetDirectory hangs until children exist. */
+/**
+ * GetDirectory timeout for a named strip (`channelN`, `auxN`, ...). After connecting every strip
+ * is `children === undefined`, so the first expansion asks the desk for each one in turn; with
+ * several backends sharing the desk, an answer can take well over the 400 ms a stub gets, and a
+ * strip that times out here is a strip missing from the mixer page until a retry lands.
+ */
+export const STRIP_DIRECTORY_TIMEOUT_MS = 2_000;
+/** Identifier-less ghosts under a bus must not use the full protocol timeout; GetDirectory hangs until children exist. */
 export const STRIP_STUB_DIRECTORY_TIMEOUT_MS = 400;
 /**
  * How long a probe waits after its bus directory requests resolve before listing the strips.
@@ -92,13 +99,16 @@ async function expandNode(
   }
 
   if (shouldGetDirectory(node, identifier, parentIdentifier)) {
-    const stubDirectory = isMixerBusStub(identifier, parentIdentifier);
-    const directoryTimeoutMs = stubDirectory
-      ? Math.min(timeoutMs, stripDirectoryTimeoutMs ?? STRIP_STUB_DIRECTORY_TIMEOUT_MS)
-      : timeoutMs;
+    const namedStrip = isNamedStrip(identifier);
+    const ghostChild = isGhostChild(identifier, parentIdentifier);
+    const directoryTimeoutMs = namedStrip
+      ? Math.min(timeoutMs, stripDirectoryTimeoutMs ?? STRIP_DIRECTORY_TIMEOUT_MS)
+      : ghostChild
+        ? Math.min(timeoutMs, STRIP_STUB_DIRECTORY_TIMEOUT_MS)
+        : timeoutMs;
     const ok = await getDirectorySafe(client, node, identifierPath, errors, directoryTimeoutMs);
     if (!ok) {
-      if (stubDirectory && node.children === undefined) {
+      if ((namedStrip || ghostChild) && node.children === undefined) {
         node.children = {};
       }
       return;
@@ -133,7 +143,8 @@ function canBeExpanded(node: EmberTreeNode): boolean {
   );
 }
 
-function isStripIdentifier(identifier: string | undefined): boolean {
+/** A strip the desk named: `channelN`, `mainN`, `auxN` and the like. */
+function isNamedStrip(identifier: string | undefined): boolean {
   return identifier !== undefined && STRIP_IDENTIFIER.test(identifier);
 }
 
@@ -141,14 +152,20 @@ function isMixerBus(identifier: string | undefined): identifier is (typeof CHANN
   return identifier !== undefined && CHANNEL_KINDS.some((kind) => kind === identifier);
 }
 
-/** Strip stubs and identifier-less ghosts under a mixer bus hang if given the full timeout. */
+/** A child under a mixer bus that arrived without an identifier: a ghost the desk pushed. */
+function isGhostChild(
+  identifier: string | undefined,
+  parentIdentifier: string | undefined,
+): boolean {
+  return identifier === undefined && isMixerBus(parentIdentifier);
+}
+
+/** Named strips and ghosts both hang a GetDirectory until children exist; neither gets the full timeout. */
 function isMixerBusStub(
   identifier: string | undefined,
   parentIdentifier: string | undefined,
 ): boolean {
-  return (
-    isStripIdentifier(identifier) || (identifier === undefined && isMixerBus(parentIdentifier))
-  );
+  return isNamedStrip(identifier) || isGhostChild(identifier, parentIdentifier);
 }
 
 function hasEmptyChildren(node: EmberTreeNode): boolean {
@@ -274,16 +291,18 @@ export function hasGhostMixerChildren(tree: EmberCollection): boolean {
   return false;
 }
 
+/**
+ * Puts the strips a probe found onto the live tree. A strip the tree does not have gets a stub;
+ * one it has but never managed to read (online, yet without level/mute/name) has its children
+ * cleared so the next expansion asks for it again. Both come back in `added`, so the caller knows
+ * to refresh, with the full timeout, afterwards.
+ */
 export function attachMissingMixerStrips(
   tree: EmberCollection,
   refs: readonly MixerStripRef[],
 ): MixerStripRef[] {
-  const known = new Set(listMixerStripRefs(tree).map(mixerStripKey));
   const added: MixerStripRef[] = [];
   for (const ref of refs) {
-    if (known.has(mixerStripKey(ref))) {
-      continue;
-    }
     const root = Object.values(tree).find((node) => readIdentifier(node) === ref.bus);
     if (root === undefined) {
       continue;
@@ -291,16 +310,19 @@ export function attachMissingMixerStrips(
     if (root.children === undefined) {
       root.children = {};
     }
+    const known = Object.values(root.children).find(
+      (child) => readIdentifier(child) === ref.identifier,
+    );
+    if (known !== undefined) {
+      if (isNodeOnline(known) && !stripHasRequiredParams(known)) {
+        known.children = undefined;
+        added.push(ref);
+      }
+      continue;
+    }
     const occupant = root.children[ref.number];
     if (occupant !== undefined) {
       const occupantId = readIdentifier(occupant);
-      if (occupantId === ref.identifier) {
-        if (hasEmptyChildren(occupant)) {
-          occupant.children = undefined;
-        }
-        added.push(ref);
-        continue;
-      }
       if (occupantId !== undefined && stripHasRequiredParams(occupant)) {
         continue;
       }

@@ -9,6 +9,7 @@ import {
   incompleteMixerStripKeys,
   listMixerStripRefs,
   PROBE_SETTLE_MS,
+  STRIP_DIRECTORY_TIMEOUT_MS,
   STRIP_STUB_DIRECTORY_TIMEOUT_MS,
   withTimeout,
 } from './expand-ember-tree.js';
@@ -20,6 +21,18 @@ function node(
   children?: { [index: number]: Model.NumberedTreeNode<Model.EmberElement> },
 ): Model.NumberedTreeNode<Model.EmberElement> {
   return new Model.NumberedTreeNodeImpl(number, contents, children);
+}
+
+/** A strip with the three parameters the mixer page needs, so it counts as fully read. */
+function completeStrip(
+  number: number,
+  identifier: string,
+): Model.NumberedTreeNode<Model.EmberElement> {
+  return node(number, new Model.EmberNodeImpl(identifier), {
+    1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
+    2: node(2, new Model.ParameterImpl(Model.ParameterType.Boolean, 'mute', undefined, false)),
+    3: node(3, new Model.ParameterImpl(Model.ParameterType.String, 'name', undefined, identifier)),
+  });
 }
 
 describe('withTimeout', () => {
@@ -153,6 +166,60 @@ describe('expandEmberTree', () => {
 
     await expandEmberTree(client);
     expect(client.getDirectory).toHaveBeenCalledWith(ghost);
+  });
+
+  it('gives a named strip two seconds and a ghost 400 ms', async () => {
+    vi.useFakeTimers();
+    try {
+      const strip = node(1, new Model.EmberNodeImpl('channel1'));
+      const ghost = node(2, new Model.EmberNodeImpl(), {});
+      const root = node(1, new Model.EmberNodeImpl('channel'), { 1: strip, 2: ghost });
+      const client: EmberTreeClient = {
+        tree: { 1: root },
+        getDirectory: vi.fn(() => new Promise<EmberDirectoryRequest>(() => undefined)),
+      };
+      const expanding = expandEmberTree(client, { timeoutMs: 10_000 });
+      await vi.advanceTimersByTimeAsync(
+        STRIP_DIRECTORY_TIMEOUT_MS + STRIP_STUB_DIRECTORY_TIMEOUT_MS,
+      );
+      const { errors } = await expanding;
+      expect(errors).toEqual([
+        {
+          path: 'channel/channel1',
+          message: `Timeout after ${STRIP_DIRECTORY_TIMEOUT_MS}ms: getDirectory channel/channel1`,
+        },
+        {
+          path: 'channel/2',
+          message: `Timeout after ${STRIP_STUB_DIRECTORY_TIMEOUT_MS}ms: getDirectory channel/2`,
+        },
+      ]);
+      expect(strip.children).toEqual({});
+      expect(ghost.children).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets stripDirectoryTimeoutMs override the named strip timeout but not the ghost one', async () => {
+    vi.useFakeTimers();
+    try {
+      const strip = node(1, new Model.EmberNodeImpl('channel1'));
+      const ghost = node(2, new Model.EmberNodeImpl(), {});
+      const root = node(1, new Model.EmberNodeImpl('channel'), { 1: strip, 2: ghost });
+      const client: EmberTreeClient = {
+        tree: { 1: root },
+        getDirectory: vi.fn(() => new Promise<EmberDirectoryRequest>(() => undefined)),
+      };
+      const expanding = expandEmberTree(client, { timeoutMs: 10_000, stripDirectoryTimeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(50 + STRIP_STUB_DIRECTORY_TIMEOUT_MS);
+      const { errors } = await expanding;
+      expect(errors.map((error) => error.message)).toEqual([
+        'Timeout after 50ms: getDirectory channel/channel1',
+        `Timeout after ${STRIP_STUB_DIRECTORY_TIMEOUT_MS}ms: getDirectory channel/2`,
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('times out unidentified mixer-bus ghosts as stubs and restores empty children', async () => {
@@ -326,7 +393,7 @@ describe('mixer strip discovery', () => {
   });
 
   it('attaches missing strip stubs without replacing existing children', () => {
-    const existing = node(1, new Model.EmberNodeImpl('channel1'));
+    const existing = completeStrip(1, 'channel1');
     const root = node(1, new Model.EmberNodeImpl('channel'), { 1: existing });
     const tree = { 1: root };
     const added = attachMissingMixerStrips(tree, [
@@ -335,7 +402,25 @@ describe('mixer strip discovery', () => {
     ]);
     expect(added).toEqual([{ bus: 'channel', number: 2, identifier: 'channel2' }]);
     expect(root.children?.[1]).toBe(existing);
+    expect(root.children?.[1]?.children).toBe(existing.children);
     expect(root.children?.[2]?.contents).toMatchObject({ identifier: 'channel2' });
+  });
+
+  it('clears a known strip that is online but still without its parameters, so it is read again', () => {
+    const incomplete = node(1, new Model.EmberNodeImpl('channel1'), {});
+    const offline = node(2, new Model.EmberNodeImpl('channel2', undefined, undefined, false), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), { 1: incomplete, 2: offline });
+    const tree = { 1: root };
+    const added = attachMissingMixerStrips(tree, [
+      { bus: 'channel', number: 1, identifier: 'channel1' },
+      { bus: 'channel', number: 2, identifier: 'channel2' },
+    ]);
+    // The stub stays the same node; only its empty children go, so the next expansion asks again.
+    expect(added).toEqual([{ bus: 'channel', number: 1, identifier: 'channel1' }]);
+    expect(root.children?.[1]).toBe(incomplete);
+    expect(incomplete.children).toBeUndefined();
+    // An offline strip cannot be expanded, so there is no point clearing it.
+    expect(offline.children).toEqual({});
   });
 
   it('replaces an unidentified ghost occupant at the new strip number', () => {

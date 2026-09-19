@@ -7,12 +7,18 @@ import {
   connectFailureReason,
   DEFAULT_BUS_DIRECTORY_POLL_MS,
   EmberService,
+  INCOMPLETE_STRIP_RETRY_SCHEDULE_MS,
   PROBE_MIN_GAP_MS,
   type ProbeReason,
 } from './ember-service.js';
 import { FakeEmberClient, FakeEmberTransport } from './fake-ember-client.js';
 import { emberNode, parameterNode, requiredTree, stripNode } from './tree-helpers.js';
-import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
+import type {
+  EmberCollection,
+  EmberFunctionNode,
+  EmberParameterNode,
+  EmberTreeNode,
+} from './types.js';
 import { Model } from 'emberplus-connection';
 
 describe('EmberService', () => {
@@ -412,7 +418,7 @@ describe('EmberService', () => {
     expect(trees).toHaveLength(count);
   });
 
-  it('retries tree expand once when a new strip is missing parameters', async () => {
+  it('retries tree expand after the first delay when a new strip is missing parameters', async () => {
     const client = new FakeEmberClient();
     const service = createService(client, { incompleteStripRetryMs: 20 });
     const trees: EmberCollection[] = [];
@@ -427,10 +433,81 @@ describe('EmberService', () => {
     channelRoot.children[2] = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
     client.emitNodeUpdate(channelRoot);
     await expect.poll(() => trees.length).toBe(3);
+    // The second attempt is a full second away on the schedule, so nothing more lands in 50 ms.
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
     expect(trees).toHaveLength(3);
+  });
+
+  it('backs off retries for an incomplete strip until it fills in, and starts over after a reconnect', async () => {
+    vi.useFakeTimers();
+    try {
+      expect(INCOMPLETE_STRIP_RETRY_SCHEDULE_MS).toEqual([300, 1_000, 3_000, 10_000, 30_000]);
+      const client = new FakeEmberClient();
+      const service = createService(client, { reconnectInitialMs: 10, reconnectMaxMs: 10 });
+      // Every refresh publishes the tree once, so the count of trees is the count of refreshes.
+      let refreshes = 0;
+      service.on('tree', () => {
+        refreshes += 1;
+      });
+      await service.start();
+      const channelRoot = client.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      const stub = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
+      channelRoot.children[2] = stub;
+      client.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(20);
+      const baseline = refreshes;
+
+      // Each step waits until just short of the next delay (the refresh debounce puts the clock
+      // a few ms ahead of the schedule), checks nothing ran, then crosses the delay.
+      for (const delayMs of [300, 1_000, 3_000, 10_000, 30_000, 30_000]) {
+        const before = refreshes;
+        await vi.advanceTimersByTimeAsync(delayMs - 100);
+        expect(refreshes, `no retry before ${delayMs} ms`).toBe(before);
+        await vi.advanceTimersByTimeAsync(110);
+        expect(refreshes, `retry after ${delayMs} ms`).toBe(before + 1);
+      }
+      expect(refreshes).toBe(baseline + 6);
+
+      // A second strip appears: it starts at the front of the schedule, the first one does not.
+      channelRoot.children[3] = emberNode(3, new Model.EmberNodeImpl('channel3', 'MUSIC'), {});
+      client.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(20);
+      const beforeNewcomer = refreshes;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(refreshes).toBe(beforeNewcomer + 1);
+
+      // Once the strips fill in, the retries stop.
+      const params = (name: string): { [index: number]: EmberTreeNode } => ({
+        1: parameterNode(1, 'level', Model.ParameterType.Real, 0),
+        2: parameterNode(2, 'mute', Model.ParameterType.Boolean, false),
+        3: parameterNode(3, 'name', Model.ParameterType.String, name),
+      });
+      stub.children = params('PC');
+      const other = channelRoot.children[3];
+      if (other !== undefined) {
+        other.children = params('MUSIC');
+      }
+      await vi.advanceTimersByTimeAsync(1_000);
+      const settled = refreshes;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refreshes).toBe(settled);
+
+      // After a reconnect the count is gone: an incomplete strip is retried after 300 ms again.
+      stub.children = {};
+      client.emit('disconnected');
+      await vi.advanceTimersByTimeAsync(50);
+      expect(service.status).toBe('connected');
+      const afterReconnect = refreshes;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(refreshes).toBe(afterReconnect + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('re-emits the tree when a watched bus node is updated', async () => {

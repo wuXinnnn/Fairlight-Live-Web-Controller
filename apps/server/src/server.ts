@@ -27,6 +27,7 @@ export interface StartOptions {
   treeRefreshDebounceMs?: number;
   incompleteStripRetryMs?: number;
   busDirectoryPollMs?: number;
+  stripDirectoryTimeoutMs?: number;
   /**
    * The Ember endpoint to seed a missing config file with. Left out, the environment is read.
    * `null` means "do not read the environment", which is what the test fixtures and the soak
@@ -95,6 +96,7 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
       treeRefreshDebounceMs: options.treeRefreshDebounceMs,
       incompleteStripRetryMs: options.incompleteStripRetryMs,
       busDirectoryPollMs: options.busDirectoryPollMs,
+      stripDirectoryTimeoutMs: options.stripDirectoryTimeoutMs,
     });
   const app = await createApp({
     staticRoot: existsSync(staticRoot) ? staticRoot : undefined,
