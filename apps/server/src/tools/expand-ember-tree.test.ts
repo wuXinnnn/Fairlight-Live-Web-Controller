@@ -4,10 +4,12 @@ import {
   attachMissingMixerStrips,
   discoverMixerStripRefs,
   expandEmberTree,
+  ghostMixerChildKeys,
   hasGhostMixerChildren,
   hasIncompleteMixerStrips,
   incompleteMixerStripKeys,
   listMixerStripRefs,
+  mixerGapKeys,
   PROBE_SETTLE_MS,
   STRIP_DIRECTORY_TIMEOUT_MS,
   STRIP_STUB_DIRECTORY_TIMEOUT_MS,
@@ -322,6 +324,28 @@ describe('ghost mixer children', () => {
     });
     expect(hasGhostMixerChildren({ 0: system, 1: channel, 3: offlineBus })).toBe(false);
     expect(hasGhostMixerChildren({})).toBe(false);
+  });
+
+  it('keys every gap a probe is for: ghosts by number, incomplete strips by identifier', () => {
+    const channel = node(1, new Model.EmberNodeImpl('channel'), {
+      1: node(1, new Model.EmberNodeImpl('channel1'), {
+        1: node(1, new Model.ParameterImpl(Model.ParameterType.Real, 'level', undefined, -6)),
+        2: node(2, new Model.ParameterImpl(Model.ParameterType.Boolean, 'mute', undefined, false)),
+        4: node(4, new Model.ParameterImpl(Model.ParameterType.String, 'name', undefined, 'MIC')),
+      }),
+      2: node(2, new Model.EmberNodeImpl('channel2'), {}),
+      7: node(7, new Model.EmberNodeImpl(), {}),
+    });
+    const aux = node(3, new Model.EmberNodeImpl('aux'), {
+      9: node(9, new Model.EmberNodeImpl(), {}),
+    });
+    expect(ghostMixerChildKeys({ 1: channel, 3: aux })).toEqual(['channel#7', 'aux#9']);
+    expect(mixerGapKeys({ 1: channel, 3: aux })).toEqual([
+      'ghost:channel#7',
+      'ghost:aux#9',
+      'incomplete:channel/channel2',
+    ]);
+    expect(mixerGapKeys({})).toEqual([]);
   });
 });
 

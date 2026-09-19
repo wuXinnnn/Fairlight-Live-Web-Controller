@@ -7,9 +7,9 @@ import {
   attachMissingMixerStrips,
   discoverMixerStripRefs,
   expandEmberTree,
-  hasGhostMixerChildren,
   incompleteMixerStripKeys,
   listMixerStripRefs,
+  mixerGapKeys,
   mixerStripKey,
   withTimeout,
 } from '../tools/expand-ember-tree.js';
@@ -58,7 +58,11 @@ export const RECONNECT_JITTER_RATIO = 0.3;
 const SKIP_IDENTIFIERS = ['sends'] as const;
 const MAX_LAST_ERROR_LENGTH = 200;
 
-/** Why a mixer strip probe was run. `connect` is the one right after the tree first expanded. */
+/**
+ * Why a mixer strip probe was run. `connect` is the first one after the tree expanded; it waits
+ * `PROBE_MIN_GAP_MS` like any trigger, so that a backend coming up does not dial the desk twice
+ * in the same second as every other backend that lost it at the same time.
+ */
 export type ProbeReason = 'connect' | 'periodic' | 'children-added' | 'ghost' | 'incomplete';
 
 export interface EmberServiceOptions {
@@ -116,6 +120,8 @@ export class EmberService extends EventEmitter {
   private probeTimerDueAt: number | undefined;
   private readonly pendingProbeReasons = new Set<ProbeReason>();
   private lastProbeAt: number | undefined;
+  /** The gaps (`mixerGapKeys`) the live tree had when the last probe started, on this connection. */
+  private lastProbedGaps: ReadonlySet<string> = new Set();
   private mixerProbeQueued = false;
   private mixerProbeInFlight = false;
   /** Incomplete strip key → how many retries it has had on this connection. */
@@ -305,9 +311,10 @@ export class EmberService extends EventEmitter {
       this.backoffMs = this.reconnectInitialMs;
       this.setStatus('connected', undefined);
       this.publishTree(client);
-      if (this.busDirectoryPollMs > 0) {
-        this.enqueueMixerStripReconcile(['connect']);
-      }
+      // Not at once: every backend that lost the desk together is dialling it again now, and the
+      // desk admits one connection at a time. The tree already has its own retries for what the
+      // first expansion missed; the probe follows after the minimum gap.
+      this.requestMixerStripProbe('connect');
     } catch (error) {
       if (this.client !== client) {
         // A newer attempt (reconfigure or reconnect) replaced this one while it was dialling;
@@ -390,11 +397,15 @@ export class EmberService extends EventEmitter {
     this.emit('tree', client.tree);
     this.scheduleIncompleteStripRetry(client);
     // What the tree itself says is missing: a ghost child the desk pushed without an identifier,
-    // or a named strip still without level/mute/name. Both are what the probe is for.
-    if (hasGhostMixerChildren(client.tree)) {
+    // or a named strip still without level/mute/name. Both are what the probe is for, but only a
+    // gap the last probe did not see asks for one. A gap that probe could not close is still
+    // there after every retry refresh, and asking again every gap would dial the desk twelve
+    // times a minute for as long as it lasts; the periodic probe looks at it again instead.
+    const fresh = mixerGapKeys(client.tree).filter((key) => !this.lastProbedGaps.has(key));
+    if (fresh.some((key) => key.startsWith('ghost:'))) {
       this.requestMixerStripProbe('ghost');
     }
-    if (incompleteMixerStripKeys(client.tree).length > 0) {
+    if (fresh.some((key) => key.startsWith('incomplete:'))) {
       this.requestMixerStripProbe('incomplete');
     }
   }
@@ -539,6 +550,8 @@ export class EmberService extends EventEmitter {
     this.disarmProbeTimer();
     this.pendingProbeReasons.clear();
     this.lastProbeAt = undefined;
+    // A new connection reads the tree afresh; whatever the old one's probes saw no longer counts.
+    this.lastProbedGaps = new Set();
   }
 
   private disarmProbeTimer(): void {
@@ -580,6 +593,9 @@ export class EmberService extends EventEmitter {
     }
     this.mixerProbeInFlight = true;
     const startedAt = Date.now();
+    // What this probe is looking at. A later refresh that finds only these gaps again does not
+    // ask for another probe; one that finds a new gap does.
+    this.lastProbedGaps = new Set(mixerGapKeys(primary.tree));
     const probe = this.createClient(this.host, this.port, this.timeoutMs);
     try {
       const result = await withTimeout(probe.connect(), this.timeoutMs, 'probe connect');
