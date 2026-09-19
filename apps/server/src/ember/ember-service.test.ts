@@ -1,8 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppLogger } from '../logger.js';
 import { silentLogger } from '../logger.js';
+import { PROBE_SETTLE_MS } from '../tools/expand-ember-tree.js';
 import { EmberProtocolError } from './errors.js';
-import { connectFailureReason, EmberService } from './ember-service.js';
-import { FakeEmberClient } from './fake-ember-client.js';
+import {
+  connectFailureReason,
+  DEFAULT_BUS_DIRECTORY_POLL_MS,
+  EmberService,
+  PROBE_MIN_GAP_MS,
+  type ProbeReason,
+} from './ember-service.js';
+import { FakeEmberClient, FakeEmberTransport } from './fake-ember-client.js';
 import { emberNode, parameterNode, requiredTree, stripNode } from './tree-helpers.js';
 import type { EmberCollection, EmberFunctionNode, EmberParameterNode } from './types.js';
 import { Model } from 'emberplus-connection';
@@ -541,6 +549,206 @@ describe('EmberService', () => {
     await service.start();
     await service.start();
     expect(service.status).toBe('connected');
+  });
+
+  describe('mixer strip probe scheduling', () => {
+    interface ProbeHarness {
+      service: EmberService;
+      primary: FakeEmberClient;
+      probes: FakeEmberClient[];
+      reasons: () => ProbeReason[][];
+      warnings: Array<Record<string, unknown>>;
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /**
+     * The first client the service asks for is the live one; every later one is a probe, built
+     * from a fresh copy of the required tree unless the case supplies its own.
+     */
+    function probeHarness(
+      extra: Partial<ConstructorParameters<typeof EmberService>[0]> = {},
+      makeProbe: () => FakeEmberClient = () => new FakeEmberClient(requiredTree()),
+    ): ProbeHarness {
+      const primary = new FakeEmberClient();
+      const probes: FakeEmberClient[] = [];
+      const debug: Array<Record<string, unknown>> = [];
+      const warnings: Array<Record<string, unknown>> = [];
+      const logger: AppLogger = {
+        ...silentLogger(),
+        debug: (obj) => debug.push(obj as Record<string, unknown>),
+        warn: (obj) => warnings.push(obj as Record<string, unknown>),
+      };
+      let created = 0;
+      const service = new EmberService({
+        host: '127.0.0.1',
+        port: 1,
+        logger,
+        timeoutMs: 40,
+        disconnectTimeoutMs: 30,
+        treeRefreshDebounceMs: 10,
+        createClient: () => {
+          created += 1;
+          if (created === 1) {
+            return primary;
+          }
+          const probe = makeProbe();
+          probes.push(probe);
+          return probe;
+        },
+        ...extra,
+      });
+      services.push(service);
+      const reasons = (): ProbeReason[][] =>
+        debug
+          .filter((entry) => Array.isArray(entry.reasons))
+          .map((entry) => entry.reasons as ProbeReason[]);
+      return { service, primary, probes, reasons, warnings };
+    }
+
+    /** Lets a probe that has started run to its end: the settle wait is the only timer in it. */
+    async function finishProbe(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 1);
+    }
+
+    it('probes once on connect and then every 60 s by default, timed from the last probe', async () => {
+      expect(DEFAULT_BUS_DIRECTORY_POLL_MS).toBe(60_000);
+      const { service, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      expect(probes).toHaveLength(1);
+      expect(reasons()).toEqual([['connect']]);
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_BUS_DIRECTORY_POLL_MS - 1_000);
+      expect(probes).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await finishProbe();
+      expect(probes).toHaveLength(2);
+      expect(reasons()).toEqual([['connect'], ['periodic']]);
+
+      // The next period starts when the last probe finished, not on a fixed grid.
+      await vi.advanceTimersByTimeAsync(DEFAULT_BUS_DIRECTORY_POLL_MS - 10);
+      expect(probes).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 20);
+      await finishProbe();
+      expect(probes).toHaveLength(3);
+    });
+
+    it('folds triggers into one probe and keeps 5 s between probes', async () => {
+      expect(PROBE_MIN_GAP_MS).toBe(5_000);
+      const { service, primary, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      expect(probes).toHaveLength(1);
+
+      const channelRoot = primary.tree[1];
+      expect(channelRoot?.children).toBeDefined();
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      // A ghost the desk pushed without an identifier: found on the next tree refresh.
+      channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      primary.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(50);
+      // A numbered directory update that brought a new child: reported by the merge patch.
+      primary._updateTree(
+        emberNode(1, new Model.EmberNodeImpl('channel'), { 8: stripNode('channel', 8, 'PC') }),
+        channelRoot,
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      // Both asked within a second of the connect probe; neither gets its own run yet.
+      expect(probes).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS);
+      await finishProbe();
+      expect(probes).toHaveLength(2);
+      expect([...(reasons()[1] ?? [])].sort()).toEqual(['children-added', 'ghost']);
+    });
+
+    it('asks for a probe when a strip is still incomplete after a refresh', async () => {
+      const { service, primary, probes, reasons } = probeHarness();
+      await service.start();
+      await finishProbe();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      channelRoot.children[2] = emberNode(2, new Model.EmberNodeImpl('channel2', 'PC'), {});
+      primary.emitNodeUpdate(channelRoot);
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      await finishProbe();
+      expect(probes.length).toBeGreaterThanOrEqual(2);
+      expect(reasons()[1]).toContain('incomplete');
+    });
+
+    it('ignores every trigger while the probe is switched off', async () => {
+      const { service, primary, probes } = probeHarness({ busDirectoryPollMs: 0 });
+      await service.start();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children === undefined) {
+        return;
+      }
+      channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      primary.emitNodeUpdate(channelRoot);
+      primary._updateTree(
+        emberNode(1, new Model.EmberNodeImpl('channel'), { 8: stripNode('channel', 8, 'PC') }),
+        channelRoot,
+      );
+      await vi.advanceTimersByTimeAsync(2 * DEFAULT_BUS_DIRECTORY_POLL_MS);
+      expect(probes).toHaveLength(0);
+      expect(service.status).toBe('connected');
+    });
+
+    it('closes the probe connection with a reset, never a FIN', async () => {
+      const { service, probes } = probeHarness({}, () => {
+        const probe = new FakeEmberClient(requiredTree());
+        probe.transport = new FakeEmberTransport();
+        return probe;
+      });
+      await service.start();
+      const probe = probes[0];
+      expect(probe?.transport?.socket).toBeDefined();
+      const socket = probe?.transport?.socket;
+      await finishProbe();
+      expect(socket?.resetCalls).toBe(1);
+      expect(socket?.endCalls).toBe(0);
+      expect(socket?.destroyCalls).toBe(0);
+      expect(probe?.disconnectCalls).toBe(0);
+      expect(probe?.discarded).toBe(true);
+      // discard() came after the reset, so the library's own hang-up found no socket to FIN.
+      expect(probe?.transport).toBeUndefined();
+    });
+
+    it('warns when the probe lists fewer strips than the live tree holds', async () => {
+      const { service, primary, warnings } = probeHarness();
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children !== undefined) {
+        channelRoot.children[2] = stripNode('channel', 2, 'PC');
+      }
+      await service.start();
+      await finishProbe();
+      const warning = warnings.find((entry) => 'missing' in entry);
+      expect(warning).toMatchObject({
+        known: 4,
+        discovered: 3,
+        missing: ['channel/channel2'],
+      });
+    });
+
+    it('stops the probe timer with the service', async () => {
+      const { service, probes } = probeHarness();
+      await service.start();
+      await finishProbe();
+      await service.stop();
+      await vi.advanceTimersByTimeAsync(2 * DEFAULT_BUS_DIRECTORY_POLL_MS);
+      expect(probes).toHaveLength(1);
+    });
   });
 });
 

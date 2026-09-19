@@ -1,12 +1,18 @@
-import { createRequiredDump } from '@flwc/test-utils';
+import { createRequiredDump, MockEmberProvider } from '@flwc/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
+import { EmberService } from '../src/ember/ember-service.js';
+import { silentLogger } from '../src/logger.js';
+import { listMixerStripRefs } from '../src/tools/expand-ember-tree.js';
 import { createStackHarness, delay } from './mixer-stack.js';
 
 /**
- * How often the strip probe runs in these cases. Production polls every two seconds; a tenth of
- * that gets through the same number of probes in a tenth of the time.
+ * How often the strip probe runs in these cases. Production polls once a minute; this gets
+ * through a run of probes in a couple of seconds.
  */
 const PROBE_INTERVAL_MS = 200;
+
+/** How a desk that admits one connection every 600 ms and never answers a FIN is played. */
+const BUSY_DESK = { acceptIntervalMs: 600, holdHalfClosed: true } as const;
 
 /**
  * Timers this process is holding, which is what a probe leaks.
@@ -19,7 +25,7 @@ function openTimers(): number {
   return process.getActiveResourcesInfo().filter((resource) => resource === 'Timeout').length;
 }
 
-describe('mixer strip probe', { timeout: 20_000 }, () => {
+describe('mixer strip probe', { timeout: 40_000 }, () => {
   const harness = createStackHarness();
   const { startStack } = harness;
 
@@ -54,6 +60,51 @@ describe('mixer strip probe', { timeout: 20_000 }, () => {
       `${rounds} probes should not each leave a timer behind`,
     ).toBeLessThanOrEqual(2);
     expect(server.runtime.store.connection).toBe('connected');
+  });
+
+  it('leaves no half-closed session behind on a desk that never closes its side', async () => {
+    const { server, provider } = await startStack(createRequiredDump(), {
+      busDirectoryPollMs: PROBE_INTERVAL_MS,
+      providerOptions: { holdHalfClosed: true },
+    });
+    const sessionsBefore = provider.acceptedCount;
+    let worstHalfClosed = 0;
+    const samples = 100;
+    for (let sample = 0; sample < samples; sample += 1) {
+      await delay(20);
+      worstHalfClosed = Math.max(worstHalfClosed, provider.halfClosedCount);
+    }
+    /*
+     * A probe that hung up with a FIN would sit in the provider's half-closed set from the moment
+     * it left until the provider is closed, so the count is sampled all the way through rather
+     * than read once at the end. Fairlight Live keeps such sessions until it is restarted.
+     */
+    expect(provider.acceptedCount - sessionsBefore, 'probes run').toBeGreaterThanOrEqual(5);
+    expect(worstHalfClosed).toBe(0);
+    expect(server.runtime.store.connection).toBe('connected');
+  });
+
+  it('two backends behind a desk that admits one connection at a time both read every strip', async () => {
+    const provider = MockEmberProvider.fromDump(createRequiredDump(), BUSY_DESK);
+    harness.providers.push(provider);
+    const { host, port } = await provider.listen();
+    const services = [0, 1].map(
+      () => new EmberService({ host, port, logger: silentLogger(), treeRefreshDebounceMs: 20 }),
+    );
+    try {
+      await Promise.all(services.map((service) => service.start()));
+      await expect
+        .poll(() => services.map((service) => service.status), { timeout: 30_000 })
+        .toEqual(['connected', 'connected']);
+      const expected = listMixerStripRefs(services[0]?.tree ?? {}).length;
+      expect(expected).toBe(3);
+      for (const service of services) {
+        expect(listMixerStripRefs(service.tree ?? {})).toHaveLength(expected);
+      }
+      expect(provider.halfClosedCount).toBe(0);
+    } finally {
+      await Promise.all(services.map((service) => service.stop()));
+    }
   });
 
   it('keeps finding the strips it is meant to find while it runs', async () => {

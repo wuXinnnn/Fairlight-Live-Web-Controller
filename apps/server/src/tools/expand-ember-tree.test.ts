@@ -4,9 +4,11 @@ import {
   attachMissingMixerStrips,
   discoverMixerStripRefs,
   expandEmberTree,
+  hasGhostMixerChildren,
   hasIncompleteMixerStrips,
   incompleteMixerStripKeys,
   listMixerStripRefs,
+  PROBE_SETTLE_MS,
   STRIP_STUB_DIRECTORY_TIMEOUT_MS,
   withTimeout,
 } from './expand-ember-tree.js';
@@ -225,7 +227,71 @@ describe('incomplete mixer strips', () => {
   });
 });
 
+describe('ghost mixer children', () => {
+  it('reports an online child without an identifier under an online mixer bus', () => {
+    const ghost = node(2, new Model.EmberNodeImpl(), {});
+    const root = node(1, new Model.EmberNodeImpl('channel'), {
+      1: node(1, new Model.EmberNodeImpl('channel1')),
+      2: ghost,
+    });
+    expect(hasGhostMixerChildren({ 1: root })).toBe(true);
+  });
+
+  it('ignores offline ghosts, identified strips, and roots that are not mixer buses', () => {
+    const offlineGhost = node(
+      2,
+      new Model.EmberNodeImpl(undefined, undefined, undefined, false),
+      {},
+    );
+    const channel = node(1, new Model.EmberNodeImpl('channel'), {
+      1: node(1, new Model.EmberNodeImpl('channel1')),
+      2: offlineGhost,
+    });
+    const system = node(0, new Model.EmberNodeImpl('system'), {
+      1: node(1, new Model.EmberNodeImpl(), {}),
+    });
+    const offlineBus = node(3, new Model.EmberNodeImpl('aux', undefined, undefined, false), {
+      1: node(1, new Model.EmberNodeImpl(), {}),
+    });
+    expect(hasGhostMixerChildren({ 0: system, 1: channel, 3: offlineBus })).toBe(false);
+    expect(hasGhostMixerChildren({})).toBe(false);
+  });
+});
+
 describe('mixer strip discovery', () => {
+  it('waits for trailing directory packets before listing the strips', async () => {
+    vi.useFakeTimers();
+    try {
+      const first = node(1, new Model.EmberNodeImpl('channel1'));
+      const second = node(2, new Model.EmberNodeImpl('channel2'));
+      const root = node(1, new Model.EmberNodeImpl('channel'));
+      const client: EmberTreeClient = {
+        tree: { 1: root },
+        getDirectory: vi.fn(async (): Promise<EmberDirectoryRequest> => {
+          // The library resolves on the first packet with children; the second packet lands later.
+          root.children = { 1: first };
+          setTimeout(() => {
+            root.children = { 1: first, 2: second };
+          }, PROBE_SETTLE_MS / 2);
+          return { response: Promise.resolve(root) };
+        }),
+      };
+      const discovering = discoverMixerStripRefs(client, { timeoutMs: 1_000 });
+      await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS - 1);
+      let settled = false;
+      void discovering.then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const { refs } = await discovering;
+      expect(refs.map((ref) => ref.identifier)).toEqual(['channel1', 'channel2']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('lists strip refs from an already expanded tree', () => {
     const root = node(1, new Model.EmberNodeImpl('channel'), {
       1: node(1, new Model.EmberNodeImpl('channel1')),

@@ -24,11 +24,20 @@ export interface ExpandOptions {
   skipIdentifiers?: readonly string[];
   /** Overrides the short stub timeout when the strip is known to exist on the provider. */
   stripDirectoryTimeoutMs?: number;
+  /** How long `discoverMixerStripRefs` waits for trailing directory packets; see `PROBE_SETTLE_MS`. */
+  settleMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 /** Empty strip stubs must not use the full protocol timeout; GetDirectory hangs until children exist. */
 export const STRIP_STUB_DIRECTORY_TIMEOUT_MS = 400;
+/**
+ * How long a probe waits after its bus directory requests resolve before listing the strips.
+ * emberplus-connection resolves a GetDirectory as soon as the first packet carrying children
+ * arrives, and Fairlight Live sends a large bus directory in several packets, so listing at once
+ * misses the strips still in flight (a live desk showed known=20 discovered=19).
+ */
+export const PROBE_SETTLE_MS = 200;
 
 export async function expandEmberTree(
   client: EmberTreeClient,
@@ -246,7 +255,23 @@ export async function discoverMixerStripRefs(
       await getDirectorySafe(client, root, bus, errors, timeoutMs);
     }
   }
+  await delay(options.settleMs ?? PROBE_SETTLE_MS);
   return { refs: listMixerStripRefs(client.tree), errors };
+}
+
+/** True when an online mixer bus holds an online child without an identifier (a ghost). */
+export function hasGhostMixerChildren(tree: EmberCollection): boolean {
+  for (const root of Object.values(tree)) {
+    if (!isMixerBus(readIdentifier(root)) || !isNodeOnline(root)) {
+      continue;
+    }
+    for (const child of Object.values(root.children ?? {})) {
+      if (readIdentifier(child) === undefined && isNodeOnline(child)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function attachMissingMixerStrips(
@@ -365,4 +390,10 @@ export function errorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
