@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FakeEmberClient } from './ember/fake-ember-client.js';
 import { silentLogger } from './logger.js';
 import { MixerRuntime } from './runtime.js';
-import { resolveBindAddress, resolveEmberSeed, start } from './server.js';
+import { createRuntime, resolveBindAddress, resolveEmberSeed, start } from './server.js';
+import { DEFAULT_BUS_DIRECTORY_POLL_MS } from './ember/ember-service.js';
 
 describe('resolveBindAddress', () => {
   it('prefers explicit options over environment values', () => {
@@ -29,6 +30,38 @@ describe('resolveBindAddress', () => {
     expect(resolveBindAddress({}, {})).toEqual({
       host: '127.0.0.1',
       port: 3000,
+    });
+  });
+});
+
+describe('createRuntime', () => {
+  const tuned = { FLWC_EMBER_PROBE_INTERVAL_MS: '0', FLWC_EMBER_STRIP_TIMEOUT_MS: '7000' };
+
+  it('fills the timings from the environment when the options leave them out', () => {
+    const runtime = createRuntime({ emberSeed: null }, 'unused.json', silentLogger(), tuned);
+    expect(runtime.ember.tuning).toEqual({ busDirectoryPollMs: 0, stripDirectoryTimeoutMs: 7000 });
+  });
+
+  it('prefers explicit timing options over the environment', () => {
+    const runtime = createRuntime(
+      { emberSeed: null, busDirectoryPollMs: 45_000, stripDirectoryTimeoutMs: 1_500 },
+      'unused.json',
+      silentLogger(),
+      tuned,
+    );
+    expect(runtime.ember.tuning).toEqual({
+      busDirectoryPollMs: 45_000,
+      stripDirectoryTimeoutMs: 1_500,
+    });
+  });
+
+  it('keeps the service defaults when the environment says nothing usable', () => {
+    const runtime = createRuntime({ emberSeed: null }, 'unused.json', silentLogger(), {
+      FLWC_EMBER_PROBE_INTERVAL_MS: 'abc',
+    });
+    expect(runtime.ember.tuning).toEqual({
+      busDirectoryPollMs: DEFAULT_BUS_DIRECTORY_POLL_MS,
+      stripDirectoryTimeoutMs: undefined,
     });
   });
 });

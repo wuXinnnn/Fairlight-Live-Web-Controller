@@ -161,6 +161,14 @@ export class EmberService extends EventEmitter {
     return this.client?.tree;
   }
 
+  /** The timings the environment may override, as this service ended up with them. */
+  get tuning(): { busDirectoryPollMs: number; stripDirectoryTimeoutMs: number | undefined } {
+    return {
+      busDirectoryPollMs: this.busDirectoryPollMs,
+      stripDirectoryTimeoutMs: this.stripDirectoryTimeoutMs,
+    };
+  }
+
   async start(): Promise<void> {
     if (this.started) {
       return;

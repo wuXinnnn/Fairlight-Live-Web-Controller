@@ -36,6 +36,15 @@ services:
       # Exit when stdin closes. For process supervisors and the desktop launcher; Docker stops
       # the container with a signal instead, so leave it unset here.
       # FLWC_EXIT_ON_STDIN_CLOSE: '1'
+
+      # How often (ms) a short-lived probe connection asks the desk for channels it added without
+      # telling us. Every probe is a new connection the desk must admit, and several backends
+      # share that budget, so keep it in minutes. '0' turns the probe off.
+      # FLWC_EMBER_PROBE_INTERVAL_MS: '60000'
+
+      # How long (ms) to wait for the desk to describe one channel while the tree is read. Raise
+      # it if channels are missing from the mixer page after connecting to a busy desk.
+      # FLWC_EMBER_STRIP_TIMEOUT_MS: '2000'
     volumes:
       - flwc-data:/app/data
     restart: unless-stopped

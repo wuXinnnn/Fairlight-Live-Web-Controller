@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { Server } from 'socket.io';
 import pino from 'pino';
 import { createApp } from './app.js';
+import { readEmberTuning } from './config/env-ember.js';
 import type { EmberSeed } from './config/env-seed.js';
 import { readEmberSeed } from './config/env-seed.js';
 import type { AppLogger } from './logger.js';
@@ -71,6 +72,33 @@ export function resolveEmberSeed(
   return options.emberSeed ?? readEmberSeed(env, logger);
 }
 
+/**
+ * The runtime `start()` builds when none is supplied. Only here is the environment read, so a
+ * caller that supplies its own runtime never sees it. An explicit timing option wins over its
+ * environment variable, which wins over the service default.
+ */
+export function createRuntime(
+  options: StartOptions,
+  configPath: string,
+  logger: AppLogger,
+  env: NodeJS.ProcessEnv = process.env,
+): MixerRuntime {
+  const tuning = readEmberTuning(env, logger);
+  return new MixerRuntime({
+    configPath,
+    logger,
+    emberSeed: resolveEmberSeed(options, logger, env),
+    timeoutMs: options.timeoutMs,
+    disconnectTimeoutMs: options.disconnectTimeoutMs,
+    reconnectInitialMs: options.reconnectInitialMs,
+    reconnectMaxMs: options.reconnectMaxMs,
+    treeRefreshDebounceMs: options.treeRefreshDebounceMs,
+    incompleteStripRetryMs: options.incompleteStripRetryMs,
+    busDirectoryPollMs: options.busDirectoryPollMs ?? tuning.busDirectoryPollMs,
+    stripDirectoryTimeoutMs: options.stripDirectoryTimeoutMs ?? tuning.stripDirectoryTimeoutMs,
+  });
+}
+
 export async function start(options: StartOptions = {}): Promise<StartedServer> {
   const { host, port } = resolveBindAddress(options);
   // Explicit option first, then the environment, then the repository-relative default. The
@@ -82,22 +110,7 @@ export async function start(options: StartOptions = {}): Promise<StartedServer> 
     options.configDir === undefined ? paths.configPath : resolveConfigPath(options.configDir);
   const logger: AppLogger =
     options.logger ?? (options.silent === true ? silentLogger() : pino({ name: 'flwc' }));
-  const runtime =
-    options.runtime ??
-    new MixerRuntime({
-      configPath,
-      logger,
-      // Inside the `??`, so a caller that supplies its own runtime never reads the environment.
-      emberSeed: resolveEmberSeed(options, logger),
-      timeoutMs: options.timeoutMs,
-      disconnectTimeoutMs: options.disconnectTimeoutMs,
-      reconnectInitialMs: options.reconnectInitialMs,
-      reconnectMaxMs: options.reconnectMaxMs,
-      treeRefreshDebounceMs: options.treeRefreshDebounceMs,
-      incompleteStripRetryMs: options.incompleteStripRetryMs,
-      busDirectoryPollMs: options.busDirectoryPollMs,
-      stripDirectoryTimeoutMs: options.stripDirectoryTimeoutMs,
-    });
+  const runtime = options.runtime ?? createRuntime(options, configPath, logger);
   const app = await createApp({
     staticRoot: existsSync(staticRoot) ? staticRoot : undefined,
     runtime,

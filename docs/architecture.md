@@ -259,6 +259,8 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
 | `FLWC_DATA_DIR` | 仓库 `data/` | `config.json` 所在目录 |
 | `FLWC_WEB_ROOT` | `apps/web/dist` | 静态托管根目录 |
 | `FLWC_EXIT_ON_STDIN_CLOSE` | 未设 | `1` 时 stdin 关闭即退出 |
+| `FLWC_EMBER_PROBE_INTERVAL_MS` | `60000` | 混音条带探测连接的周期(毫秒),`0` 关闭探测;`readEmberTuning()` |
+| `FLWC_EMBER_STRIP_TIMEOUT_MS` | `2000` | 首轮展开时对每个命名条带 GetDirectory 的超时(毫秒);`readEmberTuning()` |
 
 - **`.env` 文件**:仓库根的 `.env`(不入库,模板是 `.env.example`)由**启动脚本**交给 Node 的 `--env-file`
   读取,上面这些变量都能写在里面。Node 的语义是**环境里已有的值优先**,文件只填空缺,所以完整的优先级是
@@ -275,6 +277,9 @@ ember」原子写到磁盘再返回,并记一条 info 日志;写不进去(如目
   照旧回退默认值并告警。非法的环境变量只告警、不抛错——一个打错的变量不该让服务起不来。
 - `start()` 的优先级统一为:显式选项 > 环境变量 > 仓库相对默认值。夹具与 soak 传 `emberSeed: null` 表示
   「不要读环境变量」,以免 CI runner 上的变量污染既有用例。
+- **Ember 时序**:`FLWC_EMBER_PROBE_INTERVAL_MS` / `FLWC_EMBER_STRIP_TIMEOUT_MS` 由 `config/env-ember.ts` 的
+  `readEmberTuning()` 读出(非负整数 / 正整数,非法值告警并忽略),只在 `start()` 没有显式传对应选项、也没有传
+  `runtime` 时填进 `MixerRuntimeOptions`;夹具都显式传 `busDirectoryPollMs`,soak 走服务默认因此会看到这两个变量。
 
 ### 控制台脚本
 

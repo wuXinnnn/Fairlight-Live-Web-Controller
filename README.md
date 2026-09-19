@@ -152,15 +152,17 @@ A variable already set in the shell still wins over the file, so `PORT=3100 ./st
 
 ## Configuration
 
-| Variable                   | Default         | What it does                                                                                                                        |
-| -------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `HOST`                     | `127.0.0.1`     | The address the web server binds. The start scripts and the container set it to `0.0.0.0`.                                          |
-| `PORT`                     | `3000`          | The port the web server binds.                                                                                                      |
-| `EMBER_HOST`               | `127.0.0.1`     | Seed value: written to the config file on the very first start, when there is no file yet. After that the CONNECTION panel owns it. |
-| `EMBER_PORT`               | `9000`          | Seed value, as above.                                                                                                               |
-| `FLWC_DATA_DIR`            | `data/`         | Where `config.json` is kept. `/app/data` in the container.                                                                          |
-| `FLWC_WEB_ROOT`            | `apps/web/dist` | Where the web build is served from.                                                                                                 |
-| `FLWC_EXIT_ON_STDIN_CLOSE` | unset           | Set to `1` to exit when stdin closes, for process supervisors and the desktop launcher.                                             |
+| Variable                       | Default         | What it does                                                                                                                                                                                               |
+| ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HOST`                         | `127.0.0.1`     | The address the web server binds. The start scripts and the container set it to `0.0.0.0`.                                                                                                                 |
+| `PORT`                         | `3000`          | The port the web server binds.                                                                                                                                                                             |
+| `EMBER_HOST`                   | `127.0.0.1`     | Seed value: written to the config file on the very first start, when there is no file yet. After that the CONNECTION panel owns it.                                                                        |
+| `EMBER_PORT`                   | `9000`          | Seed value, as above.                                                                                                                                                                                      |
+| `FLWC_DATA_DIR`                | `data/`         | Where `config.json` is kept. `/app/data` in the container.                                                                                                                                                 |
+| `FLWC_WEB_ROOT`                | `apps/web/dist` | Where the web build is served from.                                                                                                                                                                        |
+| `FLWC_EXIT_ON_STDIN_CLOSE`     | unset           | Set to `1` to exit when stdin closes, for process supervisors and the desktop launcher.                                                                                                                    |
+| `FLWC_EMBER_PROBE_INTERVAL_MS` | `60000`         | How often a short-lived probe connection asks Fairlight Live for channels it added without announcing them. Each probe is a new connection the desk has to admit, so keep it in minutes; `0` turns it off. |
+| `FLWC_EMBER_STRIP_TIMEOUT_MS`  | `2000`          | How long to wait for the desk to describe one channel while the tree is read. Raise it if channels are missing after connecting to a busy desk.                                                            |
 
 All of them can be set in a `.env` file in this directory, which the start scripts read. Copy
 `.env.example` to `.env` to get a commented template. Docker does not read it -- use the
