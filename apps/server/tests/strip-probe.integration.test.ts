@@ -68,9 +68,17 @@ describe('mixer strip probe', { timeout: 40_000 }, () => {
       providerOptions: { holdHalfClosed: true },
     });
     const sessionsBefore = provider.acceptedCount;
+    const probesWanted = 5;
     let worstHalfClosed = 0;
-    const samples = 100;
-    for (let sample = 0; sample < samples; sample += 1) {
+    // Sampled until enough probes have been admitted rather than for a fixed time: a slow CI
+    // runner gets through fewer probes per second, and the point is the probes, not the clock.
+    const deadline = Date.now() + 10_000;
+    while (provider.acceptedCount - sessionsBefore < probesWanted && Date.now() < deadline) {
+      await delay(20);
+      worstHalfClosed = Math.max(worstHalfClosed, provider.halfClosedCount);
+    }
+    // A little longer, so the last probe's own hang-up is inside the window as well.
+    for (let sample = 0; sample < 15; sample += 1) {
       await delay(20);
       worstHalfClosed = Math.max(worstHalfClosed, provider.halfClosedCount);
     }
@@ -79,7 +87,9 @@ describe('mixer strip probe', { timeout: 40_000 }, () => {
      * it left until the provider is closed, so the count is sampled all the way through rather
      * than read once at the end. Fairlight Live keeps such sessions until it is restarted.
      */
-    expect(provider.acceptedCount - sessionsBefore, 'probes run').toBeGreaterThanOrEqual(5);
+    expect(provider.acceptedCount - sessionsBefore, 'probes run').toBeGreaterThanOrEqual(
+      probesWanted,
+    );
     expect(worstHalfClosed).toBe(0);
     expect(server.runtime.store.connection).toBe('connected');
   });
