@@ -17,3 +17,7 @@ apps/desktop/src-tauri/resources/
 apps/desktop/src-tauri/icons/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# Supervisor working files: phase prompts and execution reports stay local only.
+docs/prompts/
+docs/reports/
