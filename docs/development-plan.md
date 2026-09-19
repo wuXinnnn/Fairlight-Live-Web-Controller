@@ -293,3 +293,27 @@ Fader 滚轮与翻页滚轮共存规则:
 - [x] `desktop.yml` 在 PR 上全绿且 artifact 可下载
 - [x] 本地:安装后平板按窗口地址打开、CONNECTION 面板指向真实 Fairlight Live、`Start with Windows` 注销重登生效(自启项不带参数,登录后显不显示窗口由 `Start hidden in the tray` 决定)、关机重启不残留
 - [x] 合并后打第一个标签,Release 上同时出现镜像包与 Windows 安装包,GHCR 包为 public(`v0.2.0`:`flwc-v0.2.0-linux-amd64.tar.gz` 与 `Fairlight.Live.Web.Controller_0.2.0_x64-setup.exe`;arm64 镜像改为原生构建 JS 阶段后发布成功)
+
+## Phase 8 — 现场问题修复
+
+Phase 7 交付后在实际部署中发现的问题,每个问题一个独立批次、独立 PR。
+
+### 8.1 Ember+ 多后端连接稳定性
+
+详细执行提示词只保存于本地(`docs/prompts/phase-8-1.md`,不入仓库)。现场同时跑多个后端(服务器 Docker 版、开发机、桌面版)连同一台 Fairlight Live 时,出现「有时少读通道、有时连不上」。2026-09-19 对真实设备的只读测量确认了根因:Fairlight 的 Ember+ provider 每约 500 ms 只 accept 一条连接、backlog 只有两三个位置,且收到 FIN 后永不关闭它那一端(CLOSE_WAIT 与进程句柄逐会话累积,只有重启 Fairlight 才清);而我们的总线目录探测每 2 秒新开一条连接,一个后端一小时留下 1800 个死会话并占掉四分之一的 accept 能力,两三个后端就把它占满。少读通道则来自首轮展开对每个命名条带只给 400 ms、失败只重试一次,以及探测连接在目录分包到齐前就列表。
+
+交付物:
+
+- 探测节流:周期探测 2 s → 60 s,另加事件触发探测(目录更新插入新孩子、发现幽灵孩子、发现不完整条带),两次探测最小间隔 5 s,触发合并;探测连接以 RST 关闭而不是 FIN;探测等 200 ms 尾包后再列表
+- 首轮展开:命名条带的 GetDirectory 超时 400 ms → 2 s,幽灵孩子维持 400 ms;不完整条带按 300 ms / 1 s / 3 s / 10 s / 30 s 退避持续重试;探测也补不完整的已知条带
+- 连接失败原因区分:记录底层 socket 错误(如 `ECONNREFUSED`),无应答时文案说明 provider 可能忙;重连延迟加 ±30% 抖动
+- Mock Provider 新增可选项复现 Fairlight 的两种行为(accept 间隔、FIN 后不关闭),两个后端连同一 Mock 的集成用例作为验收核心
+- 环境变量 `FLWC_EMBER_PROBE_INTERVAL_MS`(0 关闭)与 `FLWC_EMBER_STRIP_TIMEOUT_MS`,在 `.env.example`、compose、README、architecture 四处同步
+- `docs/fairlight-ember.md` 踩坑记录第 12 条记录实测事实
+
+验收标准:
+
+- [ ] Mock 上两个后端同时启动都连上且条带数等于 dump;运行 3 分钟 Mock 的半关闭会话计数为 0;新增条带在 65 s 内出现、紧接着的第二个在 6 s 内出现
+- [ ] 连接失败时 `lastError` 区分 `ECONNREFUSED` 与「no answer」;`FLWC_EMBER_PROBE_INTERVAL_MS=0` 时全程无探测
+- [ ] 本地:重启 Fairlight Live 后,服务器 Docker 版与本机 `start.cmd` 同时连接,两边读全 20 个条带,`Get-NetTCPConnection -LocalPort 9000` 的 CLOSE_WAIT 不再增长、Established 恒为 2;新建再删除一个输入通道两边一分钟内跟上
+- [ ] 覆盖率达标;`pnpm-lock.yaml` 无改动;覆盖率排除无新增

@@ -173,6 +173,21 @@ Start with Windows、Start hidden、Open in browser/Hide to tray/Exit 与日志�
 详细执行提示词只保存于本地(docs/prompts/phase-7-2.md,不入仓库)。
 ```
 
+## Phase 8 — 现场问题修复
+
+Phase 7 交付后在实际部署中发现的问题,每个问题一个独立批次。
+
+### 8.1 Ember+ 多后端连接稳定性
+
+```
+按 docs/development-plan.md 的 Phase 8.1:总线目录探测从每 2 s 新开连接改为 60 s 周期 + 事件触发(最小间隔 5 s),
+探测连接以 RST 关闭并等 200 ms 尾包;命名条带首轮 GetDirectory 超时 2 s、幽灵孩子 400 ms,不完整条带按退避表持续重试;
+连接失败记录底层 socket 错误并区分「no answer」,重连延迟加 ±30% 抖动;Mock Provider 加 acceptIntervalMs 与 holdHalfClosed
+两个可选项复现 Fairlight 行为,两个后端连同一 Mock 的集成用例是验收核心;新增 FLWC_EMBER_PROBE_INTERVAL_MS 与
+FLWC_EMBER_STRIP_TIMEOUT_MS 并四处同步;fairlight-ember.md 追加第 12 条踩坑记录。本地会话执行,不碰真实台子,
+不新增 npm 依赖,覆盖率排除无新增。详细执行提示词只保存于本地(docs/prompts/phase-8-1.md,不入仓库)。
+```
+
 ## 缺陷修复(通用)
 
 ```
