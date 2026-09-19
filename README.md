@@ -50,9 +50,61 @@ on how you run it:
 
 | How you run it  | What the machine needs           |
 | --------------- | -------------------------------- |
-| From a terminal | Node.js 22 or newer, and pnpm 11 |
-| With Docker     | Docker, and Docker Compose       |
 | Desktop app     | Nothing — see below              |
+| With Docker     | Docker, and Docker Compose       |
+| From a terminal | Node.js 22 or newer, and pnpm 11 |
+
+## Desktop app
+
+The Windows installer on the [latest release](https://github.com/wuxinnnn/Fairlight-Live-Web-Controller/releases/latest)
+carries its own Node runtime and the built web app, so the machine needs nothing installed. It
+installs for the current user, without administrator rights.
+
+Start it from the Start menu. The window shows the address to open on a tablet, and lets you
+change the port, start with Windows, or start hidden in the tray. Closing the window hides it
+to the tray; **Exit** stops the backend. Set the Ember+ endpoint on the mixer page, in its
+CONNECTION panel; the launcher has no setting for it.
+
+macOS and Linux builds are planned.
+
+## Run with Docker
+
+Edit `EMBER_HOST` in `docker-compose.yml` to the address of the machine running Fairlight Live,
+then:
+
+```bash
+docker compose up -d
+```
+
+Open `http://<host>:3000`. The configuration lives in a named volume, so it survives
+`docker compose restart` and `docker compose down && docker compose up -d`.
+
+To upgrade:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+To install without a registry, download `flwc-<tag>-linux-amd64.tar.gz` from the
+[releases](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/releases) page and load it:
+
+```bash
+docker load -i flwc-<tag>-linux-amd64.tar.gz
+docker compose up -d
+```
+
+To build from this checkout instead of pulling, uncomment the `build: .` line in
+`docker-compose.yml`.
+
+The compose file uses a named volume rather than a bind mount because the container runs as the
+`node` user (uid 1000), and a host directory usually will not be writable by it. If you would
+rather keep the configuration somewhere you can see it, create the directory, give it to uid 1000,
+and point the volume at it:
+
+```bash
+mkdir -p ./flwc-data && sudo chown -R 1000:1000 ./flwc-data
+# then in docker-compose.yml:  - ./flwc-data:/app/data
+```
 
 ## Run from a terminal
 
@@ -97,69 +149,6 @@ HOST=0.0.0.0
 A variable already set in the shell still wins over the file, so `PORT=3100 ./start.sh` (or
 `set PORT=3100 && start.cmd`) overrides it for one run. The full list of variables is in
 [Configuration](#configuration) below, and every one of them is in `.env.example` with a comment.
-
-## Run with Docker
-
-Edit `EMBER_HOST` in `docker-compose.yml` to the address of the machine running Fairlight Live,
-then:
-
-```bash
-docker compose up -d
-```
-
-Open `http://<host>:3000`. The configuration lives in a named volume, so it survives
-`docker compose restart` and `docker compose down && docker compose up -d`.
-
-To upgrade:
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-To install without a registry, download `flwc-<tag>-linux-amd64.tar.gz` from the
-[releases](https://github.com/wuXinnnn/Fairlight-Live-Web-Controller/releases) page and load it:
-
-```bash
-docker load -i flwc-<tag>-linux-amd64.tar.gz
-docker compose up -d
-```
-
-To build from this checkout instead of pulling, uncomment the `build: .` line in
-`docker-compose.yml`.
-
-The compose file uses a named volume rather than a bind mount because the container runs as the
-`node` user (uid 1000), and a host directory usually will not be writable by it. If you would
-rather keep the configuration somewhere you can see it, create the directory, give it to uid 1000,
-and point the volume at it:
-
-```bash
-mkdir -p ./flwc-data && sudo chown -R 1000:1000 ./flwc-data
-# then in docker-compose.yml:  - ./flwc-data:/app/data
-```
-
-## Desktop app
-
-The Windows installer on the [latest release](https://github.com/wuxinnnn/Fairlight-Live-Web-Controller/releases/latest)
-carries its own Node runtime and the built desk, so the machine needs nothing installed. It
-installs for the current user, without administrator rights.
-
-Start it from the Start menu and a small window comes up:
-
-- the address to open on a tablet, with a **Copy** button next to it
-- **Port**, and whether other devices on the network may reach it; **Apply** restarts the
-  backend on the new setting
-- **Start with Windows**, and **Start hidden in the tray**, which decides whether any start,
-  including the one at login, shows this window or only the tray icon
-- **Open in browser**, **Hide to tray**, **Exit**, and the backend's log
-
-Open the address it shows on the tablet. Set the Ember+ endpoint there, in the mixer page's
-CONNECTION panel; the launcher has no setting for it.
-
-Closing the window hides it to the tray. The tray icon's menu has **Open in browser**,
-**Show window** and **Exit**; only **Exit** stops the backend. Whatever happens to the
-launcher -- a crash, Task Manager, logging out, a power cut -- the backend goes with it.
-
-macOS and Linux builds are planned.
 
 ## Configuration
 

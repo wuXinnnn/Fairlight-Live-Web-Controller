@@ -74,7 +74,7 @@ Phase 6 拆成五个 PR,每个 PR 一条提示词,按顺序执行;每个 PR 单�
 两个页面头部可点击的连接状态灯与 CONNECTION 面板(host/port/状态/APPLY,已连接时二次确认)、
 混音页空态按 socket 离线 / Ember 未连接 / 树为空三种原因分流并提供 CONFIGURE CONNECTION 入口。
 后端只允许一项最小扩展:连接响应与 system:status 增加可选的 lastError 字段;环境变量种子值留到 Phase 7。
-详细执行提示词见 docs/prompts/phase-6-1.md。集成测试覆盖 6.1 验收清单,覆盖率达标。
+详细执行提示词只保存于本地(docs/prompts/phase-6-1.md,不入仓库)。集成测试覆盖 6.1 验收清单,覆盖率达标。
 ```
 
 ### 6.2 配置页 UX
@@ -86,7 +86,7 @@ moveChannelTo 与 insertChannelAt,箭头按钮保留;自写 FLIP hook 让所有�
 兼容 reduced-motion,删除 data-moved 动画;isViewDirty 脏检测、三处脏态提示、应用内确认对话框、
 router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 拖放集成测试用键盘传感器;纯函数全覆盖;覆盖率达标。
-详细执行提示词见 docs/prompts/phase-6-2.md。
+详细执行提示词只保存于本地(docs/prompts/phase-6-2.md,不入仓库)。
 ```
 
 ### 6.2.1 配置页 UX 补充
@@ -97,7 +97,7 @@ router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 空 view 列表可作为投放目标;分组可折叠/展开(UI 状态,不持久化,拖入即展开);分组可设颜色,
 通道条颜色支持 AUTO / GROUP / 自定义,进组时 AUTO 自动变 GROUP、出组时 GROUP 自动变 AUTO
 (shared 增加 group.color 与 color: 'group',向后兼容)。不新增依赖,覆盖率达标。
-详细执行提示词见 docs/prompts/phase-6-2-1.md。
+详细执行提示词只保存于本地(docs/prompts/phase-6-2-1.md,不入仓库)。
 ```
 
 ### 6.2.2 配置页 UX 补充二
@@ -108,7 +108,7 @@ router 导航守卫(后退被拒时 history.forward())与 beforeunload。
 先埋点复现再修);View 模型改为有序块
 (View.items,组块自带 channels,空组有位置、可拖可落,配置版本升 2 并在 shared 读取时迁移);列表末尾
 常驻占满空白区域的根级落槽,通道、AVAILABLE 条目与组头落入即追加到末尾;组色 AUTO 取成员类型众数。
-不新增依赖,覆盖率达标。详细执行提示词见 docs/prompts/phase-6-2-2.md。
+不新增依赖,覆盖率达标。详细执行提示词只保存于本地(docs/prompts/phase-6-2-2.md,不入仓库)。
 ```
 
 ### 6.3 混音页分页
@@ -120,7 +120,7 @@ TYPE ROWS 改为每组一页起),通道条撑满 100dvh,页头压缩为单行,pa
 严格按文档的"Fader 滚轮与翻页滚轮共存规则"实现两个纯函数 reducer、wheel-gesture 手势归属模块与原生非 passive 监听,
 覆盖文档列出的全部归属边界情形。阈值与时间窗口按文档初值实现,不自行调整。
 在 Mock Provider 下以 40 通道 20 Hz 实测电平表开销。单测与集成测试覆盖 6.3 验收清单,覆盖率达标。
-详细执行提示词见 docs/prompts/phase-6-3.md。
+详细执行提示词只保存于本地(docs/prompts/phase-6-3.md,不入仓库)。
 ```
 
 ### 6.4 触屏审计
@@ -131,7 +131,7 @@ user-select、touch-callout、hover 媒体查询与样式回归测试、dvh)、F
 手指翻页不从 ON 起手(6.3 的翻页语义与数值不动)、Screen Wake Lock(原生 + 静音视频降级,交互后触发)、
 Fullscreen 页头按钮、web app manifest。不放大命中区、不加 user-scalable=no、不新增依赖。
 单测覆盖 6.4 验收清单,覆盖率达标;平板与手机的真机验收由本地执行。
-详细执行提示词见 docs/prompts/phase-6-4.md。
+详细执行提示词只保存于本地(docs/prompts/phase-6-4.md,不入仓库)。
 ```
 
 ### 6.5 健壮性
@@ -144,7 +144,7 @@ Fullscreen 页头按钮、web app manifest。不放大命中区、不加 user-sc
 (Mock Provider + 真实 server + 自写 CDP 客户端驱动 headless Chrome,20 Hz 电平、翻页、周期性断连,
 采内存与恢复时间出报告并判定,附着模式对真实台子只读)与 workflow_dispatch 的 soak.yml。
 本地会话执行,60 分钟实跑结果进报告;真机 1 小时验收由用户执行。不新增依赖,覆盖率达标。
-详细执行提示词见 docs/prompts/phase-6-5.md。
+详细执行提示词只保存于本地(docs/prompts/phase-6-5.md,不入仓库)。
 ```
 
 ## Phase 7 — 打包交付
@@ -159,7 +159,7 @@ EMBER_HOST/EMBER_PORT 仅在配置文件不存在时作为种子写入文件、�
 mock-provider 命令行工具;start.cmd/start.sh 控制台启动脚本;多阶段 Dockerfile(node:22-alpine,非 root,
 HEALTHCHECK,/app/data 挂卷)、docker-compose.yml、scripts/docker-smoke.sh、docker.yml(PR 冒烟,main 与 v* 标签推 GHCR,
 标签时离线镜像包挂 Release);README 按三态重写并全面核对文档。本地会话执行,不碰真实台子,不新增 npm 依赖,覆盖率排除只多
-mock-provider.ts 一项。详细执行提示词见 docs/prompts/phase-7-1.md。
+mock-provider.ts 一项。详细执行提示词只保存于本地(docs/prompts/phase-7-1.md,不入仓库)。
 ```
 
 ### 7.2 桌面启动器(Tauri,Windows)
@@ -170,7 +170,7 @@ mock-provider.ts 一项。详细执行提示词见 docs/prompts/phase-7-1.md。
 Start with Windows、Start hidden、Open in browser/Hide to tray/Exit 与日志尾部;关闭即隐藏到托盘,单实例;
 子进程按 7.1 合同设环境变量,进程边界靠 stdin 守护,不写平台专属保活;desktop.yml 在 windows-latest 构建 NSIS 安装包,
 标签时挂到与 docker.yml 共用的 Release;ci.yml 不改。本批次只做 Windows,代码保持可移植。
-详细执行提示词见 docs/prompts/phase-7-2.md。
+详细执行提示词只保存于本地(docs/prompts/phase-7-2.md,不入仓库)。
 ```
 
 ## 缺陷修复(通用)
