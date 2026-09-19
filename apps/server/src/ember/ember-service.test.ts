@@ -778,6 +778,21 @@ describe('EmberService', () => {
       return { service, primary, probes, reasons, warnings };
     }
 
+    /**
+     * A probe whose one bus directory request (the channel root starts without children) takes
+     * this long. The service under test needs a `timeoutMs` above it, or the request is cut short.
+     */
+    function slowProbe(delayMs: number): FakeEmberClient {
+      const tree = requiredTree();
+      const channelRoot = tree[1];
+      if (channelRoot !== undefined) {
+        channelRoot.children = undefined;
+      }
+      const probe = new FakeEmberClient(tree);
+      probe.getDirectoryDelayMs = delayMs;
+      return probe;
+    }
+
     /** Lets a probe that has started run to its end: the settle wait is the only timer in it. */
     async function finishProbe(): Promise<void> {
       await vi.advanceTimersByTimeAsync(PROBE_SETTLE_MS + 1);
@@ -905,6 +920,72 @@ describe('EmberService', () => {
         discovered: 3,
         missing: ['channel/channel2'],
       });
+    });
+
+    it('keeps a trigger that fires while a probe is in flight for the probe after it', async () => {
+      // A ghost from the start: the first publish asks for a probe (armed 5 s out) and the connect
+      // probe starts at once and runs long enough for that timer to fire while it is in flight.
+      const slowProbeMs = PROBE_MIN_GAP_MS + 1_000;
+      const { service, primary, probes, reasons } = probeHarness({ timeoutMs: 20_000 }, () =>
+        slowProbe(slowProbeMs),
+      );
+      const channelRoot = primary.tree[1];
+      if (channelRoot?.children !== undefined) {
+        channelRoot.children[7] = emberNode(7, new Model.EmberNodeImpl(), {});
+      }
+      await service.start();
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
+      expect(probes).toHaveLength(1);
+      expect(reasons()[0]).toEqual(['connect']);
+      // The ghost is still there, so its probe follows within the minimum gap, not a full period.
+      await vi.advanceTimersByTimeAsync(PROBE_MIN_GAP_MS + 100);
+      expect(probes).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + 10);
+      expect(reasons()[1]).toContain('ghost');
+    });
+
+    it('still probes a new connection when the old one dropped with a probe in flight', async () => {
+      const slowProbeMs = 3_000;
+      const primary = new FakeEmberClient();
+      const replacement = new FakeEmberClient();
+      const probes: FakeEmberClient[] = [];
+      let created = 0;
+      const service = new EmberService({
+        host: '127.0.0.1',
+        port: 1,
+        logger: silentLogger(),
+        timeoutMs: 20_000,
+        disconnectTimeoutMs: 30,
+        treeRefreshDebounceMs: 10,
+        reconnectInitialMs: 10,
+        reconnectMaxMs: 10,
+        random: () => 0.5,
+        createClient: () => {
+          created += 1;
+          if (created === 1) {
+            return primary;
+          }
+          if (created === 3) {
+            return replacement;
+          }
+          const probe = slowProbe(slowProbeMs);
+          probes.push(probe);
+          return probe;
+        },
+      });
+      services.push(service);
+      await service.start();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(probes).toHaveLength(1);
+      // The desk drops the live connection while the connect probe is still running.
+      primary.emit('disconnected');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(service.status).toBe('connected');
+      expect(replacement.connected).toBe(true);
+      expect(probes).toHaveLength(1);
+      // Once the stale probe is done, the new connection gets its own probe within the minimum gap.
+      await vi.advanceTimersByTimeAsync(slowProbeMs + PROBE_SETTLE_MS + PROBE_MIN_GAP_MS + 100);
+      expect(probes).toHaveLength(2);
     });
 
     it('stops the probe timer with the service', async () => {

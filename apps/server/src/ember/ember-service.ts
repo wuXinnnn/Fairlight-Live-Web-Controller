@@ -536,19 +536,35 @@ export class EmberService extends EventEmitter {
   }
 
   private clearProbeTimer(): void {
+    this.disarmProbeTimer();
+    this.pendingProbeReasons.clear();
+    this.lastProbeAt = undefined;
+  }
+
+  private disarmProbeTimer(): void {
     if (this.probeTimer !== undefined) {
       clearTimeout(this.probeTimer);
       this.probeTimer = undefined;
     }
     this.probeTimerDueAt = undefined;
-    this.pendingProbeReasons.clear();
-    this.lastProbeAt = undefined;
   }
 
+  /**
+   * Starts a probe for `reasons` unless one is already queued or running. In that case the
+   * reasons are kept for the probe after it: the running one may have read the desk before
+   * whatever prompted them happened, and it may belong to a connection that has since been
+   * replaced. Its completion re-arms the timer, which sees them and probes again after the
+   * minimum gap rather than a whole period.
+   */
   private enqueueMixerStripReconcile(reasons: readonly ProbeReason[]): void {
     if (this.mixerProbeQueued || this.mixerProbeInFlight) {
+      for (const reason of reasons) {
+        this.pendingProbeReasons.add(reason);
+      }
       return;
     }
+    // A timer armed earlier is superseded: this probe's completion re-arms it.
+    this.disarmProbeTimer();
     this.mixerProbeQueued = true;
     this.treeRefreshTail = this.treeRefreshTail.then(
       () => this.reconcileMixerStripsIfConnected(reasons),
